@@ -1,0 +1,5 @@
+[workspace]
+members = [ "sdk/abi" , "sdk/base", "sdk/core", "sdk/macros"]
+resolver = "2"
+
+
