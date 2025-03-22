@@ -1,3 +1,4 @@
+#![allow(unused)]
 //! Contains the implementation of the ABI
 
 use std::{cell::RefCell, time::Instant};
