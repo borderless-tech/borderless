@@ -351,100 +351,100 @@ where
     fn db(&self) -> &DB;
 }
 
-/// Trait providing CRUD (Create, Read, Update, Delete) operations.
-///
-/// Extends functionality for read-write transactions.
-/// These methods provide a higher-level abstraction over `RawRead` and `RawWrite`,
-/// working with `Option` types and `Vec<u8>` for more ergonomic usage.
-pub trait CRUD<'env, DB>: RwTx<'env, DB>
-where
-    DB: KvDatabase,
-{
-    /// Reads the value associated with the given key.
-    ///
-    /// - `db`: Reference to the database handle.
-    /// - `key`: Reference to the key to be read.
-    ///
-    /// Returns:
-    /// - `Ok(Some(Vec<u8>))` if the key exists, containing the value.
-    /// - `Ok(None)` if the key does not exist.
-    /// - `Err(E)` if an error occurs during the operation.
-    fn read(
-        &self,
-        db: &impl KvHandle<DB>,
-        key: &impl AsRef<[u8]>,
-    ) -> Result<Option<Vec<u8>>, Error> {
-        let val = <Self as RawRead<DB>>::read(self, db, key)?.map(|v| v.to_vec());
+// /// Trait providing CRUD (Create, Read, Update, Delete) operations.
+// ///
+// /// Extends functionality for read-write transactions.
+// /// These methods provide a higher-level abstraction over `RawRead` and `RawWrite`,
+// /// working with `Option` types and `Vec<u8>` for more ergonomic usage.
+// pub trait CRUD<'env, DB>: RwTx<'env, DB>
+// where
+//     DB: KvDatabase,
+// {
+//     /// Reads the value associated with the given key.
+//     ///
+//     /// - `db`: Reference to the database handle.
+//     /// - `key`: Reference to the key to be read.
+//     ///
+//     /// Returns:
+//     /// - `Ok(Some(Vec<u8>))` if the key exists, containing the value.
+//     /// - `Ok(None)` if the key does not exist.
+//     /// - `Err(E)` if an error occurs during the operation.
+//     fn read(
+//         &self,
+//         db: &impl KvHandle<DB>,
+//         key: &impl AsRef<[u8]>,
+//     ) -> Result<Option<Vec<u8>>, Error> {
+//         let val = <Self as RawRead<DB>>::read(self, db, key)?.map(|v| v.to_vec());
 
-        Ok(val)
-    }
+//         Ok(val)
+//     }
 
-    /// Creates a new key-value pair in the database.
-    /// This method overwrite an existing key!
-    ///
-    /// - `db`: Reference to the database handle.
-    /// - `key`: Reference to the key under which the data will be stored.
-    /// - `data`: Slice of bytes representing the data to be stored.
-    ///
-    /// Returns:
-    /// - `Ok(())` if the key-value pair was successfully created.
-    /// - `Err(E)` if the key already exists or if an error occurs.
-    fn create(
-        &mut self,
-        db: &impl KvHandle<DB>,
-        key: &impl AsRef<[u8]>,
-        data: &impl AsRef<[u8]>,
-    ) -> Result<(), Error> {
-        <Self as RawWrite<DB>>::write(self, db, key, data)?;
-        Ok(())
-    }
+//     /// Creates a new key-value pair in the database.
+//     /// This method overwrite an existing key!
+//     ///
+//     /// - `db`: Reference to the database handle.
+//     /// - `key`: Reference to the key under which the data will be stored.
+//     /// - `data`: Slice of bytes representing the data to be stored.
+//     ///
+//     /// Returns:
+//     /// - `Ok(())` if the key-value pair was successfully created.
+//     /// - `Err(E)` if the key already exists or if an error occurs.
+//     fn create(
+//         &mut self,
+//         db: &impl KvHandle<DB>,
+//         key: &impl AsRef<[u8]>,
+//         data: &impl AsRef<[u8]>,
+//     ) -> Result<(), Error> {
+//         <Self as RawWrite<DB>>::write(self, db, key, data)?;
+//         Ok(())
+//     }
 
-    /// Updates the value associated with the given key.
-    ///
-    /// - `db`: Reference to the database handle.
-    /// - `key`: Reference to the key to be updated.
-    /// - `data`: Slice of bytes representing the new data to be stored.
-    ///
-    /// Returns:
-    /// - `Ok(Some(Vec<u8>))` containing the old value if the key existed and was updated.
-    /// - `Ok(None)` if the key did not exist.
-    /// - `Err(E)` if an error occurs during the operation.
-    fn update(
-        &mut self,
-        db: &impl KvHandle<DB>,
-        key: &impl AsRef<[u8]>,
-        data: &impl AsRef<[u8]>,
-    ) -> Result<Option<Vec<u8>>, Error> {
-        let old = <Self as CRUD<DB>>::read(self, db, key)?;
-        <Self as RawWrite<DB>>::write(self, db, key, data)?;
-        Ok(old)
-    }
+//     /// Updates the value associated with the given key.
+//     ///
+//     /// - `db`: Reference to the database handle.
+//     /// - `key`: Reference to the key to be updated.
+//     /// - `data`: Slice of bytes representing the new data to be stored.
+//     ///
+//     /// Returns:
+//     /// - `Ok(Some(Vec<u8>))` containing the old value if the key existed and was updated.
+//     /// - `Ok(None)` if the key did not exist.
+//     /// - `Err(E)` if an error occurs during the operation.
+//     fn update(
+//         &mut self,
+//         db: &impl KvHandle<DB>,
+//         key: &impl AsRef<[u8]>,
+//         data: &impl AsRef<[u8]>,
+//     ) -> Result<Option<Vec<u8>>, Error> {
+//         let old = <Self as CRUD<DB>>::read(self, db, key)?;
+//         <Self as RawWrite<DB>>::write(self, db, key, data)?;
+//         Ok(old)
+//     }
 
-    /// Deletes the key-value pair associated with the given key.
-    ///
-    /// - `db`: Reference to the database handle.
-    /// - `key`: Reference to the key to be deleted.
-    ///
-    /// Returns:
-    /// - `Ok(Some(Vec<u8>))` containing the old value if the key existed and was deleted.
-    /// - `Ok(None)` if the key did not exist.
-    /// - `Err(E)` if an error occurs during the operation.
-    fn delete(
-        &mut self,
-        db: &impl KvHandle<DB>,
-        key: &impl AsRef<[u8]>,
-    ) -> Result<Option<Vec<u8>>, Error> {
-        let old = <Self as CRUD<DB>>::read(self, db, key)?;
-        <Self as RawWrite<DB>>::delete(self, db, key)?;
-        Ok(old)
-    }
-}
+//     /// Deletes the key-value pair associated with the given key.
+//     ///
+//     /// - `db`: Reference to the database handle.
+//     /// - `key`: Reference to the key to be deleted.
+//     ///
+//     /// Returns:
+//     /// - `Ok(Some(Vec<u8>))` containing the old value if the key existed and was deleted.
+//     /// - `Ok(None)` if the key did not exist.
+//     /// - `Err(E)` if an error occurs during the operation.
+//     fn delete(
+//         &mut self,
+//         db: &impl KvHandle<DB>,
+//         key: &impl AsRef<[u8]>,
+//     ) -> Result<Option<Vec<u8>>, Error> {
+//         let old = <Self as CRUD<DB>>::read(self, db, key)?;
+//         <Self as RawWrite<DB>>::delete(self, db, key)?;
+//         Ok(old)
+//     }
+// }
 
-/// Implement the CRUD Interface for all Types T
-/// implementing the RwTx super trait.
-impl<'env, DB, T> CRUD<'env, DB> for T
-where
-    DB: KvDatabase,
-    T: RwTx<'env, DB>,
-{
-}
+// /// Implement the CRUD Interface for all Types T
+// /// implementing the RwTx super trait.
+// impl<'env, DB, T> CRUD<'env, DB> for T
+// where
+//     DB: KvDatabase,
+//     T: RwTx<'env, DB>,
+// {
+// }

@@ -5,6 +5,8 @@ use std::{path::Path, sync::Arc};
 
 use crate::{Db, RawRead, RawWrite, Tx};
 
+pub use lmdb::Database as DbPtr;
+
 /// Converts LMDB-specific errors (`lmdb::Error`) into the database interface `Error` type.
 ///
 /// This implementation maps LMDB errors to a meaningful representation in the library context,
