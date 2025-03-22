@@ -257,7 +257,6 @@ pub fn storage_write(
     sub_key: u64,
     value_ptr: u64,
     value_len: u64,
-    _register_id: u64,
 ) -> wasmtime::Result<()> {
     let now = Instant::now();
     // Get memory

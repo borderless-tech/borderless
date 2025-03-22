@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow.workspace = true
 borderless-sdk = { path = "../../sdk/base" }
 borderless-kv-store = { path = "../../kv-store" }
 nohash = "0.2.0"
