@@ -48,7 +48,8 @@ extern "C" {
 
     // --- Profiling
     pub fn tic(); // matlab style
-    pub fn toc();
+    pub fn tocp(); // prints the output
+    pub fn toc() -> u64; // returns the nanoseconds as u64
 
     // --- Testing
     pub fn rand(min: u32, max: u32) -> u32;

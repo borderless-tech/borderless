@@ -1,5 +1,5 @@
 [workspace]
-members = [ "sdk/abi" , "sdk/base", "sdk/core", "sdk/macros"]
+members = [ "contracts/abi-test", "sdk/abi" , "sdk/base", "sdk/core", "sdk/macros"]
 resolver = "2"
 
 

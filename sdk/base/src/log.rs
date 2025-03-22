@@ -1,11 +1,12 @@
-pub use borderless_abi::LogLevel as Level;
+pub use borderless_sdk_core::print;
+pub use borderless_sdk_core::LogLevel as Level;
 
 #[macro_export]
 macro_rules! log {
     ($lvl:expr, $($arg:tt)+) => {
         {
             let buf = ::std::format!($($arg)+);
-            $crate::print($lvl, buf);
+            $crate::log::print($lvl, buf);
         }
     };
 }
@@ -15,7 +16,7 @@ macro_rules! println {
     ($($arg:tt)+) => {
         {
             let buf = ::std::format!($($arg)+);
-            $crate::print(Level::Info, buf);
+            $crate::log::print(Level::Info, buf);
         }
     };
 }

@@ -1,11 +1,11 @@
-pub mod log;
 pub mod registers;
 
+pub use abi::LogLevel;
 use borderless_abi as abi;
 use registers::REGISTER_ATOMIC_OP;
 use serde::{de::DeserializeOwned, Serialize};
 
-pub fn print(level: log::Level, msg: impl AsRef<str>) {
+pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
     unsafe {
         abi::print(
             msg.as_ref().as_ptr() as _,
@@ -140,14 +140,21 @@ pub fn abort() -> ! {
 }
 
 pub mod dev {
+    use std::time::Duration;
+
     use borderless_abi as abi;
 
     pub fn tic() {
         unsafe { abi::tic() }
     }
 
-    pub fn toc() {
-        unsafe { abi::toc() }
+    pub fn tocp() {
+        unsafe { abi::tocp() }
+    }
+
+    pub fn toc() -> Duration {
+        let dur = unsafe { abi::toc() };
+        Duration::from_nanos(dur)
     }
 
     pub fn rand(min: u32, max: u32) -> u32 {

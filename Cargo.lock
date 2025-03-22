@@ -3,6 +3,20 @@
 version = 3
 
 [[package]]
+name = "abi-test-contract"
+version = "0.1.0"
+dependencies = [
+ "borderless-sdk",
+ "borderless-sdk-core",
+]
+
+[[package]]
+name = "anyhow"
+version = "1.0.97"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcfed56ad506cb2c684a14971b8861fdc3baaaae314b9e5f9bb532cbe3ba7a4f"
+
+[[package]]
 name = "atomic-polyfill"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -24,6 +38,10 @@ version = "0.1.0"
 [[package]]
 name = "borderless-sdk"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "borderless-sdk-core",
+]
 
 [[package]]
 name = "borderless-sdk-core"
