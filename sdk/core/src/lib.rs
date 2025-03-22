@@ -6,6 +6,10 @@ use borderless_abi as abi;
 use registers::REGISTER_ATOMIC_OP;
 use serde::{de::DeserializeOwned, Serialize};
 
+pub mod serialize {
+    pub use serde_json::from_value;
+}
+
 pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
     unsafe {
         abi::print(

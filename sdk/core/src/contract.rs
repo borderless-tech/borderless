@@ -8,9 +8,9 @@ use serde_json::Value;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallAction {
     // TODO: use an enum with flattening here (maybe ?)
-    method: Option<String>,
-    method_id: Option<u32>,
-    params: Value,
+    pub method: Option<String>,
+    pub method_id: Option<u32>,
+    pub params: Value,
 }
 
 impl FromStr for CallAction {

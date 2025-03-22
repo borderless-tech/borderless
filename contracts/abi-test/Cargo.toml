@@ -9,3 +9,4 @@ crate-type = ["cdylib"]
 [dependencies]
 borderless-sdk-core = { path = "../../sdk/core" }
 borderless-sdk = { path = "../../sdk/base" }
+serde.workspace = true

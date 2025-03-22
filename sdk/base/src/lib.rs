@@ -1,7 +1,7 @@
 pub mod log;
 
 // Re-export anyhow types
-pub use anyhow::{Context, Error, Result};
+pub use anyhow::{anyhow as new_error, Context, Error, Result};
 
 use serde::{Deserialize, Serialize};
 

@@ -45,9 +45,7 @@ fn main() -> Result<()> {
 
     info!("Run contract {cid}");
     let start = Instant::now();
-    for _ in 0..10 {
-        rt.run_contract(&action)?;
-    }
+    rt.run_contract(&action)?;
     let elapsed = start.elapsed();
     info!("Outer time elapsed: {elapsed:?}");
 
