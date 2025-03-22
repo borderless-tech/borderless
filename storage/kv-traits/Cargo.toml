@@ -1,0 +1,15 @@
+[package]
+name = "borderless-kv-traits"
+version = "0.2.0"
+edition = "2021"
+authors = ["Paul Becker", "Christian Hammermeister"]
+description = "Basic traits that define arbitrary key-value stores"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+serde.workspace = true
+anyhow.workspace = true
+
+# [dev-dependencies]
+# tempfile = "3.14.0"
+# rand = "0.8.5"

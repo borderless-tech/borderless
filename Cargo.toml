@@ -1,5 +1,19 @@
 [workspace]
-members = [ "contracts/abi-test", "sdk/abi" , "sdk/base", "sdk/core", "sdk/macros"]
+members = [
+  "contracts/abi-test",
+  "executor/runner",
+  "executor/runtime",
+  "sdk/abi" ,
+  "sdk/base",
+  "sdk/core",
+  "sdk/macros",
+  "storage/kv-traits"
+]
 resolver = "2"
 
 
+[workspace.dependencies]
+anyhow = "1.0.97"
+log = "0.4.26"
+rand = "0.9.0"
+serde = "1.0.219"
