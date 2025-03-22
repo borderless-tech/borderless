@@ -1,0 +1,18 @@
+[package]
+name = "borderless-kv-store"
+version = "1.0.0"
+edition = "2021"
+authors = ["Paul Becker", "Christian Hammermeister"]
+description = "Basic kv-store traits and backend implementations"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+lmdb = "0.8.0"
+lmdb-sys = "0.8.0"
+
+[dev-dependencies]
+tempfile = "3.14.0"
+rand.workspace = true

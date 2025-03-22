@@ -7,7 +7,7 @@ members = [
   "sdk/base",
   "sdk/core",
   "sdk/macros",
-  "storage/kv-traits"
+  "kv-store"
 ]
 resolver = "2"
 
@@ -17,3 +17,4 @@ anyhow = "1.0.97"
 log = "0.4.26"
 rand = "0.9.0"
 serde = "1.0.219"
+thiserror = "2.0.12"

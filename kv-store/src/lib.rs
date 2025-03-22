@@ -1,6 +1,6 @@
-pub mod backend;
-
 use thiserror::Error;
+
+pub mod backend;
 
 /// Prelude module to automatically include all necessary traits
 pub mod prelude {

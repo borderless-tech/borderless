@@ -54,6 +54,7 @@ impl ToCursorOp<lmdb::Database> for CursorOp {
 /// it to be used seamlessly with the broader key-value store interface.
 impl KvDatabase for lmdb::Database {}
 
+// TODO: Remove this type, we could just implement the trait on the raw handle
 /// Represents a handle to an LMDB database.
 ///
 /// This structure provides a layer of abstraction over the LMDB `Database`, ensuring type safety
