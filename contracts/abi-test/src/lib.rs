@@ -11,12 +11,18 @@ pub extern "C" fn run() {
     }
 }
 
-use borderless_sdk_core::{dev, read_register, registers::REGISTER_INPUT_ACTION};
+use borderless_sdk_core::{
+    contract::CallAction, dev, read_register, registers::REGISTER_INPUT_ACTION,
+};
 
 fn exec_run() -> Result<()> {
     let input = read_register(REGISTER_INPUT_ACTION).context("missing input register")?;
+    info!("read {} bytes", input.len());
 
-    info!("{input:?}");
+    let action = CallAction::from_bytes(&input)?;
+
+    let s = action.pretty_print()?;
+    info!("{s}");
 
     Ok(())
 }

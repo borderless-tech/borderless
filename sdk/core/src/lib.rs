@@ -1,3 +1,4 @@
+pub mod contract;
 pub mod registers;
 
 pub use abi::LogLevel;

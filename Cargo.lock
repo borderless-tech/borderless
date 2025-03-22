@@ -173,6 +173,7 @@ dependencies = [
  "anyhow",
  "borderless-kv-store",
  "borderless-sdk",
+ "borderless-sdk-core",
  "log",
  "nohash",
  "rand",
@@ -196,6 +197,7 @@ dependencies = [
  "borderless-abi",
  "postcard",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

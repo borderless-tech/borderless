@@ -5,6 +5,8 @@ pub use anyhow::{Context, Error, Result};
 
 use serde::{Deserialize, Serialize};
 
+pub use borderless_sdk_core::contract;
+
 // TODO: Place this into the primitives crate
 /// Generic macro to define wrapper types around u128 and uuid.
 macro_rules! impl_uuid {

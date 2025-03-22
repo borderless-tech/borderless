@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{fs::read_to_string, path::PathBuf, time::Instant};
 
 use anyhow::Result;
 use borderless_kv_store::backend::lmdb::Lmdb;
@@ -18,6 +18,10 @@ struct Cli {
     /// Path to the Wasm contract
     #[arg(short, long)]
     contract: PathBuf,
+
+    /// Path to the json data of the action that we want to execute
+    #[arg(short, long)]
+    action: PathBuf,
 }
 
 fn main() -> Result<()> {
@@ -25,17 +29,27 @@ fn main() -> Result<()> {
     let args = Cli::parse();
     info!("📁 Database path: {}", args.db.display());
     info!("📦 Contract path: {}", args.contract.display());
+    info!("📦 Action path: {}", args.action.display());
 
     let db = Lmdb::new(&args.db, 2)?;
+    let action_data = read_to_string(args.action)?;
+    let action = action_data.parse()?;
 
     let mut rt = Runtime::new(db)?;
 
     let cid = ContractId::generate();
     info!("Using contract-id: {cid}");
 
+    info!("Instantiate contract {cid}");
     rt.instantiate_contract(cid, args.contract)?;
 
-    rt.run_contract()?;
+    info!("Run contract {cid}");
+    let start = Instant::now();
+    for _ in 0..10 {
+        rt.run_contract(&action)?;
+    }
+    let elapsed = start.elapsed();
+    info!("Outer time elapsed: {elapsed:?}");
 
     Ok(())
 }

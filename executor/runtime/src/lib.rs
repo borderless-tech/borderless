@@ -3,7 +3,8 @@ use std::path::Path;
 use anyhow::Result; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
-use borderless_sdk::ContractId;
+use borderless_sdk::{contract::CallAction, ContractId};
+use borderless_sdk_core::registers::REGISTER_INPUT_ACTION;
 use vm::VmState;
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
 
@@ -125,9 +126,14 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
-    pub fn run_contract(&mut self) -> Result<()> {
+    pub fn run_contract(&mut self, action: &CallAction) -> Result<()> {
         if let Some(instance) = self.instance {
             let run = instance.get_typed_func::<(), ()>(&mut self.store, "run")?;
+            let action_bytes = action.to_bytes()?;
+            self.store
+                .data_mut()
+                .set_register(REGISTER_INPUT_ACTION, action_bytes);
+
             run.call(&mut self.store, ())?;
         } else {
             panic!("no contract is instantiated")
