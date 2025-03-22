@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use anyhow::Result; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
@@ -13,6 +15,7 @@ where
 {
     linker: Linker<VmState<S>>,
     store: Store<VmState<S>>,
+    engine: Engine,
     instance: Option<Instance>,
 }
 
@@ -104,11 +107,18 @@ impl<S: Db> Runtime<S> {
         Ok(Self {
             linker,
             store,
+            engine,
             instance: None,
         })
     }
 
-    pub fn instantiate_contract(&mut self, contract_id: ContractId, module: Module) -> Result<()> {
+    pub fn instantiate_contract(
+        &mut self,
+        contract_id: ContractId,
+        path: impl AsRef<Path>,
+    ) -> Result<()> {
+        let module = Module::from_file(&self.engine, path)?;
+
         self.store.data_mut().set_contract(contract_id);
         let instance = self.linker.instantiate(&mut self.store, &module)?;
         self.instance = Some(instance);

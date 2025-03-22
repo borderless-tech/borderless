@@ -13,7 +13,7 @@ use rand::{random, Rng};
 use borderless_kv_store::*;
 
 pub struct VmState<S: Db> {
-    registers: IntMap<u64, RefCell<Vec<u8>>>,
+    registers: IntMap<u32, RefCell<Vec<u8>>>,
     db: S,
     db_ptr: S::Handle,
     // db_acid_txn: Option<S::RwTx<'_>>,
@@ -46,7 +46,7 @@ impl<S: Db> VmState<S> {
         self.active_contract = None;
     }
 
-    fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<[u8; 32]> {
+    fn get_storage_key(&self, base_key: u32, sub_key: u32) -> wasmtime::Result<[u8; 32]> {
         match &self.active_contract {
             Some(cid) => {
                 // Prepare storage key
@@ -63,16 +63,16 @@ impl<S: Db> VmState<S> {
         }
     }
 
-    pub fn set_register(&mut self, register_id: u64, value: Vec<u8>) {
+    pub fn set_register(&mut self, register_id: u32, value: Vec<u8>) {
         self.registers.insert(register_id, value.into());
     }
 
-    pub fn get_register(&self, register_id: u64) -> Option<Vec<u8>> {
+    pub fn get_register(&self, register_id: u32) -> Option<Vec<u8>> {
         self.registers.get(&register_id).map(|v| v.borrow().clone())
     }
 
     // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-    pub fn begin_acid_txn(&mut self) -> wasmtime::Result<u64> {
+    pub fn begin_acid_txn(&mut self) -> wasmtime::Result<u32> {
         assert!(
             self.active_contract.is_some(),
             "transactions should only be created when there is an active contract"
@@ -87,7 +87,7 @@ impl<S: Db> VmState<S> {
     }
 
     // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-    pub fn commit_acid_txn(&mut self) -> wasmtime::Result<u64> {
+    pub fn commit_acid_txn(&mut self) -> wasmtime::Result<u32> {
         assert!(
             self.active_contract.is_some(),
             "transactions should only be created when there is an active contract"
@@ -118,7 +118,7 @@ fn get_memory(caller: &mut Caller<'_, VmState<impl Db>>) -> wasmtime::Result<Mem
 }
 
 // Helper function to create a Vec<u8> that serves as a buffer with given length
-fn create_buffer(len: u64) -> Vec<u8> {
+fn create_buffer(len: u32) -> Vec<u8> {
     let mut buffer = Vec::with_capacity(len as usize);
     unsafe {
         buffer.set_len(len as usize);
@@ -145,8 +145,8 @@ pub fn toc(caller: Caller<'_, VmState<impl Db>>) -> u64 {
 
 pub fn print(
     mut caller: Caller<'_, VmState<impl Db>>,
-    ptr: u64,
-    len: u64,
+    ptr: u32,
+    len: u32,
     level: u32,
 ) -> wasmtime::Result<()> {
     // Read string from WASM memory and print it
@@ -177,8 +177,8 @@ pub fn print(
 
 pub fn read_register(
     mut caller: Caller<'_, VmState<impl Db>>,
-    register_id: u64,
-    ptr: u64,
+    register_id: u32,
+    ptr: u32,
 ) -> Result<(), wasmtime::Error> {
     let now = Instant::now();
     // Get data
@@ -218,18 +218,18 @@ pub fn read_register(
     Ok(())
 }
 
-pub fn register_len(caller: Caller<'_, VmState<impl Db>>, register_id: u64) -> u64 {
+pub fn register_len(caller: Caller<'_, VmState<impl Db>>, register_id: u32) -> u32 {
     match caller.data().registers.get(&register_id) {
-        Some(data) => data.borrow().len() as u64,
-        None => u64::MAX,
+        Some(data) => data.borrow().len() as u32,
+        None => u32::MAX,
     }
 }
 
 pub fn write_register(
     mut caller: Caller<'_, VmState<impl Db>>,
-    register_id: u64,
-    wasm_ptr: u64,
-    wasm_ptr_len: u64,
+    register_id: u32,
+    wasm_ptr: u32,
+    wasm_ptr_len: u32,
 ) -> wasmtime::Result<()> {
     let now = Instant::now();
     // Get memory
@@ -254,10 +254,10 @@ pub fn write_register(
 
 pub fn storage_write(
     mut caller: Caller<'_, VmState<impl Db>>,
-    base_key: u64,
-    sub_key: u64,
-    value_ptr: u64,
-    value_len: u64,
+    base_key: u32,
+    sub_key: u32,
+    value_ptr: u32,
+    value_len: u32,
 ) -> wasmtime::Result<()> {
     let now = Instant::now();
     // Get memory
@@ -294,9 +294,9 @@ pub fn storage_write(
 
 pub fn storage_read(
     mut caller: Caller<'_, VmState<impl Db>>,
-    base_key: u64,
-    sub_key: u64,
-    register_id: u64,
+    base_key: u32,
+    sub_key: u32,
+    register_id: u32,
 ) -> wasmtime::Result<()> {
     let now = Instant::now();
 
@@ -331,8 +331,8 @@ pub fn storage_read(
 
 pub fn storage_remove(
     caller: Caller<'_, VmState<impl Db>>,
-    base_key: u64,
-    sub_key: u64,
+    base_key: u32,
+    sub_key: u32,
 ) -> wasmtime::Result<()> {
     let now = Instant::now();
 
@@ -362,9 +362,9 @@ pub fn storage_remove(
 
 pub fn storage_has_key(
     caller: Caller<'_, VmState<impl Db>>,
-    base_key: u64,
-    sub_key: u64,
-) -> wasmtime::Result<u64> {
+    base_key: u32,
+    sub_key: u32,
+) -> wasmtime::Result<u32> {
     let now = Instant::now();
 
     // Build key
@@ -387,28 +387,28 @@ pub fn storage_has_key(
 
     let elapsed = now.elapsed();
     debug!("storage-has-key: {:?}", elapsed);
-    Ok(found_key as u64)
+    Ok(found_key as u32)
 }
 
-pub fn storage_random_key() -> wasmtime::Result<u64> {
+pub fn storage_random_key() -> wasmtime::Result<u32> {
     let mut rng = rand::rng();
-    let value: u64 = rng.random();
+    let value: u32 = rng.random();
     // Add 1 unit to avoid generating a 0
     Ok(value.saturating_add(1))
 }
 
-pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
+pub fn rand(min: u32, max: u32) -> wasmtime::Result<u32> {
     let mut rng = rand::rng();
-    let value: u64 = rng.random_range(min..max);
+    let value: u32 = rng.random_range(min..max);
     Ok(value)
 }
 
 // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-pub fn storage_begin_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
+pub fn storage_begin_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u32> {
     caller.data_mut().begin_acid_txn()
 }
 
 // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-pub fn storage_commit_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
+pub fn storage_commit_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u32> {
     caller.data_mut().commit_acid_txn()
 }

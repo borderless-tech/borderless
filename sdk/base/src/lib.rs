@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 macro_rules! impl_uuid {
     ($type:ident, $prefix_upper:literal, $prefix_lower:literal) => {
         impl $type {
+            #[cfg(all(feature = "generate_ids", not(target_arch = "wasm32")))]
             pub fn generate() -> Self {
                 // Start by generating a v4 uuid
                 let uuid = uuid::Uuid::new_v4();
