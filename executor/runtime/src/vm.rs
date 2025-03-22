@@ -3,7 +3,6 @@
 use std::{cell::RefCell, time::Instant};
 
 use borderless_sdk::ContractId;
-use lmdb::{Database, Environment, RwTransaction, Transaction, WriteFlags};
 use wasmtime::{Caller, Extern, Memory};
 
 use log::{debug, error, info, trace, warn};

@@ -1,7 +1,7 @@
 use crate::{CursorOp, Error, KvDatabase, KvHandle, RoCursor, RoTx, RwCursor, RwTx, ToCursorOp};
 use lmdb::EnvironmentFlags;
 use lmdb_sys::{MDB_FIRST, MDB_GET_CURRENT, MDB_LAST, MDB_NEXT, MDB_PREV};
-use std::{marker::PhantomData, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use crate::{Db, RawRead, RawWrite, Tx};
 
@@ -54,44 +54,17 @@ impl ToCursorOp<lmdb::Database> for CursorOp {
 /// it to be used seamlessly with the broader key-value store interface.
 impl KvDatabase for lmdb::Database {}
 
-// TODO: Remove this type, we could just implement the trait on the raw handle
-/// Represents a handle to an LMDB database.
-///
-/// This structure provides a layer of abstraction over the LMDB `Database`, ensuring type safety
-/// and lifetime management within the environment.
-pub struct LmdbHandle<'env> {
-    db: lmdb::Database,
-    // Tracks the lifetime of the handle relative to the environment.
-    _lt: PhantomData<&'env u8>,
-}
-
-impl<'env> LmdbHandle<'env> {
-    /// Creates a new handle for a given LMDB database.
-    ///
-    /// ### Parameters:
-    /// - `db`: The LMDB database instance to wrap.
-    ///
-    /// ### Returns:
-    /// - A new `LmdbHandle` instance tied to the provided database.
-    pub fn new(db: lmdb::Database) -> LmdbHandle<'env> {
-        LmdbHandle {
-            db,
-            _lt: PhantomData,
-        }
-    }
-}
-
-/// Implements the `KvHandle` trait for `LmdbHandle`, providing database access.
+/// Implements the `KvHandle` trait for `lmdb::Database`, providing database access.
 ///
 /// This implementation ensures compatibility with the key-value interface by exposing the
 /// underlying LMDB database.
-impl<'env> KvHandle<'env, lmdb::Database> for LmdbHandle<'env> {
+impl<'env> KvHandle<lmdb::Database> for lmdb::Database {
     /// Returns a reference to the underlying LMDB database.
     ///
     /// ### Returns:
     /// - A reference to the database managed by this handle.
     fn db(&self) -> &lmdb::Database {
-        &self.db
+        &self
     }
 }
 
@@ -141,7 +114,7 @@ impl Lmdb {
 /// compatible with the application's interface.
 impl Db for Lmdb {
     type DB = lmdb::Database;
-    type Handle<'env> = LmdbHandle<'env>;
+    type Handle = lmdb::Database;
     type RoTx<'env> = lmdb::RoTransaction<'env>;
     type RwTx<'env> = lmdb::RwTransaction<'env>;
 
@@ -153,7 +126,7 @@ impl Db for Lmdb {
     /// ### Returns:
     /// - `Ok(Handle<'env>)` containing a handle to the opened database.
     /// - `Err(Error)` if the database could not be opened.
-    fn open_sub_db(&self, name: &str) -> Result<Self::Handle<'_>, Error> {
+    fn open_sub_db(&self, name: &str) -> Result<Self::Handle, Error> {
         // NOTE: This can also cause Error::NotFound
         let res = if name.to_ascii_lowercase() == "default" {
             self.env.open_db(None)
@@ -161,13 +134,12 @@ impl Db for Lmdb {
             self.env.open_db(Some(name))
         };
 
-        let db = match res {
+        let handle = match res {
             Ok(db) => db,
             Err(lmdb::Error::NotFound) => return Err(Error::DbNotFound(name.to_string())),
             Err(e) => return Err(Error::from(e)),
         };
 
-        let handle = LmdbHandle::new(db);
         Ok(handle)
     }
 
@@ -179,15 +151,14 @@ impl Db for Lmdb {
     /// ### Returns:
     /// - `Ok(Handle<'env>)` containing a handle to the opened database.
     /// - `Err(Error)` if the database could not be opened.
-    fn create_sub_db(&self, name: &str) -> Result<Self::Handle<'_>, Error> {
-        let db = if name == "default" {
+    fn create_sub_db(&self, name: &str) -> Result<Self::Handle, Error> {
+        let handle = if name == "default" {
             self.env.create_db(None, lmdb::DatabaseFlags::empty())?
         } else {
             self.env
                 .create_db(Some(name), lmdb::DatabaseFlags::empty())?
         };
 
-        let handle = LmdbHandle::new(db);
         Ok(handle)
     }
 
@@ -256,7 +227,7 @@ impl<'env> RawRead<'env, lmdb::Database> for lmdb::RoTransaction<'env> {
     /// - `Err(Error)`: If an error occurs during the operation.
     fn read(
         &self,
-        db: &impl KvHandle<'env, lmdb::Database>,
+        db: &impl KvHandle<lmdb::Database>,
         key: &impl AsRef<[u8]>,
     ) -> Result<Option<&[u8]>, Error> {
         let res = <Self as lmdb::Transaction>::get(self, *db.db(), key);
@@ -290,7 +261,7 @@ impl<'env> RoTx<'env, lmdb::Database> for lmdb::RoTransaction<'env> {
     /// - `Err(Error)`: If an error occurs.
     fn ro_cursor<'txn>(
         &'txn self,
-        db: &impl KvHandle<'env, lmdb::Database>,
+        db: &impl KvHandle<lmdb::Database>,
     ) -> Result<Self::Cursor<'txn>, Error> {
         let cursor = <Self as lmdb::Transaction>::open_ro_cursor(self, *db.db())?;
         Ok(cursor)
@@ -383,7 +354,7 @@ impl<'env> RawRead<'env, lmdb::Database> for lmdb::RwTransaction<'env> {
     /// - `Err(Error)`: If an error occurs during the operation.
     fn read(
         &self,
-        db: &impl KvHandle<'env, lmdb::Database>,
+        db: &impl KvHandle<lmdb::Database>,
         key: &impl AsRef<[u8]>,
     ) -> Result<Option<&[u8]>, Error> {
         let res = <Self as lmdb::Transaction>::get(self, *db.db(), key);
@@ -414,7 +385,7 @@ impl<'env> RawWrite<'env, lmdb::Database> for lmdb::RwTransaction<'env> {
     /// - `Err(Error)`: If an error occurs during the operation.
     fn write(
         &mut self,
-        db: &impl KvHandle<'env, lmdb::Database>,
+        db: &impl KvHandle<lmdb::Database>,
         key: &impl AsRef<[u8]>,
         data: &impl AsRef<[u8]>,
     ) -> Result<(), Error> {
@@ -433,7 +404,7 @@ impl<'env> RawWrite<'env, lmdb::Database> for lmdb::RwTransaction<'env> {
     /// - `Err(Error)`: If an error occurs during the operation.
     fn delete(
         &mut self,
-        db: &impl KvHandle<'env, lmdb::Database>,
+        db: &impl KvHandle<lmdb::Database>,
         key: &impl AsRef<[u8]>,
     ) -> Result<(), Error> {
         let res = self.del(*db.db(), key, None);
@@ -470,7 +441,7 @@ impl<'env> RwTx<'env, lmdb::Database> for lmdb::RwTransaction<'env> {
     /// - `Err(Error)`: If an error occurs.
     fn rw_cursor<'txn>(
         &'txn mut self,
-        db: &impl KvHandle<'env, lmdb::Database>,
+        db: &impl KvHandle<lmdb::Database>,
     ) -> Result<Self::Cursor<'txn>, Error> {
         let cursor = self.open_rw_cursor(*db.db())?;
         Ok(cursor)
@@ -562,9 +533,9 @@ mod tests {
         env
     }
 
-    fn create_test_handle<'env, DB: KvDatabase, Env: Db>(env: &'env Env) -> impl KvHandle<'env, DB>
+    fn create_test_handle<'env, DB: KvDatabase, Env: Db>(env: &'env Env) -> impl KvHandle<DB>
     where
-        <Env as Db>::Handle<'env>: KvHandle<'env, DB>,
+        <Env as Db>::Handle: KvHandle<DB>,
     {
         let handle = env.create_sub_db("test").unwrap();
         handle
@@ -572,7 +543,7 @@ mod tests {
 
     fn write_with_rw_txn<'env, DB: KvDatabase, Txn: RwTx<'env, DB>>(
         txn: &mut Txn,
-        handle: &impl KvHandle<'env, DB>,
+        handle: &impl KvHandle<DB>,
         key: &impl AsRef<[u8]>,
         data: &impl AsRef<[u8]>,
     ) -> Result<(), Error> {
@@ -582,7 +553,7 @@ mod tests {
 
     fn read_with_ro_txn<'env, DB: KvDatabase, Txn: RoTx<'env, DB>>(
         txn: &Txn,
-        handle: &impl KvHandle<'env, DB>,
+        handle: &impl KvHandle<DB>,
         key: &impl AsRef<[u8]>,
     ) -> Result<Option<Vec<u8>>, Error> {
         let buf = txn.read(handle, &key)?;
@@ -592,7 +563,7 @@ mod tests {
 
     fn delete_with_rw_txn<'env, DB: KvDatabase, Txn: RwTx<'env, DB>>(
         txn: &mut Txn,
-        handle: &impl KvHandle<'env, DB>,
+        handle: &impl KvHandle<DB>,
         key: &impl AsRef<[u8]>,
     ) -> Result<(), Error> {
         txn.delete(handle, &key)?;
@@ -605,9 +576,9 @@ mod tests {
         let handle = create_test_handle(&env);
 
         for _ in 0..TEST_REPEATS {
-            let mut rng = rand::thread_rng();
-            let test_key: Vec<u8> = (0..256).map(|_| rng.gen()).collect(); // 32 byte random key
-            let test_data: Vec<u8> = (0..1048576).map(|_| rng.gen()).collect(); // 1 MiB random data
+            let mut rng = rand::rng();
+            let test_key: Vec<u8> = (0..256).map(|_| rng.random()).collect(); // 32 byte random key
+            let test_data: Vec<u8> = (0..1048576).map(|_| rng.random()).collect(); // 1 MiB random data
             {
                 // write test value to db
                 let mut txn = env.begin_rw_txn()?;

@@ -88,11 +88,7 @@ where
     ///
     /// Returns a slice of bytes if the key exists, or an error if the key does not exist
     /// or if the operation fails.
-    fn read(
-        &self,
-        db: &impl KvHandle<'env, DB>,
-        key: &impl AsRef<[u8]>,
-    ) -> Result<Option<&[u8]>, Error>;
+    fn read(&self, db: &impl KvHandle<DB>, key: &impl AsRef<[u8]>) -> Result<Option<&[u8]>, Error>;
 }
 
 /// Trait for writing raw data to the database within a transaction.
@@ -113,7 +109,7 @@ where
     /// Returns `Ok(())` if the operation is successful, or an error of type `E` if it fails.
     fn write(
         &mut self,
-        db: &impl KvHandle<'env, DB>,
+        db: &impl KvHandle<DB>,
         key: &impl AsRef<[u8]>,
         data: &impl AsRef<[u8]>,
     ) -> Result<(), Error>;
@@ -124,8 +120,7 @@ where
     /// - `key`: Reference to the key to be deleted.
     ///
     /// Returns `Ok(())` if the deletion is successful, or an error of type `E` if it fails.
-    fn delete(&mut self, db: &impl KvHandle<'env, DB>, key: &impl AsRef<[u8]>)
-        -> Result<(), Error>;
+    fn delete(&mut self, db: &impl KvHandle<DB>, key: &impl AsRef<[u8]>) -> Result<(), Error>;
 }
 
 /// Trait representing a read-write cursor over the database within a transaction.
@@ -233,10 +228,7 @@ where
     ///
     /// Returns a cursor that allows iteration over the data in a read-only fashion.
     /// May return an error if the cursor cannot be created.
-    fn ro_cursor<'txn>(
-        &'txn self,
-        db: &impl KvHandle<'env, DB>,
-    ) -> Result<Self::Cursor<'txn>, Error>;
+    fn ro_cursor<'txn>(&'txn self, db: &impl KvHandle<DB>) -> Result<Self::Cursor<'txn>, Error>;
 }
 
 // TODO: The function names clash with those of RawRead !!
@@ -270,10 +262,8 @@ where
     ///
     /// Returns a cursor that allows for iterating and modifying data within the database.
     /// May return an error if the cursor cannot be created.
-    fn rw_cursor<'txn>(
-        &'txn mut self,
-        db: &impl KvHandle<'env, DB>,
-    ) -> Result<Self::Cursor<'txn>, Error>;
+    fn rw_cursor<'txn>(&'txn mut self, db: &impl KvHandle<DB>)
+        -> Result<Self::Cursor<'txn>, Error>;
 
     /// Begins a nested read-write transaction.
     ///
@@ -296,9 +286,7 @@ pub trait Db: Clone + std::marker::Send + std::marker::Sync {
     /// Handle type for a database.
     ///
     /// The handle provides access to a specific database within the environment.
-    type Handle<'env>: KvHandle<'env, Self::DB>
-    where
-        Self: 'env;
+    type Handle: KvHandle<Self::DB>;
 
     /// Read-only transaction type.
     ///
@@ -320,7 +308,7 @@ pub trait Db: Clone + std::marker::Send + std::marker::Sync {
     ///
     /// Returns a handle to the database if it exists, or an error if it does not
     /// or if the operation fails.
-    fn open_sub_db(&self, name: &str) -> Result<Self::Handle<'_>, Error>;
+    fn open_sub_db(&self, name: &str) -> Result<Self::Handle, Error>;
 
     /// Creates a database with the given name.
     /// If the database is already created, this function will open the database.
@@ -329,7 +317,7 @@ pub trait Db: Clone + std::marker::Send + std::marker::Sync {
     ///
     /// Returns a handle to the database if it exists, or an error if it does not
     /// or if the operation fails.
-    fn create_sub_db(&self, name: &str) -> Result<Self::Handle<'_>, Error>;
+    fn create_sub_db(&self, name: &str) -> Result<Self::Handle, Error>;
 
     /// Begins a new read-only transaction.
     ///
@@ -352,7 +340,7 @@ pub trait Db: Clone + std::marker::Send + std::marker::Sync {
 /// Provides access to the database name and the underlying database object.
 /// The handle is used in transaction operations to specify which database to interact with.
 /// This abstraction allows the same transaction methods to operate on different databases.
-pub trait KvHandle<'env, DB>
+pub trait KvHandle<DB>
 where
     DB: KvDatabase,
 {
@@ -383,7 +371,7 @@ where
     /// - `Err(E)` if an error occurs during the operation.
     fn read(
         &self,
-        db: &impl KvHandle<'env, DB>,
+        db: &impl KvHandle<DB>,
         key: &impl AsRef<[u8]>,
     ) -> Result<Option<Vec<u8>>, Error> {
         let val = <Self as RawRead<DB>>::read(self, db, key)?.map(|v| v.to_vec());
@@ -403,7 +391,7 @@ where
     /// - `Err(E)` if the key already exists or if an error occurs.
     fn create(
         &mut self,
-        db: &impl KvHandle<'env, DB>,
+        db: &impl KvHandle<DB>,
         key: &impl AsRef<[u8]>,
         data: &impl AsRef<[u8]>,
     ) -> Result<(), Error> {
@@ -423,7 +411,7 @@ where
     /// - `Err(E)` if an error occurs during the operation.
     fn update(
         &mut self,
-        db: &impl KvHandle<'env, DB>,
+        db: &impl KvHandle<DB>,
         key: &impl AsRef<[u8]>,
         data: &impl AsRef<[u8]>,
     ) -> Result<Option<Vec<u8>>, Error> {
@@ -443,7 +431,7 @@ where
     /// - `Err(E)` if an error occurs during the operation.
     fn delete(
         &mut self,
-        db: &impl KvHandle<'env, DB>,
+        db: &impl KvHandle<DB>,
         key: &impl AsRef<[u8]>,
     ) -> Result<Option<Vec<u8>>, Error> {
         let old = <Self as CRUD<DB>>::read(self, db, key)?;
