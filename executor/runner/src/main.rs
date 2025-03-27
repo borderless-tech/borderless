@@ -35,7 +35,7 @@ fn main() -> Result<()> {
     let action_data = read_to_string(args.action)?;
     let action = action_data.parse()?;
 
-    let mut rt = Runtime::new(db)?;
+    let mut rt = Runtime::new(&db)?;
 
     let cid = ContractId::generate();
     info!("Using contract-id: {cid}");
