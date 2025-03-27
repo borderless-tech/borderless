@@ -41,7 +41,6 @@ impl<'a, S: Db> Runtime<'a, S> {
         linker.func_wrap("env", "toc", |caller: Caller<'_, VmState<S>>| {
             vm::toc(caller)
         })?;
-        linker.func_wrap("env", "rand", vm::rand)?;
         linker.func_wrap(
             "env",
             "print",
@@ -94,14 +93,21 @@ impl<'a, S: Db> Runtime<'a, S> {
                 vm::storage_has_key(caller, base_key, sub_key)
             },
         )?;
+        // TODO: Those two functions contain randomness, which is not good
         linker.func_wrap("env", "storage_random_key", vm::storage_random_key)?;
 
-        // linker.func_wrap("env", "storage_begin_acid_txn", vm::storage_begin_acid_txn)?;
-        // linker.func_wrap(
-        //     "env",
-        //     "storage_commit_acid_txn",
-        //     vm::storage_commit_acid_txn,
-        // )?;
+        linker.func_wrap("env", "rand", vm::rand)?;
+
+        linker.func_wrap(
+            "env",
+            "storage_begin_acid_txn",
+            |caller: Caller<'_, VmState<S>>| vm::storage_begin_acid_txn(caller),
+        )?;
+        linker.func_wrap(
+            "env",
+            "storage_commit_acid_txn",
+            |caller: Caller<'_, VmState<S>>| vm::storage_commit_acid_txn(caller),
+        )?;
 
         let store = Store::new(&engine, state);
 
