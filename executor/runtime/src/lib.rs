@@ -10,18 +10,18 @@ use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
 
 mod vm;
 
-pub struct Runtime<S = Lmdb>
+pub struct Runtime<'a, S = Lmdb>
 where
     S: Db,
 {
-    linker: Linker<VmState<S>>,
-    store: Store<VmState<S>>,
+    linker: Linker<VmState<'a, S>>,
+    store: Store<VmState<'a, S>>,
     engine: Engine,
     instance: Option<Instance>,
 }
 
-impl<S: Db> Runtime<S> {
-    pub fn new(storage: S) -> Result<Self> {
+impl<'a, S: Db> Runtime<'a, S> {
+    pub fn new(storage: &'a S) -> Result<Self> {
         let db_ptr = storage.create_sub_db("contract-db")?;
         let state = VmState::new(storage, db_ptr);
 

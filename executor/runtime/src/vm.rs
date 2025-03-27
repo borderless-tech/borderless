@@ -12,24 +12,24 @@ use rand::{random, Rng};
 
 use borderless_kv_store::*;
 
-pub struct VmState<S: Db> {
+pub struct VmState<'a, S: Db> {
     registers: IntMap<u32, RefCell<Vec<u8>>>,
-    db: S,
+    db: &'a S,
     db_ptr: S::Handle,
-    // db_acid_txn: Option<S::RwTx<'_>>,
+    db_acid_txn: Option<<S as Db>::RwTx<'a>>,
     last_timer: Option<Instant>,
 
     // Currently active contract
     active_contract: Option<ContractId>,
 }
 
-impl<S: Db> VmState<S> {
-    pub fn new(db: S, db_ptr: S::Handle) -> Self {
+impl<'a, S: Db> VmState<'a, S> {
+    pub fn new(db: &'a S, db_ptr: S::Handle) -> Self {
         VmState {
             registers: Default::default(),
             db,
             db_ptr,
-            // db_acid_txn: None.into(),
+            db_acid_txn: None.into(),
             // _marker: PhantomData,
             last_timer: None,
             active_contract: None,
@@ -77,12 +77,11 @@ impl<S: Db> VmState<S> {
             self.active_contract.is_some(),
             "transactions should only be created when there is an active contract"
         );
-        // TODO
-        // if self.db_acid_txn.is_some() {
-        //     return Ok(1);
-        // }
-        // let txn = self.db_handle.begin_rw_txn()?;
-        // self.db_acid_txn = Some(txn);
+        if self.db_acid_txn.is_some() {
+            return Ok(1);
+        }
+        let txn = self.db.begin_rw_txn()?;
+        self.db_acid_txn = Some(txn);
         Ok(0)
     }
 
@@ -92,19 +91,18 @@ impl<S: Db> VmState<S> {
             self.active_contract.is_some(),
             "transactions should only be created when there is an active contract"
         );
-        // TODO
-        // let now = Instant::now();
-        // match std::mem::replace(&mut self.db_acid_txn, None) {
-        //     Some(txn) => {
-        //         txn.commit()?; // TODO: This guy is taking 10x the time of the entire module execution
-        //                        // (maybe in production we don't block the wasm module here ?)
-        //         let elapsed = now.elapsed();
-        //         debug!("commit-acid-txn: {elapsed:?}");
-        //     }
-        //     None => {
-        //         return Ok(1);
-        //     }
-        // }
+        let now = Instant::now();
+        match std::mem::replace(&mut self.db_acid_txn, None) {
+            Some(txn) => {
+                txn.commit()?; // TODO: This guy is taking 10x the time of the entire module execution
+                               // (maybe in production we don't block the wasm module here ?)
+                let elapsed = now.elapsed();
+                debug!("commit-acid-txn: {elapsed:?}");
+            }
+            None => {
+                return Ok(1);
+            }
+        }
         Ok(0)
     }
 }
@@ -273,19 +271,15 @@ pub fn storage_write(
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
-    let db = &caller.data().db_ptr;
-    // if let Some(txn) = &mut caller.data_mut().db_acid_txn {
-    //     txn.put(db, &key, &value, WriteFlags::default())?;
-    // } else {
-    // If not, create a new transaction and instantly commit the changes
-    // let mut txn = caller.data().db.begin_rw_txn()?;
-    // txn.put(db, &key, &value, WriteFlags::default())?;
-    // txn.commit()?;
-    // }
-    //
-    let mut txn = caller.data().db.begin_rw_txn()?;
-    txn.write(db, &key, &value)?;
-    txn.commit()?;
+    let mut caller_data = &mut caller.data_mut();
+    if let Some(txn) = &mut caller_data.db_acid_txn {
+        txn.write(&caller_data.db_ptr, &key, &value)?;
+    } else {
+        // If not, create a new transaction and instantly commit the changes
+        let mut txn = caller_data.db.begin_rw_txn()?;
+        txn.write(&caller_data.db_ptr, &key, &value)?;
+        txn.commit()?;
+    }
 
     let elapsed = now.elapsed();
     debug!("storage-write: {:?}", elapsed);
@@ -304,17 +298,16 @@ pub fn storage_read(
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
-    let db = &caller.data().db_ptr;
-    // let value = if let Some(txn) = &mut caller.data_mut().db_acid_txn {
-    //     txn.get(db, &key)?.to_vec()
-    // } else {
-    //     // If not, create a new transaction and instantly commit the changes
-    //     let mut txn = caller.data().db_handle.begin_ro_txn()?;
-    //     txn.get(db, &key)?.to_vec()
-    // };
-    let txn = caller.data().db.begin_ro_txn()?;
-    let value = txn.read(db, &key)?.map(|v| v.to_vec());
-    txn.commit()?;
+    let mut caller_data = &mut caller.data_mut();
+    let value = if let Some(txn) = &mut caller_data.db_acid_txn {
+        txn.read(&caller_data.db_ptr, &key)?.map(|v| v.to_vec())
+    } else {
+        // If not, create a new transaction and instantly commit the changes
+        let txn = caller_data.db.begin_ro_txn()?;
+        let value = txn.read(&caller_data.db_ptr, &key)?.map(|v| v.to_vec());
+        txn.commit()?;
+        value
+    };
     if let Some(value) = value {
         // Write to register
         caller.data_mut().set_register(register_id, value);
@@ -330,7 +323,7 @@ pub fn storage_read(
 }
 
 pub fn storage_remove(
-    caller: Caller<'_, VmState<impl Db>>,
+    mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u32,
     sub_key: u32,
 ) -> wasmtime::Result<()> {
@@ -340,20 +333,15 @@ pub fn storage_remove(
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
-    let db = &caller.data().db_ptr;
-
-    let mut txn = caller.data().db.begin_rw_txn()?;
-    txn.delete(db, &key)?;
-    txn.commit()?;
-
-    // if let Some(txn) = &mut caller.data_mut().db_acid_txn {
-    //     txn.del(db, &key, None);
-    // } else {
-    //     // If not, create a new transaction and instantly commit the changes
-    //     let mut txn = caller.data().db_handle.begin_rw_txn()?;
-    //     txn.del(db, &key, None);
-    //     txn.commit()?;
-    // }
+    let mut caller_data = &mut caller.data_mut();
+    if let Some(txn) = &mut caller_data.db_acid_txn {
+        txn.delete(&caller_data.db_ptr, &key)?;
+    } else {
+        // If not, create a new transaction and instantly commit the changes
+        let mut txn = caller_data.db.begin_rw_txn()?;
+        txn.delete(&caller_data.db_ptr, &key)?;
+        txn.commit()?;
+    }
 
     let elapsed = now.elapsed();
     debug!("storage-remove: {:?}", elapsed);
@@ -361,7 +349,7 @@ pub fn storage_remove(
 }
 
 pub fn storage_has_key(
-    caller: Caller<'_, VmState<impl Db>>,
+    mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u32,
     sub_key: u32,
 ) -> wasmtime::Result<u32> {
@@ -371,23 +359,20 @@ pub fn storage_has_key(
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
-    let db_ptr = &caller.data().db_ptr;
-
-    // let result = if let Some(txn) = &mut caller.data_mut().db_acid_txn {
-    //     txn.get(db, &key).map(|_| ())
-    // } else {
-    //     // If not, create a new transaction
-    //     let txn = caller.data().db_handle.begin_ro_txn()?;
-    //     txn.get(db, &key).map(|_| ()) // Discard the reference
-    // };
-    //
-    let txn = caller.data().db.begin_ro_txn()?;
-    let found_key = txn.read(db_ptr, &key)?.is_some();
-    txn.commit()?;
+    let mut caller_data = &mut caller.data_mut();
+    let result = if let Some(txn) = &mut caller_data.db_acid_txn {
+        txn.read(&caller_data.db_ptr, &key)?.is_some()
+    } else {
+        // If not, create a new transaction
+        let txn = caller_data.db.begin_ro_txn()?;
+        let found_key = txn.read(&caller_data.db_ptr, &key)?.is_some();
+        txn.commit()?;
+        found_key
+    };
 
     let elapsed = now.elapsed();
     debug!("storage-has-key: {:?}", elapsed);
-    Ok(found_key as u32)
+    Ok(result as u32)
 }
 
 pub fn storage_random_key() -> wasmtime::Result<u32> {
