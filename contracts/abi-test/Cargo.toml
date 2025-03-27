@@ -10,3 +10,6 @@ crate-type = ["cdylib"]
 borderless-sdk-core = { path = "../../sdk/core" }
 borderless-sdk = { path = "../../sdk/base" }
 serde.workspace = true
+
+# NOTE: This would be placed inside the macro crate
+xxhash-rust = { version = "0.8.12", features = ["const_xxh3", "xxh32"] }
