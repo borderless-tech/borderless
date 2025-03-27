@@ -46,17 +46,21 @@ impl<'a, S: Db> VmState<'a, S> {
         self.active_contract = None;
     }
 
-    fn get_storage_key(&self, base_key: u32, sub_key: u32) -> wasmtime::Result<[u8; 32]> {
+    fn get_storage_key(&self, base_key: u32, sub_key: u32) -> wasmtime::Result<[u8; 16]> {
         match &self.active_contract {
             Some(cid) => {
                 // Prepare storage key
-                let mut out = [0u8; 32];
+                let mut out = [0u8; 16];
                 // The first 16 bytes are the contract-id
                 out[0..16].copy_from_slice(cid.as_ref());
+                // XOR the contract-id to shorten it
+                for i in 0..8 {
+                    out[i] = out[i] ^ out[i + 8];
+                }
                 // Then the field key (aka base-key)
-                out[16..24].copy_from_slice(&base_key.to_be_bytes());
+                out[8..12].copy_from_slice(&base_key.to_be_bytes());
                 // Then the sub-field key (aka sub-key)
-                out[24..32].copy_from_slice(&sub_key.to_be_bytes());
+                out[12..16].copy_from_slice(&sub_key.to_be_bytes());
                 Ok(out)
             }
             None => Err(wasmtime::Error::msg("no contract has been activated")),

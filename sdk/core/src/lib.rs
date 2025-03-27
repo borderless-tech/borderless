@@ -64,13 +64,7 @@ pub fn write_string_to_register(register_id: u32, string: impl AsRef<str>) {
 pub fn storage_write(base_key: u32, sub_key: u32, value: impl AsRef<[u8]>) {
     let value = value.as_ref();
     unsafe {
-        abi::storage_write(
-            base_key,
-            sub_key,
-            value.as_ptr() as _,
-            value.len() as _,
-            REGISTER_ATOMIC_OP,
-        );
+        abi::storage_write(base_key, sub_key, value.as_ptr() as _, value.len() as _);
     }
 }
 

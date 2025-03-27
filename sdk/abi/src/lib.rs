@@ -16,13 +16,7 @@ extern "C" {
     pub fn panic_utf8(len: u32, ptr: u32) -> !;
 
     // --- Storage API
-    pub fn storage_write(
-        base_key: u32,
-        sub_key: u32,
-        value_ptr: u32,
-        value_len: u32,
-        register_id: u32,
-    );
+    pub fn storage_write(base_key: u32, sub_key: u32, value_ptr: u32, value_len: u32);
     pub fn storage_read(base_key: u32, sub_key: u32, register_id: u32);
     pub fn storage_remove(base_key: u32, sub_key: u32);
     pub fn storage_has_key(base_key: u32, sub_key: u32) -> u32;
