@@ -37,7 +37,7 @@ fn main() -> Result<()> {
 
     let mut rt = Runtime::new(&db)?;
 
-    let cid = ContractId::generate();
+    let cid: ContractId = "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse()?;
     info!("Using contract-id: {cid}");
 
     info!("Instantiate contract {cid}");
