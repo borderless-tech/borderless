@@ -3,6 +3,7 @@ members = [
   "contracts/abi-test",
   "executor/runner",
   "executor/runtime",
+  "json-proof",
   "sdk/abi" ,
   "sdk/base",
   "sdk/core",
@@ -14,6 +15,7 @@ resolver = "2"
 
 [workspace.dependencies]
 anyhow = "1.0.97"
+bs58 = "0.5.1"
 log = "0.4.26"
 rand = "0.9.0"
 serde = "1.0.219"
