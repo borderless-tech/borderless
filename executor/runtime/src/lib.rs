@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use anyhow::Result; // TODO: Replace with real error, since this is a library
+use anyhow::{anyhow, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
 use borderless_sdk::{contract::CallAction, ContractId};
@@ -95,7 +95,6 @@ impl<'a, S: Db> Runtime<'a, S> {
         )?;
         // TODO: Those two functions contain randomness, which is not good
         linker.func_wrap("env", "storage_random_key", vm::storage_random_key)?;
-
         linker.func_wrap("env", "rand", vm::rand)?;
 
         linker.func_wrap(
@@ -142,7 +141,7 @@ impl<'a, S: Db> Runtime<'a, S> {
 
             run.call(&mut self.store, ())?;
         } else {
-            panic!("no contract is instantiated")
+            return Err(anyhow!("No contract is instantiated"));
         }
         Ok(())
     }
