@@ -8,18 +8,18 @@ use std::{
 use crate::{read_field, storage_has_key, write_field};
 use serde::{de::DeserializeOwned, Serialize};
 
-/// A value that can be read from the storage
+/// A value that can be read from the storage lazily.
 ///
 /// The value will only be read upon the first access.
 /// Afterwards it is cached, while this type keeps track
 /// if there are any changes that needs to be synced to disk.
-pub struct Stored<T> {
+pub struct Lazy<T> {
     value: UnsafeCell<Option<T>>,
     base_key: u32,
     changed: bool,
 }
 
-impl<T: Serialize + DeserializeOwned> Stored<T> {
+impl<T: Serialize + DeserializeOwned> Lazy<T> {
     pub fn new(base_key: u32, value: Option<T>) -> Self {
         let changed = value.is_some();
         Self {
@@ -93,19 +93,19 @@ impl<T: Serialize + DeserializeOwned> Stored<T> {
     }
 }
 
-impl<T: Serialize + DeserializeOwned> Borrow<T> for Stored<T> {
+impl<T: Serialize + DeserializeOwned> Borrow<T> for Lazy<T> {
     fn borrow(&self) -> &T {
         self.get()
     }
 }
 
-impl<T: Serialize + DeserializeOwned> AsRef<T> for Stored<T> {
+impl<T: Serialize + DeserializeOwned> AsRef<T> for Lazy<T> {
     fn as_ref(&self) -> &T {
         self.get()
     }
 }
 
-impl<T: Serialize + DeserializeOwned> Deref for Stored<T> {
+impl<T: Serialize + DeserializeOwned> Deref for Lazy<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -113,7 +113,7 @@ impl<T: Serialize + DeserializeOwned> Deref for Stored<T> {
     }
 }
 
-impl<T: Serialize + DeserializeOwned> DerefMut for Stored<T> {
+impl<T: Serialize + DeserializeOwned> DerefMut for Lazy<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.get_mut()
     }
@@ -125,13 +125,13 @@ impl<T: Serialize + DeserializeOwned> DerefMut for Stored<T> {
 //     }
 // }
 
-impl<T: Serialize + DeserializeOwned + Display> Display for Stored<T> {
+impl<T: Serialize + DeserializeOwned + Display> Display for Lazy<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Display::fmt(self.get(), f)
     }
 }
 
-impl<T: Serialize + DeserializeOwned + std::fmt::Debug> std::fmt::Debug for Stored<T> {
+impl<T: Serialize + DeserializeOwned + std::fmt::Debug> std::fmt::Debug for Lazy<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Stored")
             .field("value", &self.value)
@@ -140,7 +140,7 @@ impl<T: Serialize + DeserializeOwned + std::fmt::Debug> std::fmt::Debug for Stor
     }
 }
 
-impl<T: Serialize + DeserializeOwned> Serialize for Stored<T> {
+impl<T: Serialize + DeserializeOwned> Serialize for Lazy<T> {
     fn serialize<S>(&self, serializer: S) -> std::prelude::v1::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
