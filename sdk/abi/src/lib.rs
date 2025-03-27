@@ -2,7 +2,6 @@
 //!
 //! This library does not implement the interface by itself.
 
-// TODO: Stop using u32 for booleans, as wasm is 32-bit by default -> Use u32 or i32 instead
 #![no_std]
 extern "C" {
     pub fn print(ptr: u32, len: u32, level: u32);
