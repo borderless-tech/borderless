@@ -1,5 +1,6 @@
 pub mod contract;
 pub mod registers;
+pub mod storage;
 
 pub use abi::LogLevel;
 use borderless_abi as abi;
