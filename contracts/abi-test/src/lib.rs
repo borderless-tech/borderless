@@ -1,4 +1,4 @@
-use borderless_sdk::{error, info, new_error, Context, Error, Result};
+use borderless_sdk::{error, info, new_error, Context, Result};
 
 #[no_mangle]
 pub extern "C" fn run() {

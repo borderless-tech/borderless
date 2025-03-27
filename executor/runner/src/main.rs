@@ -6,7 +6,7 @@ use borderless_runtime::Runtime;
 use borderless_sdk::ContractId;
 use clap::Parser;
 
-use log::{debug, error, info, warn};
+use log::info;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
