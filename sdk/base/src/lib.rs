@@ -128,8 +128,7 @@ macro_rules! impl_uuid {
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
-// NOTE: We have to use compact representation because of: https://github.com/surrealdb/surrealdb/issues/2816
-pub struct AgentId(#[serde(with = "uuid::serde::compact")] uuid::Uuid);
+pub struct AgentId(uuid::Uuid);
 impl_uuid!(AgentId, 0xaF, 0xa0);
 
 /// The borderless-id used to identify participants in the borderless-network.
@@ -149,8 +148,7 @@ impl_uuid!(AgentId, 0xaF, 0xa0);
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
-// NOTE: We have to use compact representation because of: https://github.com/surrealdb/surrealdb/issues/2816
-pub struct BorderlessId(#[serde(with = "uuid::serde::compact")] uuid::Uuid);
+pub struct BorderlessId(uuid::Uuid);
 impl_uuid!(BorderlessId, 0xbF, 0xb0);
 
 /// A contract-id used to itentify different SmartContracts in the borderless-ecosystem.
@@ -170,6 +168,5 @@ impl_uuid!(BorderlessId, 0xbF, 0xb0);
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
-// NOTE: We have to use compact representation because of: https://github.com/surrealdb/surrealdb/issues/2816
-pub struct ContractId(#[serde(with = "uuid::serde::compact")] uuid::Uuid);
+pub struct ContractId(uuid::Uuid);
 impl_uuid!(ContractId, 0xcF, 0xc0);
