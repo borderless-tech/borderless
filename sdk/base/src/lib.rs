@@ -67,7 +67,7 @@ macro_rules! impl_uuid {
             type Error = uuid::Error;
 
             fn try_from(value: &str) -> Result<Self, Self::Error> {
-                uuid::Uuid::parse_str(&value).map(|id| id.into())
+                uuid::Uuid::parse_str(&value).map(Into::into)
             }
         }
 
@@ -76,6 +76,14 @@ macro_rules! impl_uuid {
 
             fn try_from(value: String) -> Result<Self, Self::Error> {
                 $type::try_from(value.as_str())
+            }
+        }
+
+        impl std::str::FromStr for $type {
+            type Err = uuid::Error;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                uuid::Uuid::parse_str(s).map(Into::into)
             }
         }
 
