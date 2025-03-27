@@ -90,7 +90,7 @@ fn hash_value(key: &str, value: &Value) -> [u8; 32] {
                     continue;
                 }
                 let hash = hash_value(key, value);
-                hasher.update(&hash);
+                hasher.update(hash);
             }
         }
         // For everything else, we just convert the value to a string, and hash this
@@ -99,12 +99,12 @@ fn hash_value(key: &str, value: &Value) -> [u8; 32] {
             let mut canonical = json_syntax::Value::from_serde_json(other.clone());
             canonical.canonicalize();
             let string = canonical.to_string();
-            hasher.update(&key.as_bytes());
-            hasher.update(&string.as_bytes());
+            hasher.update(key.as_bytes());
+            hasher.update(string.as_bytes());
         }
     }
     let digest = hasher.finalize();
-    digest.try_into().expect("output size mismatch")
+    digest.into()
 }
 
 /// Calculates the proofs for every member of the JSON object.
@@ -224,8 +224,8 @@ pub fn apply_mask(
                         out.insert(key.clone(), Value::Object(nested));
                     }
                     (nested_obj, nested_proof) => {
-                        println!("object: {}", nested_obj.to_string());
-                        println!("proof: {}", nested_proof.to_string());
+                        println!("object: {}", nested_obj);
+                        println!("proof: {}", nested_proof);
                         panic!("datatype mismatch - expected object");
                     }
                 }
@@ -290,24 +290,18 @@ fn rebuild_proof(map: &Map<String, Value>) -> Result<[u8; 32]> {
             continue;
         }
         // Check, if the next unprefixed key would come first in our hash calculation
-        loop {
-            if let Some(next_obfuscated) = next_obfuscated {
-                match next_obfuscated.cmp(key) {
-                    Ordering::Less => {
-                        // Use the hash from the prefixed key
-                        let decoded = map
-                            .get(&format!("{HASH_PREFIX}_{next_obfuscated}"))
-                            .unwrap();
-                        let hash = hash_from_obfuscated(decoded)?;
-                        hasher.update(&hash);
-                    }
-                    Ordering::Equal => {
-                        return Err(ErrorImpl::SameKey.into());
-                    }
-                    Ordering::Greater => break,
+        while let Some(obfs) = next_obfuscated {
+            match obfs.cmp(key) {
+                Ordering::Less => {
+                    // Use the hash from the prefixed key
+                    let decoded = map.get(&format!("{HASH_PREFIX}_{obfs}")).unwrap();
+                    let hash = hash_from_obfuscated(decoded)?;
+                    hasher.update(hash);
                 }
-            } else {
-                break;
+                Ordering::Equal => {
+                    return Err(ErrorImpl::SameKey.into());
+                }
+                Ordering::Greater => break,
             }
             next_obfuscated = unprefixed.pop_front();
         }
@@ -316,29 +310,23 @@ fn rebuild_proof(map: &Map<String, Value>) -> Result<[u8; 32]> {
         // Nest one level deeper, if required
         if let Value::Object(nested) = value {
             let hash = rebuild_proof(nested)?;
-            hasher.update(&hash);
+            hasher.update(hash);
         } else {
             let hash = hash_value(key, value);
-            hasher.update(&hash);
+            hasher.update(hash);
         }
     }
     // If there are still some prefixed-keys left, we also have to apply them
-    loop {
-        if let Some(next_obfuscated) = next_obfuscated {
-            // Use the hash from the prefixed key
-            let decoded = map
-                .get(&format!("{HASH_PREFIX}_{next_obfuscated}"))
-                .unwrap();
-            let hash = hash_from_obfuscated(decoded)?;
-            hasher.update(&hash);
-        } else {
-            break;
-        }
+    while let Some(obfs) = next_obfuscated {
+        // Use the hash from the prefixed key
+        let decoded = map.get(&format!("{HASH_PREFIX}_{obfs}")).unwrap();
+        let hash = hash_from_obfuscated(decoded)?;
+        hasher.update(hash);
         next_obfuscated = unprefixed.pop_front();
     }
 
     let digest = hasher.finalize();
-    Ok(digest.try_into().expect("output size mismatch"))
+    Ok(digest.into())
 }
 
 /// Generates a proof for some JSON object
@@ -352,7 +340,7 @@ fn rebuild_proof(map: &Map<String, Value>) -> Result<[u8; 32]> {
 pub fn gen_proof(map: &mut Map<String, Value>) -> Result<String> {
     // If this is a simple object, without any of our custom fields,
     // the proof is just the root-hash of the document
-    if contains_prefix(&map) {
+    if contains_prefix(map) {
         let proof = rebuild_proof(map)?;
         let encoded = bs58::encode(&proof).into_string();
         return Ok(encoded);
