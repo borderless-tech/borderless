@@ -18,26 +18,6 @@ use borderless_sdk_core::{
     serialize::from_value, storage_begin_acid_txn, storage_commit_acid_txn, write_field,
 };
 use xxhash_rust::xxh32::xxh32;
-
-// This is our state
-pub struct Flipper {
-    switch: bool,
-    counter: u32,
-}
-
-impl Display for Flipper {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "switch={}, counter={}", self.switch, self.counter)
-    }
-}
-
-impl Flipper {
-    fn flip_switch(&mut self) {
-        self.switch = !self.switch;
-        self.counter += 1;
-    }
-}
-
 fn exec_run() -> Result<()> {
     // Read action
     let input = read_register(REGISTER_INPUT_ACTION).context("missing input register")?;
@@ -85,13 +65,9 @@ fn exec_run() -> Result<()> {
         "flip_switch" => {
             state.flip_switch();
         }
-        "call_my_fn" => {
-            let params: CallMyFnArgs = from_value(action.params)?;
-            call_my_fn(params.foo, params.baa);
-        }
-        "other_fn" => {
-            let params: OtherFnArgs = from_value(action.params)?;
-            other_fn(params.text);
+        "set_switch" => {
+            let params: SetSwitchArgs = from_value(action.params)?;
+            state.set_switch(params.switch);
         }
         other => return Err(new_error!("unknown method: {other}")),
     }
@@ -107,20 +83,33 @@ fn exec_run() -> Result<()> {
 }
 
 // NOTE: Let's dig into this, what the sdk macro should derive
+//
 
-#[derive(serde::Deserialize)]
-struct CallMyFnArgs {
-    foo: u32,
-    baa: u32,
-}
-fn call_my_fn(foo: u32, baa: u32) {
-    info!("foo = {foo}, baa = {baa}");
+// This is our state
+pub struct Flipper {
+    switch: bool,
+    counter: u32,
 }
 
-#[derive(serde::Deserialize)]
-struct OtherFnArgs {
-    text: String,
+impl Display for Flipper {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "switch={}, counter={}", self.switch, self.counter)
+    }
 }
-fn other_fn(text: String) {
-    info!("text = {text}");
+
+impl Flipper {
+    fn flip_switch(&mut self) {
+        self.switch = !self.switch;
+        self.counter += 1;
+    }
+
+    fn set_switch(&mut self, switch: bool) {
+        self.counter += 1;
+        self.switch = switch;
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct SetSwitchArgs {
+    switch: bool,
 }
