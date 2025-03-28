@@ -9,4 +9,4 @@
 pub(crate) const REGISTER_ATOMIC_OP: u32 = u32::MAX - 1;
 
 /// Register used to feed input into the contract
-pub const REGISTER_INPUT_ACTION: u32 = 0;
+pub const REGISTER_INPUT: u32 = 0;

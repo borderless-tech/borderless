@@ -14,13 +14,13 @@ pub extern "C" fn run() {
 }
 
 use borderless_sdk_core::{
-    contract::CallAction, dev, read_field, read_register, registers::REGISTER_INPUT_ACTION,
+    contract::CallAction, dev, read_field, read_register, registers::REGISTER_INPUT,
     serialize::from_value, storage_begin_acid_txn, storage_commit_acid_txn, write_field,
 };
 use xxhash_rust::xxh32::xxh32;
 fn exec_run() -> Result<()> {
     // Read action
-    let input = read_register(REGISTER_INPUT_ACTION).context("missing input register")?;
+    let input = read_register(REGISTER_INPUT).context("missing input register")?;
     info!("read {} bytes", input.len());
 
     let action = CallAction::from_bytes(&input)?;
