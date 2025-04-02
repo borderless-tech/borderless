@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result}; // TODO: Replace with real error, since this is a 
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
 use borderless_sdk::{contract::CallAction, ContractId};
-use borderless_sdk_core::registers::REGISTER_INPUT_ACTION;
+use borderless_sdk_core::registers::REGISTER_INPUT;
 use vm::VmState;
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
 
@@ -137,7 +137,7 @@ impl<'a, S: Db> Runtime<'a, S> {
             let action_bytes = action.to_bytes()?;
             self.store
                 .data_mut()
-                .set_register(REGISTER_INPUT_ACTION, action_bytes);
+                .set_register(REGISTER_INPUT, action_bytes);
 
             run.call(&mut self.store, ())?;
         } else {
