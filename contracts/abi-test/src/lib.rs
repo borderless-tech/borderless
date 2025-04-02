@@ -35,7 +35,7 @@ pub extern "C" fn process_revocation() {
     }
 }
 
-use borderless_sdk_core::{
+use borderless_sdk::{
     contract::CallAction, dev, read_field, read_register, registers::REGISTER_INPUT,
     serialize::from_value, storage_begin_acid_txn, storage_commit_acid_txn, write_field,
 };

@@ -7,8 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-borderless-sdk-core = { path = "../../sdk/core" }
-borderless-sdk = { path = "../../sdk/base" }
+borderless-sdk = { path = "../../sdk/core" }
 serde.workspace = true
 
 # NOTE: This would be placed inside the macro crate

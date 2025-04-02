@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
-borderless-sdk = { path = "../../sdk/base", features = ["generate_ids"] }
+borderless-sdk = { path = "../../sdk/core", features = ["generate_ids"] }
 borderless-runtime = { path = "../runtime" }
 borderless-kv-store = { path = "../../kv-store" }
 clap = { version = "4.5.32", features = ["derive"] }
