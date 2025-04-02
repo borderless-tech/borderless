@@ -5,7 +5,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::{read_field, storage_has_key, write_field};
+use crate::internal::{read_field, storage_has_key, write_field};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// A value that can be read from the storage lazily.

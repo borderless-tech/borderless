@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::{anyhow, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
-use borderless_sdk::registers::REGISTER_INPUT;
+use borderless_sdk::internal::registers::REGISTER_INPUT;
 use borderless_sdk::{contract::CallAction, ContractId};
 use vm::VmState;
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};

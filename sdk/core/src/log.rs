@@ -1,5 +1,5 @@
-pub use crate::abi::LogLevel as Level;
-pub use crate::print;
+pub use crate::internal::print;
+pub use borderless_abi::LogLevel as Level;
 
 #[macro_export]
 macro_rules! log {
