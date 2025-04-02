@@ -182,6 +182,20 @@ pub struct Introduction {
     pub meta: Metadata,
 }
 
+impl Introduction {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(&self)
+    }
+}
+
+impl FromStr for Introduction {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_json::from_str(s)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,7 +3,10 @@ use std::{fs::read_to_string, path::PathBuf, str::FromStr, time::Instant};
 use anyhow::Result;
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_runtime::Runtime;
-use borderless_sdk::{contract::CallAction, ContractId};
+use borderless_sdk::{
+    contract::{CallAction, Introduction},
+    ContractId,
+};
 use clap::{Parser, Subcommand};
 
 use log::info;
@@ -90,7 +93,18 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
 
     // Parse command
     match command.action {
-        ContractAction::Introduce { introduction } => todo!(),
+        ContractAction::Introduce { introduction } => {
+            // Parse introduction
+            let data = read_to_string(introduction)?;
+            let introduction = Introduction::from_str(&data)?;
+
+            let cid = introduction.contract_id;
+            info!("Introduce contract {cid}");
+            let start = Instant::now();
+            rt.process_introduction(&introduction)?;
+            let elapsed = start.elapsed();
+            info!("Outer time elapsed: {elapsed:?}");
+        }
         ContractAction::Process { action } => {
             // Parse action
             let data = read_to_string(action)?;

@@ -1,8 +1,9 @@
 use std::path::Path;
 
-use anyhow::{anyhow, Result}; // TODO: Replace with real error, since this is a library
+use anyhow::{anyhow, Context, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
+use borderless_sdk::contract::Introduction;
 use borderless_sdk::internal::registers::REGISTER_INPUT;
 use borderless_sdk::{contract::CallAction, ContractId};
 use vm::VmState;
@@ -146,8 +147,16 @@ impl<'a, S: Db> Runtime<'a, S> {
         Ok(())
     }
 
-    pub fn process_introduction(&mut self, introduction: bool) -> Result<()> {
-        todo!()
+    pub fn process_introduction(&mut self, introduction: &Introduction) -> Result<()> {
+        let instance = self.instance.context("No contract is instantiated")?;
+
+        let run = instance.get_typed_func::<(), ()>(&mut self.store, "process_introduction")?;
+        let bytes = introduction.to_bytes()?;
+        self.store.data_mut().set_register(REGISTER_INPUT, bytes);
+
+        run.call(&mut self.store, ())?;
+
+        Ok(())
     }
 
     pub fn process_revocation(&mut self, revocation: bool) -> Result<()> {
