@@ -1,0 +1,7 @@
+{
+  "method": "introduce",
+  "params": {
+    "switch": true,
+    "counter": 0
+  }
+}
