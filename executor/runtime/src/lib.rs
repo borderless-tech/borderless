@@ -131,9 +131,9 @@ impl<'a, S: Db> Runtime<'a, S> {
         Ok(())
     }
 
-    pub fn run_contract(&mut self, action: &CallAction) -> Result<()> {
+    pub fn process_transaction(&mut self, action: &CallAction) -> Result<()> {
         if let Some(instance) = self.instance {
-            let run = instance.get_typed_func::<(), ()>(&mut self.store, "run")?;
+            let run = instance.get_typed_func::<(), ()>(&mut self.store, "process_transaction")?;
             let action_bytes = action.to_bytes()?;
             self.store
                 .data_mut()
@@ -144,5 +144,13 @@ impl<'a, S: Db> Runtime<'a, S> {
             return Err(anyhow!("No contract is instantiated"));
         }
         Ok(())
+    }
+
+    pub fn process_introduction(&mut self, introduction: bool) -> Result<()> {
+        todo!()
+    }
+
+    pub fn process_revocation(&mut self, revocation: bool) -> Result<()> {
+        todo!()
     }
 }

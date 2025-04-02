@@ -3,7 +3,29 @@ use std::fmt::Display;
 use borderless_sdk::{error, info, new_error, Context, Result};
 
 #[no_mangle]
-pub extern "C" fn run() {
+pub extern "C" fn process_transaction() {
+    dev::tic();
+    let result = exec_run();
+    let elapsed = dev::toc();
+    match result {
+        Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
+        Err(e) => error!("execution failed: {e:?}"),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn process_introduction() {
+    dev::tic();
+    let result = exec_run();
+    let elapsed = dev::toc();
+    match result {
+        Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
+        Err(e) => error!("execution failed: {e:?}"),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn process_revocation() {
     dev::tic();
     let result = exec_run();
     let elapsed = dev::toc();
@@ -17,6 +39,7 @@ use borderless_sdk_core::{
     contract::CallAction, dev, read_field, read_register, registers::REGISTER_INPUT,
     serialize::from_value, storage_begin_acid_txn, storage_commit_acid_txn, write_field,
 };
+
 use xxhash_rust::xxh32::xxh32;
 fn exec_run() -> Result<()> {
     // Read action
@@ -27,7 +50,9 @@ fn exec_run() -> Result<()> {
     let s = action.pretty_print()?;
     info!("{s}");
 
-    let method = action.method.context("missing required method-name")?;
+    let method = action
+        .method_name()
+        .context("missing required method-name")?;
 
     let storage_key_switch = xxh32("FLIPPER::switch".as_bytes(), 0xff);
     let storage_key_counter = xxh32("FLIPPER::counter".as_bytes(), 0xff);
@@ -61,7 +86,7 @@ fn exec_run() -> Result<()> {
     let counter = read_field(storage_key_counter, 0).context("missing field counter")?;
     let mut state = Flipper { switch, counter };
 
-    match method.as_str() {
+    match method {
         "flip_switch" => {
             state.flip_switch();
         }

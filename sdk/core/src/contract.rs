@@ -3,13 +3,17 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-// TODO: Add provable json document stuff
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum MethodOrId {
+    ByName { method: String },
+    ById { method_id: u32 },
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallAction {
-    // TODO: use an enum with flattening here (maybe ?)
-    pub method: Option<String>,
-    pub method_id: Option<u32>,
+    #[serde(flatten)]
+    pub method: MethodOrId,
     pub params: Value,
 }
 
@@ -24,17 +28,31 @@ impl FromStr for CallAction {
 impl CallAction {
     pub fn by_method(method_name: impl AsRef<str>, params: Value) -> Self {
         Self {
-            method: Some(method_name.as_ref().to_string()),
-            method_id: None,
+            method: MethodOrId::ByName {
+                method: method_name.as_ref().to_string(),
+            },
             params,
         }
     }
 
     pub fn by_method_id(method_id: u32, params: Value) -> Self {
         Self {
-            method: None,
-            method_id: Some(method_id),
+            method: MethodOrId::ById { method_id },
             params,
+        }
+    }
+
+    pub fn method_name(&self) -> Option<&str> {
+        match &self.method {
+            MethodOrId::ByName { method } => Some(method.as_str()),
+            MethodOrId::ById { .. } => None,
+        }
+    }
+
+    pub fn method_id(&self) -> Option<u32> {
+        match self.method {
+            MethodOrId::ByName { .. } => None,
+            MethodOrId::ById { method_id } => Some(method_id),
         }
     }
 
