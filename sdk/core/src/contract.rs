@@ -127,6 +127,40 @@ impl Default for SemVer {
     }
 }
 
+pub mod semver_as_string {
+    use super::*;
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &SemVer, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let version_str = format!("{}.{}.{}", value.major, value.minor, value.patch);
+        serializer.serialize_str(&version_str)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<SemVer, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let parts: Vec<&str> = s.split('.').collect();
+        if parts.len() != 3 {
+            return Err(serde::de::Error::custom(
+                "Expected version in 'x.y.z' format",
+            ));
+        }
+        let major = parts[0].parse().map_err(serde::de::Error::custom)?;
+        let minor = parts[1].parse().map_err(serde::de::Error::custom)?;
+        let patch = parts[2].parse().map_err(serde::de::Error::custom)?;
+        Ok(SemVer {
+            major,
+            minor,
+            patch,
+        })
+    }
+}
+
 /// Metadata of the contract or process.
 ///
 /// Used for administration purposes.
@@ -140,9 +174,11 @@ pub struct Metadata {
 
     // NOTE: This ensures compatibility with old versions
     #[serde(default)]
+    #[serde(with = "crate::contract::semver_as_string")]
     /// SemVer compatible version string
     pub version: SemVer,
 
+    // TODO: Does this field make sense in the introduction ?
     #[serde(default)]
     /// Time when the contract or process was created (seconds since unix epoch)
     pub active_since: u64,
@@ -166,7 +202,7 @@ pub struct Introduction {
     /// Bytes of the initial state.
     ///
     /// This will be parsed by the implementors of the contract.
-    pub initial_state: Vec<u8>, // < TODO: serde_json::Value or Vec<u8> ?
+    pub initial_state: Value,
 
     /// Mapping between users and roles.
     pub roles: Vec<Role>,
@@ -185,6 +221,14 @@ pub struct Introduction {
 impl Introduction {
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(&self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+
+    pub fn pretty_print(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(&self)
     }
 }
 

@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use borderless_sdk::contract::Introduction;
 use borderless_sdk::{error, info, new_error, Context, Result};
 
 #[no_mangle]
@@ -16,7 +17,7 @@ pub extern "C" fn process_transaction() {
 #[no_mangle]
 pub extern "C" fn process_introduction() {
     dev::tic();
-    let result = exec_run();
+    let result = exec_introduction();
     let elapsed = dev::toc();
     match result {
         Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
@@ -41,6 +42,7 @@ use borderless_sdk::internal::{
 };
 use borderless_sdk::{contract::CallAction, serialize::from_value};
 
+use serde::{Deserialize, Serialize};
 use xxhash_rust::xxh32::xxh32;
 fn exec_run() -> Result<()> {
     // Read action
@@ -55,34 +57,9 @@ fn exec_run() -> Result<()> {
         .method_name()
         .context("missing required method-name")?;
 
+    // Read state ( TODO )
     let storage_key_switch = xxh32("FLIPPER::switch".as_bytes(), 0xff);
     let storage_key_counter = xxh32("FLIPPER::counter".as_bytes(), 0xff);
-
-    // HACK: Just to test this out
-    if method == "introduce" {
-        let switch = action
-            .params
-            .get("switch")
-            .context("missing switch")?
-            .as_bool()
-            .context("switch is not a bool")?;
-        let counter = action
-            .params
-            .get("counter")
-            .context("missing counter")?
-            .as_u64()
-            .context("counter is not a number")?;
-        info!("Introduce new flipper: switch={switch}, counter={counter}");
-
-        storage_begin_acid_txn();
-        write_field(storage_key_switch, 0, &switch);
-        write_field(storage_key_counter, 0, &counter);
-        storage_commit_acid_txn();
-
-        return Ok(());
-    }
-
-    // Read state
     let switch = read_field(storage_key_switch, 0).context("missing field switch")?;
     let counter = read_field(storage_key_counter, 0).context("missing field counter")?;
     let mut state = Flipper { switch, counter };
@@ -108,10 +85,46 @@ fn exec_run() -> Result<()> {
     Ok(())
 }
 
+fn exec_introduction() -> Result<()> {
+    // Read action
+    let input = read_register(REGISTER_INPUT).context("missing input register")?;
+    info!("read {} bytes", input.len());
+
+    let introduction = Introduction::from_bytes(&input)?;
+    let s = introduction.pretty_print()?;
+    info!("{s}");
+
+    // Parse initial state
+    let state: Flipper = from_value(introduction.initial_state)?;
+    info!(
+        "Introduce new flipper: switch={}, counter={}",
+        state.switch, state.counter
+    );
+
+    // TODO: Implement 'real' storage handling here,
+    // and reserve the keyspace for the contract
+    //
+    // - add introduction data
+    // - prepare logging
+    // - prepare action buffer
+    // ...
+    // + define additional data, that the contract requires and how it is stored / passed into it
+    let storage_key_switch = xxh32("FLIPPER::switch".as_bytes(), 0xff);
+    let storage_key_counter = xxh32("FLIPPER::counter".as_bytes(), 0xff);
+
+    storage_begin_acid_txn();
+    write_field(storage_key_switch, 0, &state.switch);
+    write_field(storage_key_counter, 0, &state.counter);
+    storage_commit_acid_txn();
+
+    Ok(())
+}
+
 // NOTE: Let's dig into this, what the sdk macro should derive
 //
 
 // This is our state
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Flipper {
     switch: bool,
     counter: u32,
