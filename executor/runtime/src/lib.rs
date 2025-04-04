@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result}; // TODO: Replace with real error, since this is a library
@@ -9,6 +10,7 @@ use borderless_sdk::{contract::CallAction, ContractId};
 use vm::VmState;
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
 
+mod logger;
 mod vm;
 
 pub struct Runtime<'a, S = Lmdb>
@@ -18,7 +20,7 @@ where
     linker: Linker<VmState<'a, S>>,
     store: Store<VmState<'a, S>>,
     engine: Engine,
-    instance: Option<Instance>,
+    contract_store: HashMap<ContractId, Instance>,
 }
 
 impl<'a, S: Db> Runtime<'a, S> {
@@ -115,7 +117,7 @@ impl<'a, S: Db> Runtime<'a, S> {
             linker,
             store,
             engine,
-            instance: None,
+            contract_store: HashMap::new(),
         })
     }
 
@@ -127,14 +129,13 @@ impl<'a, S: Db> Runtime<'a, S> {
         // TODO: We have to write a "store" that saves all modules
         let module = Module::from_file(&self.engine, path)?;
 
-        self.store.data_mut().set_contract(contract_id);
         let instance = self.linker.instantiate(&mut self.store, &module)?;
-        self.instance = Some(instance);
+        self.contract_store.insert(contract_id, instance);
         Ok(())
     }
 
-    pub fn process_transaction(&mut self, action: &CallAction) -> Result<()> {
-        if let Some(instance) = self.instance {
+    pub fn process_transaction(&mut self, cid: &ContractId, action: &CallAction) -> Result<()> {
+        if let Some(instance) = self.contract_store.get(cid) {
             let run = instance.get_typed_func::<(), ()>(&mut self.store, "process_transaction")?;
             let action_bytes = action.to_bytes()?;
             self.store
@@ -149,7 +150,10 @@ impl<'a, S: Db> Runtime<'a, S> {
     }
 
     pub fn process_introduction(&mut self, introduction: &Introduction) -> Result<()> {
-        let instance = self.instance.context("No contract is instantiated")?;
+        let instance = self
+            .contract_store
+            .get(&introduction.contract_id)
+            .context("No contract is instantiated")?;
 
         let run = instance.get_typed_func::<(), ()>(&mut self.store, "process_introduction")?;
         let bytes = introduction.to_bytes()?;

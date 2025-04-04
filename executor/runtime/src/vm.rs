@@ -1,11 +1,15 @@
 #![allow(unused)]
 //! Contains the implementation of the ABI
 
-use std::{cell::RefCell, time::Instant};
+use std::{
+    cell::RefCell,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
 
 use borderless_sdk::{
     contract::CallAction,
     internal::storage_keys::{StorageKey, BASE_KEY_ACTIONS},
+    log::LogLine,
     ContractId,
 };
 use wasmtime::{Caller, Extern, Memory};
@@ -23,6 +27,9 @@ pub struct VmState<'a, S: Db> {
     db_acid_txn: Option<<S as Db>::RwTx<'a>>,
     last_timer: Option<Instant>,
 
+    /// Current buffer of log output for the given contract
+    log_buffer: Vec<LogLine>,
+
     // Currently active contract
     active_contract: Option<ContractId>,
 }
@@ -36,18 +43,41 @@ impl<'a, S: Db> VmState<'a, S> {
             db_acid_txn: None.into(),
             // _marker: PhantomData,
             last_timer: None,
+            log_buffer: Vec::new(),
             active_contract: None,
         }
     }
 
-    // Set a new contract as active
-    pub fn set_contract(&mut self, contract_id: ContractId) {
+    /// Marks the start of a new contract execution
+    ///
+    /// Internally, this function does the following things:
+    /// 1. Clear the log-buffer
+    /// 2. Remember the contract-id, so we can generate storage-keys
+    pub fn begin_contract_execution(&mut self, contract_id: ContractId) -> anyhow::Result<()> {
+        if self.active_contract.is_some() {
+            return Err(anyhow::Error::msg(
+                "Must finish contract execution before starting new",
+            ));
+        }
         self.active_contract = Some(contract_id);
+        self.log_buffer.clear();
+        Ok(())
     }
 
-    // Resets the contract state
-    pub fn reset_contract(&mut self) {
+    /// Marks the end of a new contract execution
+    ///
+    /// Internally, this function does the following things:
+    /// 1. Flush the log-buffer to the database
+    /// 2. Clear the contract-id, so it can be reset next time
+    pub fn finish_contract_execution(&mut self) -> anyhow::Result<()> {
+        if self.active_contract.is_none() {
+            return Err(anyhow::Error::msg(
+                "Must start contract execution before commiting",
+            ));
+        }
         self.active_contract = None;
+
+        Ok(())
     }
 
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
@@ -69,7 +99,7 @@ impl<'a, S: Db> VmState<'a, S> {
     }
 
     // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-    pub fn begin_acid_txn(&mut self) -> wasmtime::Result<u64> {
+    fn begin_acid_txn(&mut self) -> wasmtime::Result<u64> {
         assert!(
             self.active_contract.is_some(),
             "transactions should only be created when there is an active contract"
@@ -83,7 +113,7 @@ impl<'a, S: Db> VmState<'a, S> {
     }
 
     // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-    pub fn commit_acid_txn(&mut self) -> wasmtime::Result<u64> {
+    fn commit_acid_txn(&mut self) -> wasmtime::Result<u64> {
         assert!(
             self.active_contract.is_some(),
             "transactions should only be created when there is an active contract"
@@ -155,12 +185,19 @@ pub fn toc(caller: Caller<'_, VmState<impl Db>>) -> u64 {
     }
 }
 
+// TODO: Change this to "log"
 pub fn print(
     mut caller: Caller<'_, VmState<impl Db>>,
     ptr: u64,
     len: u64,
-    level: u64,
+    level: u32,
 ) -> wasmtime::Result<()> {
+    // Get timestamp as early as possible
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("now > 1970")
+        .as_nanos();
+
     // Read string from WASM memory and print it
     // (Implementation details omitted for brevity)
     // let s = String::from_raw_parts(, length, capacity)
@@ -172,17 +209,13 @@ pub fn print(
         .get(ptr as usize..(ptr + len) as usize)
         .ok_or_else(|| wasmtime::Error::msg("Memory access out of bounds"))?;
 
-    let s =
+    // Construct message
+    let msg =
         String::from_utf8(data.to_vec()).unwrap_or_else(|e| format!("Invalid UTF-8 sequence: {e}"));
 
-    match level {
-        0 => trace!("{s}"),
-        1 => debug!("{s}"),
-        2 => info!("{s}"),
-        3 => warn!("{s}"),
-        4 => error!("{s}"),
-        _ => panic!("{s}"), // this should not happen
-    }
+    // Buffer log line
+    let line = LogLine::new(timestamp, level, msg);
+    caller.data_mut().log_buffer.push(line);
 
     Ok(())
 }

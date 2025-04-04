@@ -16,7 +16,7 @@ pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
         abi::print(
             msg.as_ref().as_ptr() as _,
             msg.as_ref().len() as _,
-            level as u64,
+            level as u32,
         );
     }
 }

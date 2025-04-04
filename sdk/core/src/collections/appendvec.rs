@@ -1,6 +1,3 @@
-// TODO: We cannot use this for the actions, as we want to directly save them as json data !
-// -> For now, we just ignore this, and use postcard
-
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::internal::{read_field, write_field};

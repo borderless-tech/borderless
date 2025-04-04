@@ -8,6 +8,11 @@
 // this way we avoid at least avoid the duplicate encoding.
 //
 // OR ! We could bake this into the VmState somehow (?)
+//
+// -> Or, we save the tx-hash there, so we can remember the order that we executed the txs,
+//    and save the action in a separate table behind the tx-hash
+//    (I think this makes the most sense tbh)
+//    We could align this with the current way of how things are stored
 use crate::{
     contract::CallAction,
     internal::{read_field, storage_write, write_field},
@@ -49,6 +54,8 @@ impl ActionVec {
         self.cache.push(value);
     }
 
+    // TODO: Do we need the separate commit step now ?
+    // -> I think we should handle the action outside of wasm, so yeah..
     /// Never call this directly ! This function is used by the macro !
     pub fn commit(self) {
         let full_len = self.len_commited + self.cache.len() as u64;

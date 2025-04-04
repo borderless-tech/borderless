@@ -4,7 +4,7 @@
 
 #![no_std]
 extern "C" {
-    pub fn print(ptr: u64, len: u64, level: u64);
+    pub fn print(ptr: u64, len: u64, level: u32);
 
     // --- Register functions
     pub fn read_register(register_id: u64, wasm_ptr: u64);
@@ -48,7 +48,7 @@ extern "C" {
     pub fn rand(min: u64, max: u64) -> u64;
 }
 
-#[repr(u64)]
+#[repr(u32)]
 pub enum LogLevel {
     Trace = 0,
     Debug = 1,

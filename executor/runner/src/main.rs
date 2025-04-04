@@ -117,7 +117,7 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
 
             info!("Run contract {cid}");
             let start = Instant::now();
-            rt.process_transaction(&action)?;
+            rt.process_transaction(&cid, &action)?;
             let elapsed = start.elapsed();
             info!("Outer time elapsed: {elapsed:?}");
         }
