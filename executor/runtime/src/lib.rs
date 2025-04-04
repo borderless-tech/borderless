@@ -10,7 +10,7 @@ use borderless_sdk::{contract::CallAction, ContractId};
 use vm::VmState;
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
 
-mod logger;
+pub mod logger;
 mod vm;
 
 const CONTRACT_SUB_DB: &str = "contract-db";
@@ -138,6 +138,7 @@ impl<'a, S: Db> Runtime<'a, S> {
 
     pub fn process_transaction(&mut self, cid: &ContractId, action: &CallAction) -> Result<()> {
         if let Some(instance) = self.contract_store.get(cid) {
+            self.store.data_mut().begin_contract_execution(*cid)?;
             let run = instance.get_typed_func::<(), ()>(&mut self.store, "process_transaction")?;
             let action_bytes = action.to_bytes()?;
             self.store
@@ -145,6 +146,7 @@ impl<'a, S: Db> Runtime<'a, S> {
                 .set_register(REGISTER_INPUT, action_bytes);
 
             run.call(&mut self.store, ())?;
+            self.store.data_mut().finish_contract_execution()?;
         } else {
             return Err(anyhow!("No contract is instantiated"));
         }
@@ -157,11 +159,15 @@ impl<'a, S: Db> Runtime<'a, S> {
             .get(&introduction.contract_id)
             .context("No contract is instantiated")?;
 
+        self.store
+            .data_mut()
+            .begin_contract_execution(introduction.contract_id)?;
+
         let run = instance.get_typed_func::<(), ()>(&mut self.store, "process_introduction")?;
         let bytes = introduction.to_bytes()?;
         self.store.data_mut().set_register(REGISTER_INPUT, bytes);
-
         run.call(&mut self.store, ())?;
+        self.store.data_mut().finish_contract_execution()?;
 
         Ok(())
     }
@@ -170,7 +176,7 @@ impl<'a, S: Db> Runtime<'a, S> {
         todo!()
     }
 
-    pub fn read_action(&self, idx: usize) -> Result<Option<CallAction>> {
-        self.store.data().read_action(idx)
+    pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<CallAction>> {
+        self.store.data().read_action(cid, idx)
     }
 }

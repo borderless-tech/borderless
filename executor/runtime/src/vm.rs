@@ -143,9 +143,9 @@ impl<'a, S: Db> VmState<'a, S> {
     }
 
     /// Tries to read the action with the given index for the currently active contract
-    pub fn read_action(&self, idx: usize) -> anyhow::Result<Option<CallAction>> {
+    pub fn read_action(&self, cid: &ContractId, idx: usize) -> anyhow::Result<Option<CallAction>> {
         use borderless_sdk::internal::from_postcard_bytes;
-        let storage_key = self.get_storage_key(BASE_KEY_ACTIONS, idx as u64)?;
+        let storage_key = StorageKey::user_key(cid, BASE_KEY_ACTIONS, idx as u64);
 
         let txn = self.db.begin_ro_txn()?;
         let value = if let Some(bytes) = txn.read(&self.db_ptr, &storage_key)? {
