@@ -198,6 +198,7 @@ dependencies = [
  "anyhow",
  "borderless-abi",
  "postcard",
+ "rand 0.9.0",
  "serde",
  "serde_json",
  "uuid",

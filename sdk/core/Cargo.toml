@@ -13,6 +13,7 @@ uuid = { version = "1.16.0", features = ["serde", "v8"] }
 
 [dev-dependencies]
 uuid = { version = "1.16.0", features = ["serde", "v8", "v4"] }
+rand.workspace = true
 
 [features]
 default = []

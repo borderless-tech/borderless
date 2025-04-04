@@ -1,4 +1,5 @@
 pub mod registers;
+pub mod storage_keys;
 
 use borderless_abi as abi;
 use registers::REGISTER_ATOMIC_OP;
