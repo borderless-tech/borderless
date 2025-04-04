@@ -1,9 +1,8 @@
 use std::fmt::Display;
 
-use borderless_sdk::collections::appendvec::AppendVec;
 use borderless_sdk::contract::Introduction;
 use borderless_sdk::internal::storage_keys::BASE_KEY_ACTIONS;
-use borderless_sdk::internal::{storage_has_key, storage_remove};
+use borderless_sdk::internal::{action_vec::ActionVec, storage_has_key, storage_remove};
 use borderless_sdk::{error, info, new_error, Context, Result};
 
 #[no_mangle]
@@ -54,7 +53,7 @@ fn exec_run() -> Result<()> {
 
     let action = CallAction::from_bytes(&input)?;
 
-    let mut action_vec = AppendVec::new(BASE_KEY_ACTIONS);
+    let mut action_vec = ActionVec::new(BASE_KEY_ACTIONS);
     action_vec.push(action.clone()); // Hmm, could we maybe avoid this copy ?
 
     let s = action.pretty_print()?;
@@ -120,6 +119,8 @@ fn exec_introduction() -> Result<()> {
     let storage_key_switch = xxh3_64("FLIPPER::switch".as_bytes());
     let storage_key_counter = xxh3_64("FLIPPER::counter".as_bytes());
 
+    let action_vec = ActionVec::new(BASE_KEY_ACTIONS);
+
     storage_begin_acid_txn();
     // Write state
     write_field(storage_key_switch, 0, &state.switch);
@@ -131,6 +132,7 @@ fn exec_introduction() -> Result<()> {
         storage_remove(BASE_KEY_ACTIONS, action_sub_key);
         action_sub_key += 1;
     }
+    action_vec.commit();
     storage_commit_acid_txn();
 
     Ok(())

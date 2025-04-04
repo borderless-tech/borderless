@@ -3,7 +3,11 @@
 
 use std::{cell::RefCell, time::Instant};
 
-use borderless_sdk::{internal::storage_keys::StorageKey, ContractId};
+use borderless_sdk::{
+    contract::CallAction,
+    internal::storage_keys::{StorageKey, BASE_KEY_ACTIONS},
+    ContractId,
+};
 use wasmtime::{Caller, Extern, Memory};
 
 use log::{debug, error, info, trace, warn};
@@ -60,6 +64,10 @@ impl<'a, S: Db> VmState<'a, S> {
         self.registers.get(&register_id).map(|v| v.borrow().clone())
     }
 
+    pub fn clear_register(&mut self, register_id: u64) {
+        self.registers.remove(&register_id);
+    }
+
     // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
     pub fn begin_acid_txn(&mut self) -> wasmtime::Result<u64> {
         assert!(
@@ -93,6 +101,23 @@ impl<'a, S: Db> VmState<'a, S> {
             }
         }
         Ok(0)
+    }
+
+    /// Tries to read the action with the given index for the currently active contract
+    pub fn read_action(&self, idx: usize) -> anyhow::Result<Option<CallAction>> {
+        use borderless_sdk::internal::from_postcard_bytes;
+        let storage_key = self.get_storage_key(BASE_KEY_ACTIONS, idx as u64)?;
+
+        let txn = self.db.begin_ro_txn()?;
+        let value = if let Some(bytes) = txn.read(&self.db_ptr, &storage_key)? {
+            // TODO: We want to save actions as json and not as postcard !
+            // -> Currently, we use the append-vec for this, which is not ideal
+            Some(CallAction::from_bytes(bytes)?)
+        } else {
+            None
+        };
+        txn.commit()?;
+        Ok(value)
     }
 }
 
@@ -301,9 +326,13 @@ pub fn storage_read(
         // Write to register
         caller.data_mut().set_register(register_id, value);
     } else {
-        return Err(wasmtime::Error::msg(
-            "value not found: base_key={base_key}, sub_key={sub_key}",
-        ));
+        // return Err(wasmtime::Error::msg(
+        //     "value not found: base_key={base_key}, sub_key={sub_key}",
+        // ));
+        // TODO: I think this should not be an error, as the storage_read abi
+        // tries to read the register, and if the register has no value, if will be handled there.
+        // So I think the cleanest way is to clear the register and return Ok(())
+        caller_data.clear_register(register_id);
     }
 
     let elapsed = now.elapsed();

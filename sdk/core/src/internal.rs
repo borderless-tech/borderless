@@ -1,9 +1,14 @@
+pub mod action_vec;
 pub mod registers;
 pub mod storage_keys;
 
 use borderless_abi as abi;
 use registers::REGISTER_ATOMIC_OP;
 use serde::{de::DeserializeOwned, Serialize};
+
+pub use postcard::from_bytes as from_postcard_bytes;
+
+use crate::error;
 
 // --- TODO: Place these functions into some ::internal or ::core_impl or ::hazmat module
 pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
@@ -106,6 +111,7 @@ pub fn storage_commit_acid_txn() {
     }
 }
 
+// TODO: This is not an option, as it fails
 pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
 where
     Value: DeserializeOwned,
@@ -119,7 +125,13 @@ pub fn write_field<Value>(base_key: u64, sub_key: u64, value: &Value)
 where
     Value: Serialize,
 {
-    let value = postcard::to_allocvec::<Value>(value).unwrap();
+    let value = match postcard::to_allocvec::<Value>(value) {
+        Ok(value) => value,
+        Err(e) => {
+            error!("write-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
+            abort()
+        }
+    };
     storage_write(base_key, sub_key, value);
 }
 

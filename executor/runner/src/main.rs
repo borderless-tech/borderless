@@ -123,7 +123,11 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         }
         ContractAction::Revoke { revocation } => todo!(),
         ContractAction::ListActions => {
-            todo!()
+            let mut idx = 0;
+            while let Some(action) = rt.read_action(idx)? {
+                info!("{}", action.pretty_print()?);
+                idx += 1;
+            }
         }
     }
     Ok(())

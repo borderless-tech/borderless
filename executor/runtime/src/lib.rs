@@ -163,4 +163,8 @@ impl<'a, S: Db> Runtime<'a, S> {
     pub fn process_revocation(&mut self, revocation: bool) -> Result<()> {
         todo!()
     }
+
+    pub fn read_action(&self, idx: usize) -> Result<Option<CallAction>> {
+        self.store.data().read_action(idx)
+    }
 }
