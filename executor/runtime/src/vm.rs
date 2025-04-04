@@ -20,6 +20,8 @@ use rand::{random, Rng};
 
 use borderless_kv_store::*;
 
+use crate::logger::Logger;
+
 pub struct VmState<'a, S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
     db: &'a S,
@@ -69,14 +71,21 @@ impl<'a, S: Db> VmState<'a, S> {
     /// Internally, this function does the following things:
     /// 1. Flush the log-buffer to the database
     /// 2. Clear the contract-id, so it can be reset next time
+    /// 3. Clear the log-buffer
     pub fn finish_contract_execution(&mut self) -> anyhow::Result<()> {
-        if self.active_contract.is_none() {
-            return Err(anyhow::Error::msg(
-                "Must start contract execution before commiting",
-            ));
+        match self.active_contract {
+            Some(cid) => {
+                let logger = Logger::new(self.db, cid);
+                logger.flush_lines(&self.log_buffer)?;
+            }
+            None => {
+                return Err(anyhow::Error::msg(
+                    "Must start contract execution before commiting",
+                ));
+            }
         }
         self.active_contract = None;
-
+        self.log_buffer.clear();
         Ok(())
     }
 

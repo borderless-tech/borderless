@@ -187,7 +187,9 @@ dependencies = [
  "borderless-sdk",
  "log",
  "nohash",
+ "postcard",
  "rand 0.9.0",
+ "serde",
  "wasmtime",
 ]
 

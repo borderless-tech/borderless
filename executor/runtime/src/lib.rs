@@ -13,6 +13,8 @@ use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
 mod logger;
 mod vm;
 
+const CONTRACT_SUB_DB: &str = "contract-db";
+
 pub struct Runtime<'a, S = Lmdb>
 where
     S: Db,
@@ -25,7 +27,7 @@ where
 
 impl<'a, S: Db> Runtime<'a, S> {
     pub fn new(storage: &'a S) -> Result<Self> {
-        let db_ptr = storage.create_sub_db("contract-db")?;
+        let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
         let state = VmState::new(storage, db_ptr);
 
         let mut config = Config::new();
