@@ -1,3 +1,4 @@
+pub mod collections;
 pub mod contract;
 pub mod internal;
 pub mod log;

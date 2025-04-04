@@ -58,6 +58,8 @@ enum ContractAction {
         /// Input file containing revocation data
         revocation: PathBuf,
     },
+    /// Lists all actions that were executed by this contract
+    ListActions,
 }
 
 fn main() -> Result<()> {
@@ -120,6 +122,9 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             info!("Outer time elapsed: {elapsed:?}");
         }
         ContractAction::Revoke { revocation } => todo!(),
+        ContractAction::ListActions => {
+            todo!()
+        }
     }
     Ok(())
 }
