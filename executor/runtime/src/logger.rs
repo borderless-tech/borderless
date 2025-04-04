@@ -110,6 +110,11 @@ impl<'a, S: Db> Logger<'a, S> {
         Ok(())
     }
 
+    /// Retrieves the full log from the buffer in chronological order.
+    pub fn get_full_log(&self) -> Result<Vec<LogLine>> {
+        self.get_log_lines(0, MAX_LOG_BUFFER_SIZE)
+    }
+
     /// Retrieves a range of log lines from the buffer in chronological order.
     ///
     /// # Arguments

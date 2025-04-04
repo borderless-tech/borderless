@@ -1,6 +1,6 @@
 use std::{fs::read_to_string, path::PathBuf, str::FromStr, time::Instant};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_runtime::{
     logger::{print_log_line, Logger},
@@ -63,6 +63,9 @@ enum ContractAction {
     },
     /// Lists all actions that were executed by this contract
     ListActions,
+
+    /// Prints out all logs for this contract
+    Logs,
 }
 
 fn main() -> Result<()> {
@@ -70,10 +73,8 @@ fn main() -> Result<()> {
     colog::init();
 
     let args = Cli::parse();
-    info!("📁 Database path: {}", args.db.display());
-
     // Setup the DB connection, etc.
-    let db = Lmdb::new(&args.db, 2)?;
+    let db = Lmdb::new(&args.db, 2).context("failed to open database")?;
 
     match args.command {
         Commands::Contract(cmd) => contract(cmd, db)?,
@@ -91,13 +92,7 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         // Otherwise: Read from env
         "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse()?
     };
-    info!("Using contract-id: {cid}");
-
-    info!("Instantiate contract {cid}");
-    let start = Instant::now();
     rt.instantiate_contract(cid, command.contract)?;
-    let elapsed = start.elapsed();
-    info!("Time elapsed: {elapsed:?}");
 
     // Parse command
     match command.action {
@@ -112,6 +107,9 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             rt.process_introduction(&introduction)?;
             let elapsed = start.elapsed();
             info!("Outer time elapsed: {elapsed:?}");
+            info!("--- Contract-Log:");
+            let log = Logger::new(&db, cid).get_last_log()?;
+            log.into_iter().for_each(print_log_line);
         }
         ContractAction::Process { action } => {
             // Parse action
@@ -136,6 +134,10 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
                 info!("{}", action.pretty_print()?);
                 idx += 1;
             }
+        }
+        ContractAction::Logs => {
+            let log = Logger::new(&db, cid).get_full_log()?;
+            log.into_iter().for_each(print_log_line);
         }
     }
     Ok(())
