@@ -3,7 +3,7 @@
 
 use std::{cell::RefCell, time::Instant};
 
-use borderless_sdk::ContractId;
+use borderless_sdk::{internal::storage_keys::StorageKey, ContractId};
 use wasmtime::{Caller, Extern, Memory};
 
 use log::{debug, error, info, trace, warn};
@@ -46,21 +46,10 @@ impl<'a, S: Db> VmState<'a, S> {
         self.active_contract = None;
     }
 
-    fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<[u8; 32]> {
-        match &self.active_contract {
-            Some(cid) => {
-                // Prepare storage key
-                let mut out = [0u8; 32];
-                // The first 16 bytes are the contract-id
-                out[0..16].copy_from_slice(cid.as_ref());
-                // Then the field key (aka base-key)
-                out[16..24].copy_from_slice(&base_key.to_be_bytes());
-                // Then the sub-field key (aka sub-key)
-                out[24..32].copy_from_slice(&sub_key.to_be_bytes());
-                Ok(out)
-            }
-            None => Err(wasmtime::Error::msg("no contract has been activated")),
-        }
+    fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
+        self.active_contract
+            .map(|cid| StorageKey::user_key(&cid, base_key, sub_key))
+            .ok_or_else(|| wasmtime::Error::msg("no contract has been activated"))
     }
 
     pub fn set_register(&mut self, register_id: u64, value: Vec<u8>) {
