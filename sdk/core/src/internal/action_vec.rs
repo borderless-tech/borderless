@@ -7,6 +7,7 @@
 // A third option would be to make this guy just eat the plain Vec<u8> from the input,
 // this way we avoid at least avoid the duplicate encoding.
 //
+// OR ! We could bake this into the VmState somehow (?)
 use crate::{
     contract::CallAction,
     internal::{read_field, storage_write, write_field},
