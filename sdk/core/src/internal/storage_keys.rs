@@ -58,9 +58,27 @@
 
 use crate::ContractId;
 
+/// Base-Key used to store metadata about the contract
+///
+/// The metadata includes things like contract-info, description and more.
+/// See `METADATA_SUB_KEY_*` for the meaning of different sub-keys.
 pub const BASE_KEY_METADATA: u64 = 0;
+
+/// Base-Key used to store the actions of the contract
+///
+/// The actions are basically an append-only vector stored at the base-key,
+/// where the sub-keys (from `0` to `2^64`) contain the dedicated action values.
 pub const BASE_KEY_ACTIONS: u64 = 1;
+
+/// Base-Key used to store the log of a contract
+///
+/// The log of a contract is a ring-buffer, which is stored in the sub-keys.
 pub const BASE_KEY_LOGS: u64 = 2;
+
+/// Reserved Base-Key - indicating the maximum possible system-key
+///
+/// Everything between `0` and `BASE_KEY_RESERVED` can be used to store special
+/// values for the contract.
 pub const BASE_KEY_RESERVED: u64 = u64::MAX & !(1 << 63); // max. possible system-key
 
 /// A 32-byte storage key constructed from contract ID, base key, and sub key.
