@@ -43,7 +43,7 @@ use borderless_sdk::internal::{
 use borderless_sdk::{contract::CallAction, serialize::from_value};
 
 use serde::{Deserialize, Serialize};
-use xxhash_rust::xxh32::xxh32;
+use xxhash_rust::const_xxh3::xxh3_64;
 fn exec_run() -> Result<()> {
     // Read action
     let input = read_register(REGISTER_INPUT).context("missing input register")?;
@@ -58,8 +58,8 @@ fn exec_run() -> Result<()> {
         .context("missing required method-name")?;
 
     // Read state ( TODO )
-    let storage_key_switch = xxh32("FLIPPER::switch".as_bytes(), 0xff);
-    let storage_key_counter = xxh32("FLIPPER::counter".as_bytes(), 0xff);
+    let storage_key_switch = xxh3_64("FLIPPER::switch".as_bytes());
+    let storage_key_counter = xxh3_64("FLIPPER::counter".as_bytes());
     let switch = read_field(storage_key_switch, 0).context("missing field switch")?;
     let counter = read_field(storage_key_counter, 0).context("missing field counter")?;
     let mut state = Flipper { switch, counter };
@@ -109,8 +109,8 @@ fn exec_introduction() -> Result<()> {
     // - prepare action buffer
     // ...
     // + define additional data, that the contract requires and how it is stored / passed into it
-    let storage_key_switch = xxh32("FLIPPER::switch".as_bytes(), 0xff);
-    let storage_key_counter = xxh32("FLIPPER::counter".as_bytes(), 0xff);
+    let storage_key_switch = xxh3_64("FLIPPER::switch".as_bytes());
+    let storage_key_counter = xxh3_64("FLIPPER::counter".as_bytes());
 
     storage_begin_acid_txn();
     write_field(storage_key_switch, 0, &state.switch);

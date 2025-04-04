@@ -10,16 +10,16 @@ pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
         abi::print(
             msg.as_ref().as_ptr() as _,
             msg.as_ref().len() as _,
-            level as u32,
+            level as u64,
         );
     }
 }
 
-pub fn register_len(register_id: u32) -> Option<u32> {
+pub fn register_len(register_id: u64) -> Option<u64> {
     unsafe {
         let len = abi::register_len(register_id);
         // Check, if the register exists
-        if len == u32::MAX {
+        if len == u64::MAX {
             None
         } else {
             Some(len)
@@ -27,7 +27,7 @@ pub fn register_len(register_id: u32) -> Option<u32> {
     }
 }
 
-pub fn read_register(register_id: u32) -> Option<Vec<u8>> {
+pub fn read_register(register_id: u64) -> Option<Vec<u8>> {
     unsafe {
         let len = register_len(register_id)?;
         let mut buf = Vec::with_capacity(len as usize);
@@ -37,11 +37,11 @@ pub fn read_register(register_id: u32) -> Option<Vec<u8>> {
     }
 }
 
-pub fn read_string_from_register(register_id: u32) -> Option<String> {
+pub fn read_string_from_register(register_id: u64) -> Option<String> {
     read_register(register_id).and_then(|bytes| String::from_utf8(bytes).ok())
 }
 
-pub fn write_register(register_id: u32, data: impl AsRef<[u8]>) {
+pub fn write_register(register_id: u64, data: impl AsRef<[u8]>) {
     unsafe {
         abi::write_register(
             register_id,
@@ -51,31 +51,31 @@ pub fn write_register(register_id: u32, data: impl AsRef<[u8]>) {
     }
 }
 
-pub fn write_string_to_register(register_id: u32, string: impl AsRef<str>) {
+pub fn write_string_to_register(register_id: u64, string: impl AsRef<str>) {
     write_register(register_id, string.as_ref());
 }
 
-pub fn storage_write(base_key: u32, sub_key: u32, value: impl AsRef<[u8]>) {
+pub fn storage_write(base_key: u64, sub_key: u64, value: impl AsRef<[u8]>) {
     let value = value.as_ref();
     unsafe {
         abi::storage_write(base_key, sub_key, value.as_ptr() as _, value.len() as _);
     }
 }
 
-pub fn storage_read(base_key: u32, sub_key: u32) -> Option<Vec<u8>> {
+pub fn storage_read(base_key: u64, sub_key: u64) -> Option<Vec<u8>> {
     unsafe {
         abi::storage_read(base_key, sub_key, REGISTER_ATOMIC_OP);
     }
     read_register(REGISTER_ATOMIC_OP)
 }
 
-pub fn storage_remove(base_key: u32, sub_key: u32) {
+pub fn storage_remove(base_key: u64, sub_key: u64) {
     unsafe {
         abi::storage_remove(base_key, sub_key);
     }
 }
 
-pub fn storage_has_key(base_key: u32, sub_key: u32) -> bool {
+pub fn storage_has_key(base_key: u64, sub_key: u64) -> bool {
     unsafe {
         match abi::storage_has_key(base_key, sub_key) {
             0 => false,
@@ -85,8 +85,8 @@ pub fn storage_has_key(base_key: u32, sub_key: u32) -> bool {
     }
 }
 
-pub fn storage_random_key() -> u32 {
-    unsafe { abi::storage_random_key() }
+pub fn storage_gen_sub_key() -> u64 {
+    unsafe { abi::storage_gen_sub_key() }
 }
 
 pub fn storage_begin_acid_txn() {
@@ -105,7 +105,7 @@ pub fn storage_commit_acid_txn() {
     }
 }
 
-pub fn read_field<Value>(base_key: u32, sub_key: u32) -> Option<Value>
+pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
 where
     Value: DeserializeOwned,
 {
@@ -114,7 +114,7 @@ where
     Some(value)
 }
 
-pub fn write_field<Value>(base_key: u32, sub_key: u32, value: &Value)
+pub fn write_field<Value>(base_key: u64, sub_key: u64, value: &Value)
 where
     Value: Serialize,
 {
@@ -151,7 +151,7 @@ pub mod dev {
         Duration::from_nanos(dur)
     }
 
-    pub fn rand(min: u32, max: u32) -> u32 {
+    pub fn rand(min: u64, max: u64) -> u64 {
         unsafe { abi::rand(min, max) }
     }
 }

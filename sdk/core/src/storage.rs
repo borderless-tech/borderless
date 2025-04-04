@@ -15,12 +15,12 @@ use serde::{de::DeserializeOwned, Serialize};
 /// if there are any changes that needs to be synced to disk.
 pub struct Lazy<T> {
     value: UnsafeCell<Option<T>>,
-    base_key: u32,
+    base_key: u64,
     changed: bool,
 }
 
 impl<T: Serialize + DeserializeOwned> Lazy<T> {
-    pub fn new(base_key: u32, value: Option<T>) -> Self {
+    pub fn new(base_key: u64, value: Option<T>) -> Self {
         let changed = value.is_some();
         Self {
             value: UnsafeCell::new(value),
@@ -28,11 +28,11 @@ impl<T: Serialize + DeserializeOwned> Lazy<T> {
             changed,
         }
     }
-    pub fn init(base_key: u32, value: T) -> Self {
+    pub fn init(base_key: u64, value: T) -> Self {
         Self::new(base_key, Some(value))
     }
 
-    pub fn open(base_key: u32) -> Self {
+    pub fn open(base_key: u64) -> Self {
         Self::new(base_key, None)
     }
 

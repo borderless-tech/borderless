@@ -89,7 +89,10 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
     info!("Using contract-id: {cid}");
 
     info!("Instantiate contract {cid}");
+    let start = Instant::now();
     rt.instantiate_contract(cid, command.contract)?;
+    let elapsed = start.elapsed();
+    info!("Time elapsed: {elapsed:?}");
 
     // Parse command
     match command.action {

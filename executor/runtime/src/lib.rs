@@ -124,6 +124,7 @@ impl<'a, S: Db> Runtime<'a, S> {
         contract_id: ContractId,
         path: impl AsRef<Path>,
     ) -> Result<()> {
+        // TODO: We have to write a "store" that saves all modules
         let module = Module::from_file(&self.engine, path)?;
 
         self.store.data_mut().set_contract(contract_id);
