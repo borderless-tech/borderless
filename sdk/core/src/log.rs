@@ -6,7 +6,7 @@ pub use borderless_abi::LogLevel as Level;
 /// As the abi only allows integer types (and integers would look bad in e.g. json),
 /// we wrap the type into this representation.
 #[derive(serde::Serialize, serde::Deserialize)]
-enum LogLevel {
+pub enum LogLevel {
     Trace,
     Debug,
     Info,
@@ -19,13 +19,13 @@ pub struct LogLine {
     /// Timestamp
     ///
     /// Counted in nanoseconds since unix-epoch
-    timestamp: u128,
+    pub timestamp: u128,
 
     /// Log-Level
-    level: LogLevel,
+    pub level: LogLevel,
 
     /// Log-Message
-    msg: String,
+    pub msg: String,
 }
 
 impl LogLine {

@@ -2,7 +2,10 @@ use std::{fs::read_to_string, path::PathBuf, str::FromStr, time::Instant};
 
 use anyhow::Result;
 use borderless_kv_store::backend::lmdb::Lmdb;
-use borderless_runtime::Runtime;
+use borderless_runtime::{
+    logger::{print_log_line, Logger},
+    Runtime,
+};
 use borderless_sdk::{
     contract::{CallAction, Introduction},
     ContractId,
@@ -119,7 +122,12 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let start = Instant::now();
             rt.process_transaction(&cid, &action)?;
             let elapsed = start.elapsed();
-            info!("Outer time elapsed: {elapsed:?}");
+            info!("Time elapsed: {elapsed:?}");
+
+            // Print log
+            info!("--- Contract-Log:");
+            let log = Logger::new(&db, cid).get_last_log()?;
+            log.into_iter().for_each(print_log_line);
         }
         ContractAction::Revoke { revocation } => todo!(),
         ContractAction::ListActions => {

@@ -4,9 +4,10 @@ use anyhow::Result;
 use borderless_kv_store::*;
 use borderless_sdk::{
     internal::storage_keys::{StorageKey, BASE_KEY_LOGS},
-    log::LogLine,
+    log::{LogLevel, LogLine},
     ContractId,
 };
+use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::CONTRACT_SUB_DB;
@@ -40,6 +41,28 @@ impl<'a, S: Db> Logger<'a, S> {
         Self { db, cid }
     }
 
+    /// Flushes the given log lines into the ring-buffer.
+    ///
+    /// This function writes a batch of log lines into the underlying key-value storage. It performs the following steps:
+    ///
+    /// 1. Reads the current buffer metadata, which includes the logical start and end indices of the stored log lines.
+    /// 2. Determines if adding the new log lines would exceed the fixed capacity (`MAX_LOG_BUFFER_SIZE`). If so,
+    ///    it advances the start index to overwrite the oldest entries.
+    /// 3. Records the flush metadata (`last_flush_start` and `last_flush_count`) to track the range of log lines added in this flush.
+    /// 4. Writes the new log lines to storage using modulo arithmetic to map the logical indices to physical storage keys.
+    /// 5. Updates and persists the modified metadata.
+    ///
+    /// # Arguments
+    ///
+    /// * `lines` - A slice of `LogLine` objects to be flushed into the buffer.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the flush is successful.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any database operation fails or if serialization/deserialization of log lines or metadata fails.
     pub fn flush_lines(&self, lines: &[LogLine]) -> Result<()> {
         let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
         let mut txn = self.db.begin_rw_txn()?;
@@ -171,5 +194,78 @@ impl<'a, S: Db> Logger<'a, S> {
             None => BufferMeta::default(),
         };
         Ok(meta.end)
+    }
+
+    /// Retrieves log lines for the given page and the total number of pages.
+    ///
+    /// # Arguments
+    ///
+    /// * `page` - Zero-based page index.
+    /// * `per_page` - The number of log lines per page.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing:
+    /// - A Vec of LogLine for the requested page.
+    /// - The total number of pages.
+    pub fn get_logs_paginated(&self, page: u64, per_page: u64) -> Result<(Vec<LogLine>, u64)> {
+        let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
+        let txn = self.db.begin_ro_txn()?;
+        let meta_key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, SUB_KEY_META);
+
+        // Retrieve meta information. If not found, assume an empty buffer.
+        let meta = match txn.read(&db_ptr, &meta_key)? {
+            Some(bytes) => postcard::from_bytes(bytes)?,
+            None => BufferMeta {
+                start: 0,
+                end: 0,
+                last_flush_start: 0,
+                last_flush_count: 0,
+            },
+        };
+
+        // Calculate the total number of log lines currently in the ring-buffer.
+        let total_count = meta.end - meta.start;
+        // Calculate total pages using ceiling division.
+        let total_pages = if total_count == 0 {
+            0
+        } else {
+            (total_count + per_page - 1) / per_page
+        };
+
+        // Calculate the logical start and end indices for the requested page.
+        let page_start = meta.start + page * per_page;
+        // If the start index is beyond the end of the stored logs, return an empty Vec.
+        if page_start >= meta.end {
+            return Ok((Vec::new(), total_pages));
+        }
+        let page_end = std::cmp::min(meta.start + (page + 1) * per_page, meta.end);
+
+        // Retrieve the logs for the calculated range.
+        let mut logs = Vec::new();
+        for i in page_start..page_end {
+            // Map the logical index to the physical index in the ring-buffer.
+            let physical_index = i % MAX_LOG_BUFFER_SIZE;
+            let key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, physical_index);
+            if let Some(bytes) = txn.read(&db_ptr, &key)? {
+                let log_line: LogLine = postcard::from_bytes(bytes)?;
+                logs.push(log_line);
+            }
+        }
+        Ok((logs, total_pages))
+    }
+}
+
+/// Just prints a log line to stdout
+///
+/// Ignores the timestamp
+pub fn print_log_line(line: LogLine) {
+    let msg = line.msg;
+    match line.level {
+        LogLevel::Trace => trace!("{msg}"),
+        LogLevel::Debug => debug!("{msg}"),
+        LogLevel::Info => info!("{msg}"),
+        LogLevel::Warn => warn!("{msg}"),
+        LogLevel::Error => error!("{msg}"),
     }
 }
