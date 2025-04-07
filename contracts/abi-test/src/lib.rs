@@ -112,7 +112,6 @@ fn exec_introduction() -> Result<()> {
     // and reserve the keyspace for the contract
     //
     // - add introduction data
-    // - prepare logging
     // - prepare action buffer
     // ...
     // + define additional data, that the contract requires and how it is stored / passed into it

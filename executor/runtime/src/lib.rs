@@ -163,10 +163,11 @@ impl<'a, S: Db> Runtime<'a, S> {
             .data_mut()
             .begin_contract_execution(introduction.contract_id)?;
 
-        let run = instance.get_typed_func::<(), ()>(&mut self.store, "process_introduction")?;
+        // Get introduction function and call it
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_introduction")?;
         let bytes = introduction.to_bytes()?;
         self.store.data_mut().set_register(REGISTER_INPUT, bytes);
-        run.call(&mut self.store, ())?;
+        func.call(&mut self.store, ())?;
         self.store.data_mut().finish_contract_execution()?;
 
         Ok(())
