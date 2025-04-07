@@ -5,6 +5,44 @@ use serde_json::Value;
 
 use crate::{BorderlessId, ContractId, RoleId};
 
+/// Contract Environment
+pub mod env {
+    use crate::{
+        internal::{read_field, storage_keys::*},
+        BorderlessId, ContractId,
+    };
+
+    use super::{Description, Metadata, Role};
+
+    /// Returns the contract-id of the current contract
+    pub fn contract_id() -> ContractId {
+        read_field(BASE_KEY_METADATA, META_SUB_KEY_CONTRACT_ID)
+            .expect("contract-id not in metadata")
+    }
+
+    pub fn participants() -> Vec<BorderlessId> {
+        read_field(BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS)
+            .expect("participants not in metadata")
+    }
+
+    pub fn roles() -> Vec<Role> {
+        read_field(BASE_KEY_METADATA, META_SUB_KEY_ROLES).expect("roles not in metadata")
+    }
+
+    // TODO
+    pub fn sinks() -> Vec<Role> {
+        read_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS).expect("sinks not in metadata")
+    }
+
+    pub fn desc() -> Description {
+        read_field(BASE_KEY_METADATA, META_SUB_KEY_DESC).expect("description not in metadata")
+    }
+
+    pub fn meta() -> Metadata {
+        read_field(BASE_KEY_METADATA, META_SUB_KEY_META).expect("meta not in metadata")
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MethodOrId {

@@ -79,6 +79,10 @@ fn exec_run() -> Result<()> {
             let params: SetSwitchArgs = from_value(action.params)?;
             state.set_switch(params.switch);
         }
+        "print_env" => {
+            // This does not act on the state
+            test_env();
+        }
         other => return Err(new_error!("unknown method: {other}")),
     }
 
@@ -140,6 +144,26 @@ fn exec_introduction() -> Result<()> {
     storage_commit_acid_txn();
 
     Ok(())
+}
+
+// Test out, if the "environment variables" work as expected
+fn test_env() {
+    use borderless_sdk::contract::env;
+    let cid = env::contract_id();
+    info!("Contract-ID: {cid}");
+
+    let participants = env::participants();
+    info!("Participants: {participants:#?}");
+
+    let roles = env::roles();
+    info!("Roles: {roles:#?}");
+
+    // let sinks = env::sinks(); // TODO
+    let desc = env::desc();
+    info!("Description: {desc:?}");
+
+    let meta = env::meta();
+    info!("Metadata: {meta:?}");
 }
 
 // NOTE: Let's dig into this, what the sdk macro should derive
