@@ -8,7 +8,11 @@ use crate::{BorderlessId, ContractId, RoleId};
 /// Contract Environment
 pub mod env {
     use crate::{
-        internal::{read_field, storage_keys::*},
+        internal::{
+            read_field, read_register,
+            registers::{REGISTER_BLOCK_ID, REGISTER_CALLER, REGISTER_EXECUTOR, REGISTER_TX_ID},
+            storage_keys::*,
+        },
         BorderlessId, ContractId,
     };
 
@@ -41,6 +45,28 @@ pub mod env {
     pub fn meta() -> Metadata {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_META).expect("meta not in metadata")
     }
+
+    pub fn caller() -> BorderlessId {
+        let bytes = read_register(REGISTER_CALLER).expect("caller not present");
+        BorderlessId::from_bytes(bytes.try_into().expect("caller must be a borderless-id"))
+    }
+
+    pub fn executor() -> BorderlessId {
+        let bytes = read_register(REGISTER_EXECUTOR).expect("executor not present");
+        BorderlessId::from_bytes(bytes.try_into().expect("executor must be a borderless-id"))
+    }
+
+    // TODO: Tx-ID type
+    // pub fn tx_id() -> TxId {
+    //     let bytes = read_register(REGISTER_TX_ID).expect("tx-id not present");
+    //     todo!()
+    // }
+
+    // TODO: Block-ID type
+    // pub fn block_id() -> BlockId {
+    //     let bytes = read_register(REGISTER_BLOCK_ID).expect("block-id not present");
+    //     todo!()
+    // }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
