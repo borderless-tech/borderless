@@ -75,6 +75,11 @@ pub const BASE_KEY_ACTIONS: u64 = 1;
 /// The log of a contract is a ring-buffer, which is stored in the sub-keys.
 pub const BASE_KEY_LOGS: u64 = 2;
 
+/// Base-Key used to performance-metrics of a contract
+///
+/// These work similar to the logs by using a ring-buffer that is stored in sub-keys.
+pub const BASE_KEY_METRICS: u64 = 3;
+
 /// Reserved Base-Key - indicating the maximum possible system-key
 ///
 /// Everything between `0` and `BASE_KEY_RESERVED` can be used to store special
