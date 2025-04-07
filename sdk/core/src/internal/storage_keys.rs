@@ -58,6 +58,8 @@
 
 use crate::ContractId;
 
+// --- Base-Keys
+
 /// Base-Key used to store metadata about the contract
 ///
 /// The metadata includes things like contract-info, description and more.
@@ -85,6 +87,28 @@ pub const BASE_KEY_METRICS: u64 = 3;
 /// Everything between `0` and `BASE_KEY_RESERVED` can be used to store special
 /// values for the contract.
 pub const BASE_KEY_RESERVED: u64 = u64::MAX & !(1 << 63); // max. possible system-key
+
+// --- NOTE: The META_SUB_*-keys are basically the values of the introduction
+/// Sub-Key to store the contract-id
+pub const META_SUB_KEY_CONTRACT_ID: u64 = 0;
+
+/// Sub-Key to store the list of participants
+pub const META_SUB_KEY_PARTICIPANTS: u64 = 1;
+
+/// Sub-Key to store the list of roles
+pub const META_SUB_KEY_ROLES: u64 = 2;
+
+/// Sub-Key to store the list of available sinks
+pub const META_SUB_KEY_SINKS: u64 = 3;
+
+/// Sub-Key to store the contract description
+pub const META_SUB_KEY_DESC: u64 = 4;
+
+/// Sub-Key to store the contract metadata
+pub const META_SUB_KEY_META: u64 = 5;
+
+/// Sub-Key to store the initial state of the contract
+pub const META_SUB_KEY_INIT_STATE: u64 = 6;
 
 /// A 32-byte storage key constructed from contract ID, base key, and sub key.
 ///
@@ -285,5 +309,22 @@ mod tests {
     fn is_system_key_reserved() {
         assert!(is_system_key(BASE_KEY_RESERVED));
         assert!(!is_user_key(BASE_KEY_RESERVED));
+    }
+
+    #[test]
+    fn base_keys_differ() {
+        let mut keys = vec![
+            BASE_KEY_METADATA,
+            BASE_KEY_ACTIONS,
+            BASE_KEY_LOGS,
+            BASE_KEY_METRICS,
+            BASE_KEY_RESERVED,
+        ];
+        let n_keys = keys.len();
+        // If two keys would have the same value,
+        // the vector lengths would differ after deduplication
+        keys.sort();
+        keys.dedup(); // required sorting
+        assert_eq!(n_keys, keys.len());
     }
 }
