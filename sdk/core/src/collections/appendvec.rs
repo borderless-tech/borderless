@@ -1,6 +1,6 @@
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::internal::{read_field, write_field};
+use crate::internal::{read_field, storage_traits, write_field};
 
 const SUB_KEY_LEN: u64 = u64::MAX;
 
@@ -37,16 +37,6 @@ impl<T: Serialize> AppendVec<T> {
         debug_assert!(self.len_commited < SUB_KEY_LEN);
         self.cache.push(value);
     }
-
-    /// Never call this directly ! This function is used by the macro !
-    pub fn commit(self) {
-        let full_len = self.len_commited + self.cache.len() as u64;
-        for (idx, value) in self.cache.into_iter().enumerate() {
-            let sub_key = self.len_commited + idx as u64;
-            write_field(self.base_key, sub_key, &value);
-        }
-        write_field(self.base_key, SUB_KEY_LEN, &full_len);
-    }
 }
 
 impl<T: DeserializeOwned + Clone> AppendVec<T> {
@@ -78,5 +68,28 @@ impl<'a, T: DeserializeOwned + Clone> Iterator for Iter<'a, T> {
         let idx = self.idx;
         self.idx += 1;
         self.vec.get(idx)
+    }
+}
+
+// --- Storage trait implementations
+
+impl<T: Serialize + DeserializeOwned> storage_traits::private::Sealed for AppendVec<T> {}
+
+impl<T: Serialize + DeserializeOwned> storage_traits::Storeable for AppendVec<T> {
+    fn decode(base_key: u64) -> Self {
+        Self::new(base_key)
+    }
+
+    fn commit(self, base_key: u64) {
+        assert_eq!(
+            self.base_key, base_key,
+            "implementation must commit to the same base-key"
+        );
+        let full_len = self.len_commited + self.cache.len() as u64;
+        for (idx, value) in self.cache.into_iter().enumerate() {
+            let sub_key = self.len_commited + idx as u64;
+            write_field(self.base_key, sub_key, &value);
+        }
+        write_field(self.base_key, SUB_KEY_LEN, &full_len);
     }
 }

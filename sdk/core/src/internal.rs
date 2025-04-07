@@ -1,6 +1,7 @@
 pub mod action_vec;
 pub mod registers;
 pub mod storage_keys;
+pub mod storage_traits;
 
 use borderless_abi as abi;
 use registers::REGISTER_ATOMIC_OP;
@@ -131,13 +132,21 @@ pub fn storage_commit_acid_txn() {
     }
 }
 
-// TODO: This is not an option, as it fails
+/// Reads a value from the storage via the register.
+///
+/// Returns `None` if no value could be found at the given storage keys.
 pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
 where
     Value: DeserializeOwned,
 {
     let bytes = storage_read(base_key, sub_key)?;
-    let value = postcard::from_bytes::<Value>(&bytes).unwrap();
+    let value = match postcard::from_bytes::<Value>(&bytes) {
+        Ok(value) => value,
+        Err(e) => {
+            error!("read-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
+            abort()
+        }
+    };
     Some(value)
 }
 
