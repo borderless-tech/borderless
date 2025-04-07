@@ -110,6 +110,9 @@ pub const META_SUB_KEY_META: u64 = 5;
 /// Sub-Key to store the initial state of the contract
 pub const META_SUB_KEY_INIT_STATE: u64 = 6;
 
+/// Reserved Sub-Key - max. possible value.
+pub const META_SUB_KEY_RESERVED: u64 = u64::MAX & !(1 << 63);
+
 /// A 32-byte storage key constructed from contract ID, base key, and sub key.
 ///
 /// Use [`StorageKey::user_key`] or [`StorageKey::system_key`] to construct values safely.

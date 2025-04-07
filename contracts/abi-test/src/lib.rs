@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use borderless_sdk::contract::Introduction;
 use borderless_sdk::internal::storage_keys::BASE_KEY_ACTIONS;
+use borderless_sdk::internal::write_metadata_client;
 use borderless_sdk::internal::{action_vec::ActionVec, storage_has_key, storage_remove};
 use borderless_sdk::{error, info, new_error, Context, Result};
 
@@ -102,7 +103,7 @@ fn exec_introduction() -> Result<()> {
     info!("{s}");
 
     // Parse initial state
-    let state: Flipper = from_value(introduction.initial_state)?;
+    let state: Flipper = from_value(introduction.initial_state.clone())?;
     info!(
         "Introduce new flipper: switch={}, counter={}",
         state.switch, state.counter
@@ -111,8 +112,8 @@ fn exec_introduction() -> Result<()> {
     // TODO: Implement 'real' storage handling here,
     // and reserve the keyspace for the contract
     //
-    // - add introduction data
-    // - prepare action buffer
+    // - [x] add introduction data
+    // - [-] prepare action buffer
     // ...
     // + define additional data, that the contract requires and how it is stored / passed into it
     let storage_key_switch = xxh3_64("FLIPPER::switch".as_bytes());
@@ -121,11 +122,15 @@ fn exec_introduction() -> Result<()> {
     let action_vec = ActionVec::new(BASE_KEY_ACTIONS);
 
     storage_begin_acid_txn();
+    // Write introduction values
+    write_metadata_client(&introduction);
+
     // Write state
     write_field(storage_key_switch, 0, &state.switch);
     write_field(storage_key_counter, 0, &state.counter);
     // Clear actions vector
     // (TODO: In production we might not want to do this, but instead fail, if the contract already has actions)
+    //  -> I think this can / should be done from the outside
     let mut action_sub_key = 0;
     while storage_has_key(BASE_KEY_ACTIONS, action_sub_key) {
         storage_remove(BASE_KEY_ACTIONS, action_sub_key);
