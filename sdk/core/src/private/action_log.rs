@@ -17,6 +17,8 @@ pub struct ActionLog {
     buffer: Option<ActionRecord>,
 }
 
+// TODO: Right now this is saved as a "user" value, and not as a system-value, because we use read_field + write_field !!
+
 /// The `ActionRecord` is used to record actions in the [`ActionLog`].
 ///
 /// The record bundles the raw json-bytes of the action together with meta-information like the transaction identifier
@@ -67,6 +69,8 @@ impl ActionLog {
             value: value_bytes,
         });
     }
+
+    // TODO: Add method for length
 
     /// Never call this directly ! This function is used by the macro !
     pub fn commit(self) {
