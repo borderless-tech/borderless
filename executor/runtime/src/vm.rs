@@ -7,7 +7,7 @@ use std::{
 };
 
 use borderless_sdk::{
-    __private::storage_keys::{StorageKey, BASE_KEY_ACTIONS},
+    __private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
     contract::{ActionRecord, CallAction},
     log::LogLine,
     ContractId,
@@ -149,7 +149,7 @@ impl<'a, S: Db> VmState<'a, S> {
         idx: usize,
     ) -> anyhow::Result<Option<ActionRecord>> {
         use borderless_sdk::__private::from_postcard_bytes;
-        let storage_key = StorageKey::user_key(cid, BASE_KEY_ACTIONS, idx as u64);
+        let storage_key = StorageKey::user_key(cid, BASE_KEY_ACTION_LOG, idx as u64);
 
         let txn = self.db.begin_ro_txn()?;
         let value = if let Some(bytes) = txn.read(&self.db_ptr, &storage_key)? {

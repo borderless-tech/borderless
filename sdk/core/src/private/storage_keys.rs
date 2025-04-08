@@ -70,7 +70,7 @@ pub const BASE_KEY_METADATA: u64 = 0;
 ///
 /// The actions are basically an append-only vector stored at the base-key,
 /// where the sub-keys (from `0` to `2^64`) contain the dedicated action values.
-pub const BASE_KEY_ACTIONS: u64 = 1;
+pub const BASE_KEY_ACTION_LOG: u64 = 1;
 
 /// Base-Key used to store the log of a contract
 ///
@@ -299,8 +299,8 @@ mod tests {
 
     #[test]
     fn is_system_key_actions() {
-        assert!(is_system_key(BASE_KEY_ACTIONS));
-        assert!(!is_user_key(BASE_KEY_ACTIONS));
+        assert!(is_system_key(BASE_KEY_ACTION_LOG));
+        assert!(!is_user_key(BASE_KEY_ACTION_LOG));
     }
 
     #[test]
@@ -319,7 +319,7 @@ mod tests {
     fn base_keys_differ() {
         let mut keys = vec![
             BASE_KEY_METADATA,
-            BASE_KEY_ACTIONS,
+            BASE_KEY_ACTION_LOG,
             BASE_KEY_LOGS,
             BASE_KEY_METRICS,
             BASE_KEY_RESERVED,

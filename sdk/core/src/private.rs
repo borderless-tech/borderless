@@ -31,7 +31,6 @@ use crate::{contract::Introduction, error};
 // Maybe we can utilize this in a way, that makes our wasm code testable ?
 // Because without links to the abi, we cannot really test all this..
 
-// --- TODO: Place these functions into some ::__private or ::core_impl or ::hazmat module
 pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
     unsafe {
         abi::print(

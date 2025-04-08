@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    read_field, storage_has_key, storage_keys::BASE_KEY_ACTIONS, storage_remove, write_field,
+    read_field, storage_has_key, storage_keys::BASE_KEY_ACTION_LOG, storage_remove, write_field,
 };
 
 /// Sub-Key where the length of the action-log is stored
@@ -39,10 +39,10 @@ pub struct ActionRecord {
 impl ActionLog {
     /// Opens (or creates) the action log
     pub fn open() -> Self {
-        let len: u64 = if let Some(len) = read_field(BASE_KEY_ACTIONS, SUB_KEY_LEN) {
+        let len: u64 = if let Some(len) = read_field(BASE_KEY_ACTION_LOG, SUB_KEY_LEN) {
             len
         } else {
-            write_field(BASE_KEY_ACTIONS, SUB_KEY_LEN, &0u64);
+            write_field(BASE_KEY_ACTION_LOG, SUB_KEY_LEN, &0u64);
             0
         };
         Self {
@@ -55,7 +55,7 @@ impl ActionLog {
     ///
     /// Basically checks, if the length of `0` has been written to the sub-key `SUB_KEY_LEN`.
     pub fn exists() -> bool {
-        storage_has_key(BASE_KEY_ACTIONS, SUB_KEY_LEN)
+        storage_has_key(BASE_KEY_ACTION_LOG, SUB_KEY_LEN)
     }
 
     /// Pushes a new value to the log
@@ -76,15 +76,15 @@ impl ActionLog {
         );
         let full_len = self.len_commited + 1;
         let sub_key = self.len_commited;
-        write_field(BASE_KEY_ACTIONS, sub_key, &self.buffer.unwrap());
-        write_field(BASE_KEY_ACTIONS, SUB_KEY_LEN, &full_len);
+        write_field(BASE_KEY_ACTION_LOG, sub_key, &self.buffer.unwrap());
+        write_field(BASE_KEY_ACTION_LOG, SUB_KEY_LEN, &full_len);
     }
 
     // TODO: Remove this interface for production, this is super dangerous !
     pub fn clear(&self) {
         let mut action_sub_key = 0;
-        while storage_has_key(BASE_KEY_ACTIONS, action_sub_key) {
-            storage_remove(BASE_KEY_ACTIONS, action_sub_key);
+        while storage_has_key(BASE_KEY_ACTION_LOG, action_sub_key) {
+            storage_remove(BASE_KEY_ACTION_LOG, action_sub_key);
             action_sub_key += 1;
         }
     }
@@ -94,7 +94,7 @@ impl ActionLog {
         let idx = idx as u64;
         debug_assert!(idx < SUB_KEY_LEN);
         if idx < self.len_commited {
-            read_field(BASE_KEY_ACTIONS, idx)
+            read_field(BASE_KEY_ACTION_LOG, idx)
         } else {
             None
         }
