@@ -89,9 +89,12 @@ impl<'a, S: Db> VmState<'a, S> {
         Ok(())
     }
 
+    /// Generates the storage key based on the currently active contract.
+    ///
+    /// Note: Does not do any further checking, if the key is in user or system space!
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
         self.active_contract
-            .map(|cid| StorageKey::user_key(&cid, base_key, sub_key))
+            .map(|cid| StorageKey::new(&cid, base_key, sub_key))
             .ok_or_else(|| wasmtime::Error::msg("no contract has been activated"))
     }
 
@@ -149,12 +152,10 @@ impl<'a, S: Db> VmState<'a, S> {
         idx: usize,
     ) -> anyhow::Result<Option<ActionRecord>> {
         use borderless_sdk::__private::from_postcard_bytes;
-        let storage_key = StorageKey::user_key(cid, BASE_KEY_ACTION_LOG, idx as u64);
+        let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, idx as u64);
 
         let txn = self.db.begin_ro_txn()?;
         let value = if let Some(bytes) = txn.read(&self.db_ptr, &storage_key)? {
-            // TODO: We want to save actions as json and not as postcard !
-            // -> Currently, we use the append-vec for this, which is not ideal
             Some(from_postcard_bytes(bytes)?)
         } else {
             None

@@ -35,7 +35,7 @@
 //! assert_eq!(user_key.sub_key(), sub);
 //! ```
 //!
-//! You can use the provided helper function [`blind_base_key`] to ensure, that any random `u64` will always
+//! You can use the provided helper function [`make_user_key`] to ensure, that any random `u64` will always
 //! be a user-key and never accidentaly a system-key:
 //!
 //! ## Example
@@ -48,7 +48,7 @@
 //! let key = BASE_KEY_METADATA;
 //! assert!(is_system_key(key));
 //!
-//! let user_key = blind_base_key(key);
+//! let user_key = make_user_key(key);
 //! assert!(is_user_key(user_key));
 //!
 //! // You don't need to do this, if you use the StorageKey constructor:
@@ -120,6 +120,14 @@ pub const META_SUB_KEY_RESERVED: u64 = u64::MAX & !(1 << 63);
 pub struct StorageKey([u8; 32]);
 
 impl StorageKey {
+    /// Creates a new storage key
+    ///
+    /// Does not set the high-bits of the key to either the user  or system key-space.
+    pub fn new(cid: &ContractId, base_key: u64, sub_key: u64) -> Self {
+        let key = calc_storage_key(cid, base_key, sub_key);
+        Self(key)
+    }
+
     /// Creates a user-space storage key.
     ///
     /// Sets the top bit of `base_key` to indicate the user space.
@@ -127,7 +135,7 @@ impl StorageKey {
     /// # Panics
     /// Panics in debug mode if the result is not in the user space.
     pub fn user_key(cid: &ContractId, base_key: u64, sub_key: u64) -> Self {
-        let base_key = blind_base_key(base_key);
+        let base_key = make_user_key(base_key);
         debug_assert!(
             is_user_key(base_key) && !is_system_key(base_key),
             "blinded base_key must be in user-space"
@@ -206,16 +214,19 @@ pub fn calc_storage_key(cid: &ContractId, base_key: u64, sub_key: u64) -> [u8; 3
 }
 
 /// Sets the high bit of the base key to mark it as user-space.
-pub fn blind_base_key(base_key: u64) -> u64 {
+#[inline]
+pub fn make_user_key(base_key: u64) -> u64 {
     base_key | (1 << 63)
 }
 
 /// Returns `true` if the base key is marked as user-space.
+#[inline]
 pub fn is_user_key(base_key: u64) -> bool {
     base_key & (1 << 63) != 0
 }
 
 /// Returns `true` if the base key is marked as system/internal-space.
+#[inline]
 pub fn is_system_key(base_key: u64) -> bool {
     base_key & (1 << 63) == 0
 }
@@ -232,7 +243,7 @@ mod tests {
         let key = StorageKey::user_key(&cid, base, sub);
 
         assert_eq!(key.contract_id(), cid);
-        assert_eq!(key.base_key(), blind_base_key(base));
+        assert_eq!(key.base_key(), make_user_key(base));
         assert_eq!(key.sub_key(), sub);
         assert!(key.is_user_key());
         assert!(!key.is_system_key());
@@ -273,7 +284,7 @@ mod tests {
     #[test]
     fn blinding_sets_high_bit() {
         let base: u64 = 12345;
-        let blinded = blind_base_key(base);
+        let blinded = make_user_key(base);
         assert_eq!(blinded >> 63, 1);
     }
 
@@ -281,7 +292,7 @@ mod tests {
     fn base_key_checks() {
         // Check, if user-space and system-keys are correctly separated
         for _ in 0..1_000_000 {
-            let user_key = blind_base_key(rand::random());
+            let user_key = make_user_key(rand::random());
             let system_key = rand::random::<u64>() & !(1 << 63); // Clear the high-bit
 
             assert!(is_user_key(user_key));
