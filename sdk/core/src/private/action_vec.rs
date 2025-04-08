@@ -14,8 +14,8 @@
 //    (I think this makes the most sense tbh)
 //    We could align this with the current way of how things are stored
 use crate::{
+    __private::{read_field, storage_write, write_field},
     contract::CallAction,
-    internal::{read_field, storage_write, write_field},
 };
 
 const SUB_KEY_LEN: u64 = u64::MAX;

@@ -3,7 +3,7 @@ use std::cmp::min;
 use anyhow::Result;
 use borderless_kv_store::*;
 use borderless_sdk::{
-    internal::storage_keys::{StorageKey, BASE_KEY_LOGS},
+    __private::storage_keys::{StorageKey, BASE_KEY_LOGS},
     log::{LogLevel, LogLine},
     ContractId,
 };

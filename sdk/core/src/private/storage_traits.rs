@@ -4,7 +4,7 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
     error,
-    internal::{abort, read_field, write_field},
+    __private::{abort, read_field, write_field},
 };
 
 /// Trait used by the macro for storing and commiting values.

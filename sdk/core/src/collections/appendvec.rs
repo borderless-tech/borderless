@@ -1,6 +1,6 @@
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::internal::{read_field, storage_traits, write_field};
+use crate::__private::{read_field, storage_traits, write_field};
 
 const SUB_KEY_LEN: u64 = u64::MAX;
 

@@ -1,6 +1,5 @@
 pub mod collections;
 pub mod contract;
-pub mod internal;
 pub mod log;
 pub mod storage;
 
@@ -11,6 +10,14 @@ pub mod serialize {
 }
 
 use serde::{Deserialize, Serialize};
+
+/// This module is **not** part of the public API.
+/// It exists, because the procedural macros and some internal implementations (like the contract runtime) rely on it.
+///
+/// You probably don't want to use this directly.
+#[doc(hidden)]
+#[path = "private.rs"]
+pub mod __private;
 
 /// Generic macro to define wrapper types around u128 and uuid.
 macro_rules! impl_uuid {

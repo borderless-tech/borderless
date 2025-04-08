@@ -1,9 +1,15 @@
+// We have to set the path explicitly, because the module is named "__private", while the directory is named "private"
+#[path = "private/action_vec.rs"]
 pub mod action_vec;
+#[path = "private/registers.rs"]
 pub mod registers;
+#[path = "private/storage_keys.rs"]
 pub mod storage_keys;
+#[path = "private/storage_traits.rs"]
 pub mod storage_traits;
 
 use borderless_abi as abi;
+
 use registers::REGISTER_ATOMIC_OP;
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -25,7 +31,7 @@ use crate::{contract::Introduction, error};
 // Maybe we can utilize this in a way, that makes our wasm code testable ?
 // Because without links to the abi, we cannot really test all this..
 
-// --- TODO: Place these functions into some ::internal or ::core_impl or ::hazmat module
+// --- TODO: Place these functions into some ::__private or ::core_impl or ::hazmat module
 pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
     unsafe {
         abi::print(

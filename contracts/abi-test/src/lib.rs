@@ -1,9 +1,9 @@
 use std::fmt::Display;
 
 use borderless_sdk::contract::Introduction;
-use borderless_sdk::internal::storage_keys::BASE_KEY_ACTIONS;
-use borderless_sdk::internal::write_metadata_client;
-use borderless_sdk::internal::{action_vec::ActionVec, storage_has_key, storage_remove};
+use borderless_sdk::__private::storage_keys::BASE_KEY_ACTIONS;
+use borderless_sdk::__private::write_metadata_client;
+use borderless_sdk::__private::{action_vec::ActionVec, storage_has_key, storage_remove};
 use borderless_sdk::{error, info, new_error, Context, Result};
 
 #[no_mangle]
@@ -39,7 +39,7 @@ pub extern "C" fn process_revocation() {
     }
 }
 
-use borderless_sdk::internal::{
+use borderless_sdk::__private::{
     dev, read_field, read_register, registers::REGISTER_INPUT, storage_begin_acid_txn,
     storage_commit_acid_txn, write_field,
 };

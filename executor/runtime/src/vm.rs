@@ -8,7 +8,7 @@ use std::{
 
 use borderless_sdk::{
     contract::CallAction,
-    internal::storage_keys::{StorageKey, BASE_KEY_ACTIONS},
+    __private::storage_keys::{StorageKey, BASE_KEY_ACTIONS},
     log::LogLine,
     ContractId,
 };
@@ -144,7 +144,7 @@ impl<'a, S: Db> VmState<'a, S> {
 
     /// Tries to read the action with the given index for the currently active contract
     pub fn read_action(&self, cid: &ContractId, idx: usize) -> anyhow::Result<Option<CallAction>> {
-        use borderless_sdk::internal::from_postcard_bytes;
+        use borderless_sdk::__private::from_postcard_bytes;
         let storage_key = StorageKey::user_key(cid, BASE_KEY_ACTIONS, idx as u64);
 
         let txn = self.db.begin_ro_txn()?;

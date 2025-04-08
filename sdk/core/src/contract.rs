@@ -8,12 +8,12 @@ use crate::{BorderlessId, ContractId, RoleId};
 /// Contract Environment
 pub mod env {
     use crate::{
-        internal::{
+        BorderlessId, ContractId,
+        __private::{
             read_field, read_register,
             registers::{REGISTER_BLOCK_ID, REGISTER_CALLER, REGISTER_EXECUTOR, REGISTER_TX_ID},
             storage_keys::*,
         },
-        BorderlessId, ContractId,
     };
 
     use super::{Description, Metadata, Role};

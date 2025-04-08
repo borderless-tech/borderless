@@ -1,4 +1,4 @@
-pub use crate::internal::print;
+pub use crate::__private::print;
 pub use borderless_abi::LogLevel as Level;
 
 /// Internal type to represent the log-level

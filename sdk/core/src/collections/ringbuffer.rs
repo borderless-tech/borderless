@@ -4,7 +4,7 @@
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::internal::read_field;
+use crate::__private::read_field;
 
 /// Storage key, where the meta-information about the buffer is saved
 const SUB_KEY_META: u64 = u64::MAX;
