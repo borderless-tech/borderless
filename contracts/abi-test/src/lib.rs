@@ -53,8 +53,8 @@ fn exec_run() -> Result<()> {
 
     let action = CallAction::from_bytes(&input)?;
 
-    let mut action_vec = ActionLog::open();
-    action_vec.push(input, 0); // TODO: tx-sq-number !
+    let mut action_log = ActionLog::open();
+    action_log.push(input, 0); // TODO: tx-sq-number !
 
     let s = action.pretty_print()?;
     info!("{s}");
@@ -89,7 +89,7 @@ fn exec_run() -> Result<()> {
     storage_begin_acid_txn();
     write_field(storage_key_switch, 0, &state.switch);
     write_field(storage_key_counter, 0, &state.counter);
-    action_vec.commit();
+    action_log.commit();
     storage_commit_acid_txn();
     info!("Commited flipper: {state}");
 
@@ -135,7 +135,6 @@ fn exec_introduction() -> Result<()> {
     // (TODO: In production we might not want to do this, but instead fail, if the contract already has actions)
     //  -> I think this can / should be done from the outside
     action_log.clear();
-    action_log.commit();
     storage_commit_acid_txn();
 
     Ok(())
