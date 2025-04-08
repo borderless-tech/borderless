@@ -4,9 +4,12 @@ use std::path::Path;
 use anyhow::{anyhow, Context, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
-use borderless_sdk::contract::Introduction;
 use borderless_sdk::__private::registers::REGISTER_INPUT;
-use borderless_sdk::{contract::CallAction, ContractId};
+use borderless_sdk::contract::Introduction;
+use borderless_sdk::{
+    contract::{ActionRecord, CallAction},
+    ContractId,
+};
 use vm::VmState;
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
 
@@ -177,7 +180,7 @@ impl<'a, S: Db> Runtime<'a, S> {
         todo!()
     }
 
-    pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<CallAction>> {
+    pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
         self.store.data().read_action(cid, idx)
     }
 }

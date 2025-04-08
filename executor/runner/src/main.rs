@@ -130,7 +130,8 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         ContractAction::Revoke { revocation } => todo!(),
         ContractAction::ListActions => {
             let mut idx = 0;
-            while let Some(action) = rt.read_action(&cid, idx)? {
+            while let Some(record) = rt.read_action(&cid, idx)? {
+                let action = CallAction::from_bytes(&record.value)?;
                 info!("{}", action.pretty_print()?);
                 idx += 1;
             }
