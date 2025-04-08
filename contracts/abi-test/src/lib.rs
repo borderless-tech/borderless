@@ -1,9 +1,8 @@
 use std::fmt::Display;
 
-use borderless_sdk::contract::Introduction;
-use borderless_sdk::__private::storage_keys::BASE_KEY_ACTIONS;
+use borderless_sdk::__private::action_log::ActionLog;
 use borderless_sdk::__private::write_metadata_client;
-use borderless_sdk::__private::{action_vec::ActionVec, storage_has_key, storage_remove};
+use borderless_sdk::contract::Introduction;
 use borderless_sdk::{error, info, new_error, Context, Result};
 
 #[no_mangle]
@@ -54,8 +53,8 @@ fn exec_run() -> Result<()> {
 
     let action = CallAction::from_bytes(&input)?;
 
-    let mut action_vec = ActionVec::new(BASE_KEY_ACTIONS);
-    action_vec.push(action.clone()); // Hmm, could we maybe avoid this copy ?
+    let mut action_vec = ActionLog::open();
+    action_vec.push(input, 0); // TODO: tx-sq-number !
 
     let s = action.pretty_print()?;
     info!("{s}");
@@ -123,7 +122,7 @@ fn exec_introduction() -> Result<()> {
     let storage_key_switch = xxh3_64("FLIPPER::switch".as_bytes());
     let storage_key_counter = xxh3_64("FLIPPER::counter".as_bytes());
 
-    let action_vec = ActionVec::new(BASE_KEY_ACTIONS);
+    let action_log = ActionLog::open();
 
     storage_begin_acid_txn();
     // Write introduction values
@@ -135,12 +134,8 @@ fn exec_introduction() -> Result<()> {
     // Clear actions vector
     // (TODO: In production we might not want to do this, but instead fail, if the contract already has actions)
     //  -> I think this can / should be done from the outside
-    let mut action_sub_key = 0;
-    while storage_has_key(BASE_KEY_ACTIONS, action_sub_key) {
-        storage_remove(BASE_KEY_ACTIONS, action_sub_key);
-        action_sub_key += 1;
-    }
-    action_vec.commit();
+    action_log.clear();
+    action_log.commit();
     storage_commit_acid_txn();
 
     Ok(())

@@ -92,6 +92,7 @@ pub const BASE_KEY_RESERVED: u64 = u64::MAX & !(1 << 63); // max. possible syste
 /// Sub-Key to store the contract-id
 pub const META_SUB_KEY_CONTRACT_ID: u64 = 0;
 
+// TODO: We could sub-sum these three under INFO, as this is the "old" contract-info struct
 /// Sub-Key to store the list of participants
 pub const META_SUB_KEY_PARTICIPANTS: u64 = 1;
 
