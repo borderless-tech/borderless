@@ -60,13 +60,13 @@ impl KvDatabase for lmdb::Database {}
 ///
 /// This implementation ensures compatibility with the key-value interface by exposing the
 /// underlying LMDB database.
-impl<'env> KvHandle<lmdb::Database> for lmdb::Database {
+impl KvHandle<lmdb::Database> for lmdb::Database {
     /// Returns a reference to the underlying LMDB database.
     ///
     /// ### Returns:
     /// - A reference to the database managed by this handle.
     fn db(&self) -> &lmdb::Database {
-        &self
+        self
     }
 }
 
@@ -535,12 +535,11 @@ mod tests {
         env
     }
 
-    fn create_test_handle<'env, DB: KvDatabase, Env: Db>(env: &'env Env) -> impl KvHandle<DB>
+    fn create_test_handle<DB: KvDatabase, Env: Db>(env: &Env) -> impl KvHandle<DB>
     where
         <Env as Db>::Handle: KvHandle<DB>,
     {
-        let handle = env.create_sub_db("test").unwrap();
-        handle
+        env.create_sub_db("test").unwrap()
     }
 
     fn write_with_rw_txn<'env, DB: KvDatabase, Txn: RwTx<'env, DB>>(

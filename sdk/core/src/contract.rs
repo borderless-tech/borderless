@@ -184,9 +184,9 @@ pub struct SemVer {
     pub patch: u32,
 }
 
-impl ToString for SemVer {
-    fn to_string(&self) -> String {
-        format!("{}.{}.{}", self.major, self.minor, self.patch)
+impl Display for SemVer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 
@@ -194,7 +194,7 @@ impl FromStr for SemVer {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        const ERR: &'static str = "Failed to parse version string. Expected: major.minor.patch";
+        const ERR: &str = "Failed to parse version string. Expected: major.minor.patch";
         let mut pieces = s.split('.');
         let major = u32::from_str(pieces.next().ok_or(ERR)?).map_err(|_| ERR)?;
         let minor = u32::from_str(pieces.next().ok_or(ERR)?).map_err(|_| ERR)?;

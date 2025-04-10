@@ -63,7 +63,7 @@ impl<T: Serialize + DeserializeOwned> RingBuffer<T> {
     pub fn push(&mut self, value: T) {
         let idx = self.len();
         self.cache.push(Op::Push {
-            idx: idx as u64,
+            idx,
             value,
         });
     }

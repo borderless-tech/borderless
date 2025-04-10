@@ -167,7 +167,11 @@ impl StorageKey {
 
     /// Converts the storage key to a hexadecimal string (for logging/debugging).
     pub fn to_hex(&self) -> String {
-        self.0.iter().map(|b| format!("{:02x}", b)).collect()
+        use std::fmt::Write;
+        self.0.iter().fold(String::new(), |mut output, b| {
+            let _ = write!(output, "{b:02X}");
+            output
+        })
     }
 
     /// Extracts the contract ID from the key.

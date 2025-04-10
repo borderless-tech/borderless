@@ -167,7 +167,7 @@ macro_rules! impl_u32id {
 /// as we utilize standard version 8 uuids.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct AgentId(uuid::Uuid);
-impl_uuid!(AgentId, 0xaF, 0xa0);
+impl_uuid!(AgentId, 0xaf, 0xa0);
 
 /// The borderless-id used to identify participants in the borderless-network.
 ///
@@ -187,7 +187,7 @@ impl_uuid!(AgentId, 0xaF, 0xa0);
 /// as we utilize standard version 8 uuids.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct BorderlessId(uuid::Uuid);
-impl_uuid!(BorderlessId, 0xbF, 0xb0);
+impl_uuid!(BorderlessId, 0xbf, 0xb0);
 
 /// A contract-id used to itentify different SmartContracts in the borderless-ecosystem.
 ///
@@ -207,7 +207,7 @@ impl_uuid!(BorderlessId, 0xbF, 0xb0);
 /// as we utilize standard version 8 uuids.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct ContractId(uuid::Uuid);
-impl_uuid!(ContractId, 0xcF, 0xc0);
+impl_uuid!(ContractId, 0xcf, 0xc0);
 
 /// A decentralized-id used to itentify different assets and documents in the borderless-ecosystem.
 ///
@@ -227,7 +227,7 @@ impl_uuid!(ContractId, 0xcF, 0xc0);
 /// as we utilize standard version 8 uuids.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct Did(uuid::Uuid);
-impl_uuid!(Did, 0xdF, 0xd0);
+impl_uuid!(Did, 0xdf, 0xd0);
 
 /// A role-id.
 ///

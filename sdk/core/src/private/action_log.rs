@@ -127,7 +127,7 @@ impl ActionLog {
 
     /// Returns an iterator over all action-records
     pub fn iter(&self) -> Iter<'_> {
-        Iter { log: &self, idx: 0 }
+        Iter { log: self, idx: 0 }
     }
 }
 

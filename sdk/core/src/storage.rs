@@ -147,7 +147,7 @@ impl<T: Serialize + DeserializeOwned> Serialize for Lazy<T> {
     where
         S: serde::Serializer,
     {
-        T::serialize(&self, serializer)
+        T::serialize(self, serializer)
     }
 }
 

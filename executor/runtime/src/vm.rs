@@ -51,7 +51,7 @@ impl<'a, S: Db> VmState<'a, S> {
             registers: Default::default(),
             db,
             db_ptr,
-            db_acid_txn: None.into(),
+            db_acid_txn: None,
             // _marker: PhantomData,
             last_timer: None,
             log_buffer: Vec::new(),
@@ -140,7 +140,7 @@ impl<'a, S: Db> VmState<'a, S> {
             "transactions should only be created when there is an active contract"
         );
         let now = Instant::now();
-        match std::mem::replace(&mut self.db_acid_txn, None) {
+        match self.db_acid_txn.take() {
             Some(txn) => {
                 txn.commit()?; // TODO: This guy is taking 10x the time of the entire module execution
                                // (maybe in production we don't block the wasm module here ?)
@@ -218,19 +218,19 @@ pub fn tic(mut caller: Caller<'_, VmState<impl Db>>) {
 pub fn toc(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
     let timer = caller.data().last_timer.context("no timer present")?;
     let elapsed = timer.elapsed();
-    Ok(elapsed
+    elapsed
         .as_nanos()
         .try_into()
-        .context("your program should not run for 584.942 years")?)
+        .context("your program should not run for 584.942 years")
 }
 
 pub fn timestamp() -> wasmtime::Result<u64> {
-    Ok(SystemTime::now()
+    SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .context("timestamp < 1970")?
         .as_millis()
         .try_into()
-        .context("u64 should fit for 584942417 years")?)
+        .context("u64 should fit for 584942417 years")
 }
 
 // TODO: Change this to "log"

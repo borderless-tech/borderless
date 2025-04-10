@@ -500,7 +500,7 @@ mod tests {
         if depth == 0 {
             // Base case: return a primitive
             let integer: i64 = rng.gen_range(0..100).into();
-            let float: f64 = rng.gen_range(-1.5..1e9).into();
+            let float: f64 = rng.gen_range(-1.5..1e9);
             let primitives = vec![
                 Value::Null,
                 Value::Bool(rng.gen_bool(0.5)),

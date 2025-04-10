@@ -29,6 +29,10 @@ impl<T> AppendVec<T> {
     pub fn len(&self) -> u64 {
         self.len_commited + self.cache.len() as u64
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl<T: Serialize> AppendVec<T> {
@@ -52,7 +56,7 @@ impl<T: DeserializeOwned + Clone> AppendVec<T> {
     }
 
     pub fn iter(&self) -> Iter<'_, T> {
-        Iter { vec: &self, idx: 0 }
+        Iter { vec: self, idx: 0 }
     }
 }
 
