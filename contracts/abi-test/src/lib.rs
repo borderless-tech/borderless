@@ -40,6 +40,7 @@ pub extern "C" fn process_revocation() {
     }
 }
 
+#[no_mangle]
 pub extern "C" fn process_http_rq() {
     dev::tic();
     let result = exec_http_rq();

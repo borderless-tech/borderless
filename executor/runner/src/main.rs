@@ -72,6 +72,9 @@ enum ContractAction {
 
     /// Prints out all logs for this contract
     Logs,
+
+    /// Start a webserver which exposes the contract-api
+    Api,
 }
 
 fn main() -> Result<()> {
@@ -165,6 +168,23 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let log = Logger::new(&db, cid).get_full_log()?;
             log.into_iter().for_each(print_log_line);
         }
+        ContractAction::Api => loop {
+            let mut buf = String::new();
+            std::io::stdin().read_line(&mut buf)?;
+            let input = buf.trim().to_lowercase();
+            if input.is_empty() {
+                break;
+            }
+            if input.starts_with('/') {
+                let now = Instant::now();
+                // TODO: Query
+                let rs = rt.process_http_get_rq(&cid, input, None)?;
+                let elapsed = now.elapsed();
+                let value = String::from_utf8(rs.payload)?;
+                info!("{}: {}, time elapsed: {elapsed:?}", rs.status, value);
+                continue;
+            }
+        },
     }
     Ok(())
 }

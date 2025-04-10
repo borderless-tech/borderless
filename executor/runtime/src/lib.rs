@@ -289,11 +289,14 @@ impl<'a, S: Db> Runtime<'a, S> {
         self.process_http_rq(cid, rq)
     }
 
+    // TODO: We need a decorator pattern, so that we call finish_contract_execution,
+    // in case something went wrong
     pub fn process_http_rq(&mut self, cid: &ContractId, rq: Request) -> Result<Response> {
         let instance = self
             .contract_store
             .get(cid)
             .context("contract is not instantiated")?;
+        self.store.data_mut().begin_contract_execution(*cid)?;
 
         let bytes = rq.to_bytes()?;
 
@@ -309,6 +312,9 @@ impl<'a, S: Db> Runtime<'a, S> {
             .data()
             .get_register(REGISTER_OUTPUT_HTTP)
             .context("missing http-result")?;
+
+        // Finish the execution
+        self.store.data_mut().finish_contract_execution()?;
 
         let rs = Response::from_bytes(&output)?;
         Ok(rs)

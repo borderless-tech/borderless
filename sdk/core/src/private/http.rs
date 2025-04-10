@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// and the payload of the response (if successful).
 ///
 /// The payload is always json encoded, as all contracts generate a REST-API.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Response {
     pub status: u16,
     #[serde(with = "serde_bytes")]
@@ -24,14 +24,14 @@ impl Response {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Method {
     GET = 0,
     POST = 1,
 }
 
 /// Very simple and basic request type
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
     pub method: Method,
     pub path: String,
