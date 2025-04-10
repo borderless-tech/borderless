@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::Instant;
 
 use anyhow::{Context, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
@@ -34,6 +35,7 @@ where
 impl<'a, S: Db> Runtime<'a, S> {
     pub fn new(storage: &'a S) -> Result<Self> {
         let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
+        let start = Instant::now();
         let state = VmState::new(storage, db_ptr);
 
         let mut config = Config::new();
@@ -123,6 +125,8 @@ impl<'a, S: Db> Runtime<'a, S> {
         linker.func_wrap("env", "rand", vm::rand)?;
 
         let store = Store::new(&engine, state);
+
+        log::info!("Initialized runtime in: {:?}", start.elapsed());
 
         Ok(Self {
             linker,

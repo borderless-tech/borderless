@@ -142,7 +142,7 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
 
             info!("Run contract {cid}");
             let start = Instant::now();
-            rt.process_transaction(&cid, &action, &writer, tx_ctx)?;
+            rt.process_transaction(&cid, &action, &writer, tx_ctx.clone())?;
             let elapsed = start.elapsed();
             info!("Time elapsed: {elapsed:?}");
 
@@ -156,8 +156,8 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let mut idx = 0;
             while let Some(record) = rt.read_action(&cid, idx)? {
                 let action = CallAction::from_bytes(&record.value)?;
-                info!("{}, commited: {}", record.tx_ctx, record.commited);
-                info!("{}", action.pretty_print()?);
+                println!("{}, commited: {}", record.tx_ctx, record.commited);
+                println!("{}", action.pretty_print()?);
                 idx += 1;
             }
         }

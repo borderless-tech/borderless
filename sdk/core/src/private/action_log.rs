@@ -1,7 +1,7 @@
 use borderless_abi::timestamp;
 use serde::{Deserialize, Serialize};
 
-use crate::contract::TxCtx;
+use crate::{contract::TxCtx, debug};
 
 use super::{
     read_field, storage_has_key, storage_keys::BASE_KEY_ACTION_LOG, storage_remove, write_field,
@@ -60,8 +60,10 @@ impl ActionLog {
     /// Opens (or creates) the action log
     pub fn open() -> Self {
         let len: u64 = if let Some(len) = read_field(BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN) {
+            debug!("Open existing action log. len={len}");
             len
         } else {
+            debug!("Create new action log. len=0");
             write_field(BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN, &0u64);
             0
         };
@@ -103,6 +105,7 @@ impl ActionLog {
         value.commited = unsafe { timestamp() };
         write_field(BASE_KEY_ACTION_LOG, sub_key, &value);
         write_field(BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN, &full_len);
+        debug!("Commited action to log. len={full_len}");
     }
 
     // TODO: Remove this interface for production, this is super dangerous !

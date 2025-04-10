@@ -154,7 +154,7 @@ fn test_env() {
     info!("Block-ID: {}", env::block_id());
     info!("BlockCtx: {}", env::block_ctx());
     info!("Tx-ID: {}", env::tx_id());
-    info!("TxCtx: {}", env::tx_ctx())
+    info!("TxCtx: {}", env::tx_ctx());
 }
 
 // NOTE: Let's dig into this, what the sdk macro should derive
