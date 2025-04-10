@@ -22,3 +22,8 @@ pub use borderless_id_types::*;
 
 // Re-export entire hash crate
 pub use borderless_hash as hash;
+
+// Re-export some parts of the http module
+pub mod http {
+    pub use crate::__private::http::{Method, Request, Response};
+}

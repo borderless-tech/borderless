@@ -25,3 +25,9 @@ pub const REGISTER_TX_CTX: u64 = 3;
 
 /// Register used to feed the block context (block-id + block-timestamp) into the contract
 pub const REGISTER_BLOCK_CTX: u64 = 4;
+
+/// Register to feed http requests into the contract
+pub const REGISTER_INPUT_HTTP: u64 = 1024;
+
+/// Register to receive the output from an http request
+pub const REGISTER_OUTPUT_HTTP: u64 = 1025;

@@ -1,8 +1,10 @@
 use std::fmt::Display;
 
 use borderless_sdk::__private::action_log::ActionLog;
+use borderless_sdk::__private::http::to_payload;
 use borderless_sdk::__private::write_metadata_client;
 use borderless_sdk::contract::Introduction;
+use borderless_sdk::http::{Method, Request, Response};
 use borderless_sdk::{error, info, new_error, Context, Result};
 
 #[no_mangle]
@@ -38,9 +40,22 @@ pub extern "C" fn process_revocation() {
     }
 }
 
+pub extern "C" fn process_http_rq() {
+    dev::tic();
+    let result = exec_http_rq();
+    let elapsed = dev::toc();
+    match result {
+        Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
+        Err(e) => error!("execution failed: {e:?}"),
+    }
+}
+
 use borderless_sdk::__private::{
-    dev, read_field, read_register, registers::REGISTER_INPUT, storage_begin_acid_txn,
-    storage_commit_acid_txn, storage_keys::make_user_key, write_field,
+    dev, read_field, read_register,
+    registers::{REGISTER_INPUT, REGISTER_INPUT_HTTP, REGISTER_OUTPUT_HTTP},
+    storage_begin_acid_txn, storage_commit_acid_txn,
+    storage_keys::make_user_key,
+    write_field, write_register,
 };
 use borderless_sdk::{contract::CallAction, serialize::from_value};
 
@@ -155,6 +170,66 @@ fn test_env() {
     info!("BlockCtx: {}", env::block_ctx());
     info!("Tx-ID: {}", env::tx_id());
     info!("TxCtx: {}", env::tx_ctx());
+}
+
+fn exec_http_rq() -> Result<()> {
+    let bytes = read_register(REGISTER_INPUT_HTTP).context("missing http input")?;
+    let rq = Request::from_bytes(&bytes)?;
+
+    let rs = generate_response(rq)?;
+    let rs_bytes = rs.to_bytes()?;
+
+    write_register(REGISTER_OUTPUT_HTTP, rs_bytes);
+
+    Ok(())
+}
+
+fn generate_response(rq: Request) -> Result<Response> {
+    let path = rq.path.strip_prefix('/').unwrap_or(&rq.path);
+
+    let storage_key_switch = make_user_key(xxh3_64("FLIPPER::switch".as_bytes()));
+    let storage_key_counter = make_user_key(xxh3_64("FLIPPER::counter".as_bytes()));
+
+    // Quick-shot, check if the user wants to access the entire state
+    if path.is_empty() {
+        let switch = read_field(storage_key_switch, 0).context("missing field switch")?;
+        let counter = read_field(storage_key_counter, 0).context("missing field counter")?;
+        let state = Flipper { switch, counter };
+        return Ok(Response {
+            status: 200,
+            payload: to_payload(&state, "")?.unwrap().into_bytes(),
+        });
+    }
+    let (prefix, suffix) = match path.find('/') {
+        Some(idx) => path.split_at(idx),
+        None => (path, ""),
+    };
+
+    match prefix {
+        "switch" => {
+            let switch: bool = read_field(storage_key_switch, 0).context("missing field switch")?;
+            let payload = to_payload(&switch, suffix)?.map(|s| s.into_bytes());
+            return Ok(Response {
+                status: if payload.is_some() { 200 } else { 404 },
+                payload: payload.unwrap_or_default(),
+            });
+        }
+        "counter" => {
+            let counter: u32 =
+                read_field(storage_key_counter, 0).context("missing field counter")?;
+            let payload = to_payload(&counter, suffix)?.map(|s| s.into_bytes());
+            return Ok(Response {
+                status: if payload.is_some() { 200 } else { 404 },
+                payload: payload.unwrap_or_default(),
+            });
+        }
+        _ => {
+            return Ok(Response {
+                status: 404,
+                payload: Vec::new(),
+            });
+        }
+    }
 }
 
 // NOTE: Let's dig into this, what the sdk macro should derive

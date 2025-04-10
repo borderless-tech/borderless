@@ -6,9 +6,11 @@ use anyhow::{Context, Result}; // TODO: Replace with real error, since this is a
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
 use borderless_sdk::__private::registers::{
-    REGISTER_BLOCK_CTX, REGISTER_INPUT, REGISTER_TX_CTX, REGISTER_WRITER,
+    REGISTER_BLOCK_CTX, REGISTER_INPUT, REGISTER_INPUT_HTTP, REGISTER_OUTPUT_HTTP, REGISTER_TX_CTX,
+    REGISTER_WRITER,
 };
 use borderless_sdk::contract::{BlockCtx, Introduction, TxCtx};
+use borderless_sdk::http::{Request, Response};
 use borderless_sdk::{
     contract::{ActionRecord, CallAction},
     ContractId,
@@ -181,7 +183,7 @@ impl<'a, S: Db> Runtime<'a, S> {
         let instance = self
             .contract_store
             .get(cid)
-            .context("No contract is instantiated")?;
+            .context("contract is not instantiated")?;
 
         self.store.data_mut().begin_contract_execution(*cid)?;
 
@@ -213,7 +215,7 @@ impl<'a, S: Db> Runtime<'a, S> {
         let instance = self
             .contract_store
             .get(&introduction.contract_id)
-            .context("No contract is instantiated")?;
+            .context("contract is not instantiated")?;
 
         self.store
             .data_mut()
@@ -253,5 +255,62 @@ impl<'a, S: Db> Runtime<'a, S> {
 
     pub fn len_actions(&self, cid: &ContractId) -> Result<Option<u64>> {
         self.store.data().len_actions(cid)
+    }
+
+    // --- NOTE: Maybe we should create a separate runtime for the HTTP handling ?
+
+    pub fn process_http_get_rq(
+        &mut self,
+        cid: &ContractId,
+        path: String,
+        query: Option<String>,
+    ) -> Result<Response> {
+        let rq = Request {
+            method: borderless_sdk::__private::http::Method::GET,
+            path,
+            query,
+            payload: Vec::new(),
+        };
+        self.process_http_rq(cid, rq)
+    }
+
+    pub fn process_http_post_rq(
+        &mut self,
+        cid: &ContractId,
+        path: String,
+        payload: Vec<u8>,
+    ) -> Result<Response> {
+        let rq = Request {
+            method: borderless_sdk::__private::http::Method::POST,
+            path,
+            query: None,
+            payload,
+        };
+        self.process_http_rq(cid, rq)
+    }
+
+    pub fn process_http_rq(&mut self, cid: &ContractId, rq: Request) -> Result<Response> {
+        let instance = self
+            .contract_store
+            .get(cid)
+            .context("contract is not instantiated")?;
+
+        let bytes = rq.to_bytes()?;
+
+        self.store
+            .data_mut()
+            .set_register(REGISTER_INPUT_HTTP, bytes);
+
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_http_rq")?;
+        func.call(&mut self.store, ())?;
+
+        let output = self
+            .store
+            .data()
+            .get_register(REGISTER_OUTPUT_HTTP)
+            .context("missing http-result")?;
+
+        let rs = Response::from_bytes(&output)?;
+        Ok(rs)
     }
 }

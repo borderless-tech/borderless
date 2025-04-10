@@ -1,6 +1,8 @@
 // We have to set the path explicitly, because the module is named "__private", while the directory is named "private"
 #[path = "private/action_log.rs"]
 pub mod action_log;
+#[path = "private/http.rs"]
+pub mod http;
 #[path = "private/registers.rs"]
 pub mod registers;
 #[path = "private/storage_keys.rs"]
