@@ -147,7 +147,7 @@ fn test_env() {
     info!("Contract-ID: {}", env::contract_id());
     info!("Participants: {:#?}", env::participants());
     info!("Roles: {:#?}", env::roles());
-    // let sinks = env::sinks(); // TODO
+    info!("Sinks: {:#?}", env::sinks());
     info!("Description: {:?}", env::desc());
     info!("Metadata: {:?}", env::meta());
     info!("Writer: {}", env::writer());

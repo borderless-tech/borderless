@@ -6,6 +6,7 @@
     "counter": 0
   },
   "roles": [],
+  "sinks": [],
   "desc": {
     "display_name": "flipper",
     "summary": "a flipper contract for testing the abi",

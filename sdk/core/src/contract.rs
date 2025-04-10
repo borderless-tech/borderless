@@ -1,6 +1,6 @@
 use std::{fmt::Display, str::FromStr};
 
-use borderless_id_types::{BlockIdentifier, TxIdentifier, Uuid};
+use borderless_id_types::{AgentId, BlockIdentifier, TxIdentifier, Uuid};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -22,7 +22,7 @@ pub mod env {
         },
     };
 
-    use super::{BlockCtx, Description, Metadata, Role, TxCtx};
+    use super::{BlockCtx, Description, Metadata, Role, Sink, TxCtx};
 
     /// Returns the contract-id of the current contract
     pub fn contract_id() -> ContractId {
@@ -39,8 +39,7 @@ pub mod env {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_ROLES).expect("roles not in metadata")
     }
 
-    // TODO
-    pub fn sinks() -> Vec<Role> {
+    pub fn sinks() -> Vec<Sink> {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS).expect("sinks not in metadata")
     }
 
@@ -169,6 +168,106 @@ pub struct Role {
     pub role_id: RoleId,
 }
 
+/*
+ * Ok, spitballing here:
+ *
+ * I think the sinks as they are now, are quite OK.
+ * The only thing I would change is, that the sinks that the contract itself defines (with the enum),
+ * should work differently in the way that they just output their data as plain json,
+ * and the sinks (enum below) are used to subscribe to those outputs using the "alias".
+ * We should add a "MethodOrId" to each sink; then we are able to build the CallAction struct for the corresponding
+ * contract or agent.
+ */
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Sink {
+    Contract {
+        contract_id: ContractId,
+        alias: String,
+        restrict_to_users: Vec<BorderlessId>,
+    },
+    Process {
+        process_id: AgentId,
+        alias: String,
+        owner: BorderlessId,
+    },
+}
+
+impl Sink {
+    /// Creates a new Sink for a SmartProcess
+    pub fn process(process_id: AgentId, alias: String, owner: BorderlessId) -> Sink {
+        Sink::Process {
+            process_id,
+            alias: alias.to_ascii_uppercase(),
+            owner,
+        }
+    }
+
+    /// Creates a new Sink for a SmartContract
+    pub fn contract(
+        contract_id: ContractId,
+        alias: String,
+        restrict_to_users: Vec<BorderlessId>,
+    ) -> Sink {
+        Sink::Contract {
+            contract_id,
+            alias: alias.to_ascii_uppercase(),
+            restrict_to_users,
+        }
+    }
+
+    /// Consumes the sink and returns the same sink,
+    /// but with alias converted to ascii-uppercase.
+    pub fn ensure_uppercase_alias(self) -> Self {
+        match self {
+            Sink::Contract {
+                contract_id,
+                alias,
+                restrict_to_users,
+            } => Sink::Contract {
+                contract_id,
+                alias: alias.to_ascii_uppercase(),
+                restrict_to_users,
+            },
+            Sink::Process {
+                process_id,
+                alias,
+                owner,
+            } => Sink::Process {
+                process_id,
+                alias: alias.to_ascii_uppercase(),
+                owner,
+            },
+        }
+    }
+
+    /// Checks weather or not the given user has access to this sink
+    pub fn has_access(&self, user: BorderlessId) -> bool {
+        match self {
+            Sink::Process { owner, .. } => *owner == user,
+            Sink::Contract {
+                restrict_to_users, ..
+            } => {
+                // If the vector is empty, everyone has access
+                restrict_to_users.is_empty() || restrict_to_users.iter().any(|u| *u == user)
+            }
+        }
+    }
+
+    pub fn alias(&self) -> String {
+        match self {
+            Sink::Process { alias, .. } => alias.to_ascii_uppercase(),
+            Sink::Contract { alias, .. } => alias.to_ascii_uppercase(),
+        }
+    }
+
+    pub fn is_process(&self) -> bool {
+        match self {
+            Sink::Process { .. } => true,
+            Sink::Contract { .. } => false,
+        }
+    }
+}
+
 /// High level description and information about the contract itself
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Description {
@@ -282,6 +381,15 @@ pub struct Metadata {
     pub parent: Option<Uuid>,
 }
 
+/// Contract-Info
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Info {
+    pub contract_id: ContractId,
+    pub participants: Vec<BorderlessId>,
+    pub roles: Vec<Role>,
+    pub sinks: Vec<Sink>,
+}
+
 /// Contract-Introduction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Introduction {
@@ -300,9 +408,9 @@ pub struct Introduction {
     pub roles: Vec<Role>,
 
     // TODO: Re-Think Concept of sinks
-    // /// List of available sinks
-    // pub sinks: Vec<Sink>,
-    //
+    /// List of available sinks
+    pub sinks: Vec<Sink>,
+
     /// High-Level description of the contract
     pub desc: Description,
 

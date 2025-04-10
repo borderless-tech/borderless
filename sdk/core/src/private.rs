@@ -193,8 +193,8 @@ pub fn write_metadata_client(introduction: &Introduction) {
     // Write roles list
     write_field(BASE_KEY_METADATA, META_SUB_KEY_ROLES, &introduction.roles);
 
-    // TODO Write sink list
-    // write_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS, &introduction.sinks);
+    // Write sink list
+    write_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS, &introduction.sinks);
 
     // Write description
     write_field(BASE_KEY_METADATA, META_SUB_KEY_DESC, &introduction.desc);
