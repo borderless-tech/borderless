@@ -59,6 +59,7 @@ pub fn register_len(register_id: u64) -> Option<u64> {
     }
 }
 
+#[allow(clippy::uninit_vec)]
 pub fn read_register(register_id: u64) -> Option<Vec<u8>> {
     unsafe {
         let len = register_len(register_id)?;

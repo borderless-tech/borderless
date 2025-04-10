@@ -195,9 +195,15 @@ fn get_memory(caller: &mut Caller<'_, VmState<impl Db>>) -> wasmtime::Result<Mem
     }
 }
 
-// Helper function to create a Vec<u8> that serves as a buffer with given length
+/// Helper function to create a Vec<u8> that serves as a buffer with given length
+///
+/// # Safety
+///
+/// It is only meant to directly be written to, with the exact length given into this function.
+/// Using the output vector in any other way may cause undefined behaviour !
 fn create_buffer(len: u64) -> Vec<u8> {
     let mut buffer = Vec::with_capacity(len as usize);
+    #[allow(clippy::uninit_vec)]
     unsafe {
         buffer.set_len(len as usize);
     }
