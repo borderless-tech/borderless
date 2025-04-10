@@ -6,7 +6,9 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
+use anyhow::Context;
 use borderless_sdk::{
+    __private::action_log::SUB_KEY_LOG_LEN,
     __private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
     contract::{ActionRecord, CallAction},
     log::LogLine,
@@ -21,6 +23,13 @@ use rand::{random, Rng};
 use borderless_kv_store::*;
 
 use crate::logger::Logger;
+
+// NOTE: There is an option to get rid of the lifetime and borrowing in the VmState (which is tbh. quite annoying);
+// Instead of opening the transaction and using it to buffer the writes,
+// we could create a Vec<T> to store all calls to storage_write and storage_remove, and then commit them, once the contract has finished.
+//
+// I am not sure, if this may cause an overhead for really large operations in wasm; but I mean, the lmdb transaction also has to buffer everything somewhere,
+// so it seems like it's not a big difference (but ofc I don't know how lmdb works internally, so I may be completely wrong here)..
 
 pub struct VmState<'a, S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
@@ -163,6 +172,19 @@ impl<'a, S: Db> VmState<'a, S> {
         txn.commit()?;
         Ok(value)
     }
+
+    /// Returns the length of all actions
+    pub fn len_actions(&self, cid: &ContractId) -> anyhow::Result<Option<u64>> {
+        use borderless_sdk::__private::from_postcard_bytes;
+        let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN);
+        let txn = self.db.begin_ro_txn()?;
+        let value = if let Some(bytes) = txn.read(&self.db_ptr, &storage_key)? {
+            Some(from_postcard_bytes(bytes)?)
+        } else {
+            None
+        };
+        Ok(value)
+    }
 }
 
 // Helper function to get the memory of the wasm module
@@ -187,16 +209,22 @@ pub fn tic(mut caller: Caller<'_, VmState<impl Db>>) {
     caller.data_mut().last_timer = Some(Instant::now());
 }
 
-pub fn toc(caller: Caller<'_, VmState<impl Db>>) -> u64 {
-    if let Some(timer) = caller.data().last_timer {
-        let elapsed = timer.elapsed();
-        elapsed
-            .as_nanos()
-            .try_into()
-            .expect("your program should not run for 584.942 years")
-    } else {
-        panic!("-- no timer present");
-    }
+pub fn toc(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
+    let timer = caller.data().last_timer.context("no timer present")?;
+    let elapsed = timer.elapsed();
+    Ok(elapsed
+        .as_nanos()
+        .try_into()
+        .context("your program should not run for 584.942 years")?)
+}
+
+pub fn timestamp() -> wasmtime::Result<u64> {
+    Ok(SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("timestamp < 1970")?
+        .as_millis()
+        .try_into()
+        .context("u64 should fit for 584942417 years")?)
 }
 
 // TODO: Change this to "log"
@@ -440,7 +468,7 @@ pub fn storage_has_key(
     Ok(result as u64)
 }
 
-pub fn storage_random_key() -> wasmtime::Result<u64> {
+pub fn storage_gen_sub_key() -> wasmtime::Result<u64> {
     let mut rng = rand::rng();
     let value: u64 = rng.random();
     // Add 1 unit to avoid generating a 0

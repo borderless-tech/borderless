@@ -1,15 +1,18 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use anyhow::{anyhow, Context, Result}; // TODO: Replace with real error, since this is a library
+use anyhow::{Context, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
-use borderless_sdk::__private::registers::REGISTER_INPUT;
-use borderless_sdk::contract::Introduction;
+use borderless_sdk::__private::registers::{
+    REGISTER_BLOCK_CTX, REGISTER_INPUT, REGISTER_TX_CTX, REGISTER_WRITER,
+};
+use borderless_sdk::contract::{BlockCtx, Introduction, TxCtx};
 use borderless_sdk::{
     contract::{ActionRecord, CallAction},
     ContractId,
 };
+use borderless_sdk::{BlockIdentifier, BorderlessId};
 use vm::VmState;
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
 
@@ -43,12 +46,6 @@ impl<'a, S: Db> Runtime<'a, S> {
 
         // NOTE: We have to wrap the functions into a closure here, because they must be monomorphized
         // (as a generic function cannot be made into a function pointer)
-        linker.func_wrap("env", "tic", |caller: Caller<'_, VmState<S>>| {
-            vm::tic(caller)
-        })?;
-        linker.func_wrap("env", "toc", |caller: Caller<'_, VmState<S>>| {
-            vm::toc(caller)
-        })?;
         linker.func_wrap(
             "env",
             "print",
@@ -101,9 +98,6 @@ impl<'a, S: Db> Runtime<'a, S> {
                 vm::storage_has_key(caller, base_key, sub_key)
             },
         )?;
-        // TODO: Those two functions contain randomness, which is not good
-        linker.func_wrap("env", "storage_random_key", vm::storage_random_key)?;
-        linker.func_wrap("env", "rand", vm::rand)?;
 
         linker.func_wrap(
             "env",
@@ -115,6 +109,18 @@ impl<'a, S: Db> Runtime<'a, S> {
             "storage_commit_acid_txn",
             |caller: Caller<'_, VmState<S>>| vm::storage_commit_acid_txn(caller),
         )?;
+
+        // NOTE: Those functions introduce side-effects;
+        // they should only be used by us or during development of a contract
+        linker.func_wrap("env", "storage_gen_sub_key", vm::storage_gen_sub_key)?;
+        linker.func_wrap("env", "timestamp", vm::timestamp)?;
+        linker.func_wrap("env", "tic", |caller: Caller<'_, VmState<S>>| {
+            vm::tic(caller)
+        })?;
+        linker.func_wrap("env", "toc", |caller: Caller<'_, VmState<S>>| {
+            vm::toc(caller)
+        })?;
+        linker.func_wrap("env", "rand", vm::rand)?;
 
         let store = Store::new(&engine, state);
 
@@ -139,24 +145,67 @@ impl<'a, S: Db> Runtime<'a, S> {
         Ok(())
     }
 
-    pub fn process_transaction(&mut self, cid: &ContractId, action: &CallAction) -> Result<()> {
-        if let Some(instance) = self.contract_store.get(cid) {
-            self.store.data_mut().begin_contract_execution(*cid)?;
-            let run = instance.get_typed_func::<(), ()>(&mut self.store, "process_transaction")?;
-            let action_bytes = action.to_bytes()?;
-            self.store
-                .data_mut()
-                .set_register(REGISTER_INPUT, action_bytes);
-
-            run.call(&mut self.store, ())?;
-            self.store.data_mut().finish_contract_execution()?;
-        } else {
-            return Err(anyhow!("No contract is instantiated"));
-        }
+    /// Sets the currently active block
+    ///
+    /// This write the [`BlockCtx`] to the dedicated register, so that the wasm side can query it.
+    pub fn set_block(&mut self, block_id: BlockIdentifier, block_timestamp: u64) -> Result<()> {
+        let ctx = BlockCtx {
+            block_id,
+            timestamp: block_timestamp,
+        };
+        self.store
+            .data_mut()
+            .set_register(REGISTER_BLOCK_CTX, ctx.to_bytes()?);
         Ok(())
     }
 
-    pub fn process_introduction(&mut self, introduction: &Introduction) -> Result<()> {
+    // TODO: This is the interface of the executor
+    // contract_id: ContractId,
+    // writer_pid: ParticipantId,
+    // tx_context: TxCtx, < TxIdentifier + block-timestamp
+    // tx_type: TxType,
+    // raw_data: Vec<u8>,
+    // -> we also require the tx-sequence number
+
+    pub fn process_transaction(
+        &mut self,
+        cid: &ContractId,
+        action: &CallAction,
+        writer: &BorderlessId,
+        tx_ctx: TxCtx,
+    ) -> Result<()> {
+        let instance = self
+            .contract_store
+            .get(cid)
+            .context("No contract is instantiated")?;
+
+        self.store.data_mut().begin_contract_execution(*cid)?;
+
+        // Prepare registers
+        let input = action.to_bytes()?;
+        self.store.data_mut().set_register(REGISTER_INPUT, input);
+        self.store
+            .data_mut()
+            .set_register(REGISTER_TX_CTX, tx_ctx.to_bytes()?);
+        self.store
+            .data_mut()
+            .set_register(REGISTER_WRITER, (*writer).into_bytes().into());
+
+        // Call the actual function on the wasm side
+        let run = instance.get_typed_func::<(), ()>(&mut self.store, "process_transaction")?;
+        run.call(&mut self.store, ())?;
+
+        // Finish the execution
+        self.store.data_mut().finish_contract_execution()?;
+        Ok(())
+    }
+
+    pub fn process_introduction(
+        &mut self,
+        introduction: &Introduction,
+        writer: &BorderlessId,
+        tx_ctx: TxCtx,
+    ) -> Result<()> {
         let instance = self
             .contract_store
             .get(&introduction.contract_id)
@@ -166,21 +215,39 @@ impl<'a, S: Db> Runtime<'a, S> {
             .data_mut()
             .begin_contract_execution(introduction.contract_id)?;
 
+        // Prepare registers
+        let input = introduction.to_bytes()?;
+        self.store.data_mut().set_register(REGISTER_INPUT, input);
+        self.store
+            .data_mut()
+            .set_register(REGISTER_TX_CTX, tx_ctx.to_bytes()?);
+        self.store
+            .data_mut()
+            .set_register(REGISTER_WRITER, (*writer).into_bytes().into());
+
         // Get introduction function and call it
         let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_introduction")?;
-        let bytes = introduction.to_bytes()?;
-        self.store.data_mut().set_register(REGISTER_INPUT, bytes);
         func.call(&mut self.store, ())?;
-        self.store.data_mut().finish_contract_execution()?;
 
+        // Finish the execution
+        self.store.data_mut().finish_contract_execution()?;
         Ok(())
     }
 
-    pub fn process_revocation(&mut self, revocation: bool) -> Result<()> {
+    pub fn process_revocation(
+        &mut self,
+        revocation: bool,
+        _writer: &BorderlessId,
+        _tx_ctx: TxCtx,
+    ) -> Result<()> {
         todo!()
     }
 
     pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
         self.store.data().read_action(cid, idx)
+    }
+
+    pub fn len_actions(&self, cid: &ContractId) -> Result<Option<u64>> {
+        self.store.data().len_actions(cid)
     }
 }

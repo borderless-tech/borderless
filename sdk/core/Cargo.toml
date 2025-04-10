@@ -5,17 +5,18 @@ edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
-borderless-abi = { path = "../abi" }
+borderless-abi.workspace = true
+borderless-id-types.workspace = true
+borderless-hash.workspace = true
 postcard.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
 serde_json.workspace = true
-uuid = { version = "1.16.0", features = ["serde", "v8"] }
 
 [dev-dependencies]
-uuid = { version = "1.16.0", features = ["serde", "v8", "v4"] }
+borderless-id-types = { workspace = true, features = [ "generate_ids" ] }
 rand.workspace = true
 
 [features]
 default = []
-generate_ids = ["uuid/v4"]
+generate_ids = ["borderless-id-types/generate_ids"]

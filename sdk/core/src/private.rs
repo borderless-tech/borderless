@@ -236,10 +236,6 @@ pub mod dev {
         unsafe { abi::tic() }
     }
 
-    pub fn tocp() {
-        unsafe { abi::tocp() }
-    }
-
     pub fn toc() -> Duration {
         let dur = unsafe { abi::toc() };
         Duration::from_nanos(dur)

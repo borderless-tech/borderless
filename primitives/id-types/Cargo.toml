@@ -1,0 +1,18 @@
+[package]
+name = "borderless-id-types"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+uuid = { workspace = true, features = ["serde", "v8"] }
+borderless-hash = { path = "../hash" }
+bytes = "1.10.1"
+
+[dev-dependencies]
+uuid = { workspace = true, features = ["serde", "v8", "v4"] }
+rand.workspace = true
+
+[features]
+default = []
+generate_ids = ["uuid/v4"]

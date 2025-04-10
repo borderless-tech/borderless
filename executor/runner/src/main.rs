@@ -1,4 +1,9 @@
-use std::{fs::read_to_string, path::PathBuf, str::FromStr, time::Instant};
+use std::{
+    fs::read_to_string,
+    path::PathBuf,
+    str::FromStr,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
 
 use anyhow::{Context, Result};
 use borderless_kv_store::backend::lmdb::Lmdb;
@@ -7,8 +12,9 @@ use borderless_runtime::{
     Runtime,
 };
 use borderless_sdk::{
-    contract::{CallAction, Introduction},
-    ContractId,
+    contract::{CallAction, Introduction, TxCtx},
+    hash::Hash256,
+    BlockIdentifier, ContractId, TxIdentifier,
 };
 use clap::{Parser, Subcommand};
 
@@ -94,6 +100,24 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
     };
     rt.instantiate_contract(cid, command.contract)?;
 
+    let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
+
+    // We now have to provide additional context when executing the contract
+    let n_actions = rt.len_actions(&cid)?.unwrap_or_default();
+    let tx_hash = Hash256::digest(&n_actions.to_be_bytes());
+    let tx_ctx = TxCtx {
+        tx_id: TxIdentifier::new(0, n_actions, tx_hash),
+        index: 0,
+    };
+    // Set block
+    rt.set_block(
+        BlockIdentifier::new(0, n_actions, Hash256::empty()),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    )?;
+
     // Parse command
     match command.action {
         ContractAction::Introduce { introduction } => {
@@ -104,7 +128,7 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let cid = introduction.contract_id;
             info!("Introduce contract {cid}");
             let start = Instant::now();
-            rt.process_introduction(&introduction)?;
+            rt.process_introduction(&introduction, &writer, tx_ctx)?;
             let elapsed = start.elapsed();
             info!("Outer time elapsed: {elapsed:?}");
             info!("--- Contract-Log:");
@@ -118,7 +142,7 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
 
             info!("Run contract {cid}");
             let start = Instant::now();
-            rt.process_transaction(&cid, &action)?;
+            rt.process_transaction(&cid, &action, &writer, tx_ctx)?;
             let elapsed = start.elapsed();
             info!("Time elapsed: {elapsed:?}");
 
@@ -132,6 +156,7 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let mut idx = 0;
             while let Some(record) = rt.read_action(&cid, idx)? {
                 let action = CallAction::from_bytes(&record.value)?;
+                info!("{}, commited: {}", record.tx_ctx, record.commited);
                 info!("{}", action.pretty_print()?);
                 idx += 1;
             }

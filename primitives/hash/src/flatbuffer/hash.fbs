@@ -1,0 +1,6 @@
+// Datatype that represents a 256-bit hash.
+//
+// The hash is calculated with the sha3-256 hasher.
+struct Hash256 {
+  bytes: [ubyte:32];
+}

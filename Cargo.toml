@@ -5,17 +5,23 @@ members = [
   "executor/runtime",
   "json-proof",
   "sdk/abi" ,
-  # "sdk/base",
   "sdk/core",
   "sdk/macros",
-  "kv-store"
+  "kv-store",
+  "primitives/hash",
+  "primitives/id-types"
 ]
 resolver = "2"
 
-
 [workspace.dependencies]
+# Export own crates
+borderless-abi = { path = "sdk/abi" }
+borderless-id-types = { path = "primitives/id-types" }
+borderless-hash = { path = "primitives/hash" }
+borderless-sdk = { path = "sdk/core" }
+
+# External dependencies
 anyhow = "1.0"
-bs58 = "0.5"
 log = "0.4"
 postcard = { version = "1.1", features = ["alloc"] }
 rand = "0.9"
@@ -23,3 +29,4 @@ serde = "1.0"
 serde_json = "1.0"
 serde_bytes = "0.11"
 thiserror = "2.0"
+uuid = "1.16"

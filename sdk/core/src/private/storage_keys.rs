@@ -207,7 +207,7 @@ impl AsRef<[u8]> for StorageKey {
 /// Calculates a storage key from a contract ID, base key, and sub key.
 pub fn calc_storage_key(cid: &ContractId, base_key: u64, sub_key: u64) -> [u8; 32] {
     let mut out = [0u8; 32];
-    out[0..16].copy_from_slice(cid.0.as_bytes());
+    out[0..16].copy_from_slice(cid.as_bytes());
     out[16..24].copy_from_slice(&base_key.to_be_bytes());
     out[24..32].copy_from_slice(&sub_key.to_be_bytes());
     out

@@ -40,7 +40,7 @@ pub extern "C" fn process_revocation() {
 
 use borderless_sdk::__private::{
     dev, read_field, read_register, registers::REGISTER_INPUT, storage_begin_acid_txn,
-    storage_commit_acid_txn, write_field,
+    storage_commit_acid_txn, storage_keys::make_user_key, write_field,
 };
 use borderless_sdk::{contract::CallAction, serialize::from_value};
 
@@ -54,7 +54,8 @@ fn exec_run() -> Result<()> {
     let action = CallAction::from_bytes(&input)?;
 
     let mut action_log = ActionLog::open();
-    action_log.push(input, 0); // TODO: tx-sq-number !
+    let tx_ctx = borderless_sdk::contract::env::tx_ctx();
+    action_log.push(input, tx_ctx);
 
     let s = action.pretty_print()?;
     info!("{s}");
@@ -64,8 +65,8 @@ fn exec_run() -> Result<()> {
         .context("missing required method-name")?;
 
     // Read state ( TODO )
-    let storage_key_switch = xxh3_64("FLIPPER::switch".as_bytes());
-    let storage_key_counter = xxh3_64("FLIPPER::counter".as_bytes());
+    let storage_key_switch = make_user_key(xxh3_64("FLIPPER::switch".as_bytes()));
+    let storage_key_counter = make_user_key(xxh3_64("FLIPPER::counter".as_bytes()));
     let switch = read_field(storage_key_switch, 0).context("missing field switch")?;
     let counter = read_field(storage_key_counter, 0).context("missing field counter")?;
     let mut state = Flipper { switch, counter };
@@ -119,8 +120,8 @@ fn exec_introduction() -> Result<()> {
     // - [-] prepare action buffer
     // ...
     // + define additional data, that the contract requires and how it is stored / passed into it
-    let storage_key_switch = xxh3_64("FLIPPER::switch".as_bytes());
-    let storage_key_counter = xxh3_64("FLIPPER::counter".as_bytes());
+    let storage_key_switch = make_user_key(xxh3_64("FLIPPER::switch".as_bytes()));
+    let storage_key_counter = make_user_key(xxh3_64("FLIPPER::counter".as_bytes()));
 
     let action_log = ActionLog::open();
 
@@ -143,21 +144,17 @@ fn exec_introduction() -> Result<()> {
 // Test out, if the "environment variables" work as expected
 fn test_env() {
     use borderless_sdk::contract::env;
-    let cid = env::contract_id();
-    info!("Contract-ID: {cid}");
-
-    let participants = env::participants();
-    info!("Participants: {participants:#?}");
-
-    let roles = env::roles();
-    info!("Roles: {roles:#?}");
-
+    info!("Contract-ID: {}", env::contract_id());
+    info!("Participants: {:#?}", env::participants());
+    info!("Roles: {:#?}", env::roles());
     // let sinks = env::sinks(); // TODO
-    let desc = env::desc();
-    info!("Description: {desc:?}");
-
-    let meta = env::meta();
-    info!("Metadata: {meta:?}");
+    info!("Description: {:?}", env::desc());
+    info!("Metadata: {:?}", env::meta());
+    info!("Writer: {}", env::writer());
+    info!("Block-ID: {}", env::block_id());
+    info!("BlockCtx: {}", env::block_ctx());
+    info!("Tx-ID: {}", env::tx_id());
+    info!("TxCtx: {}", env::tx_ctx())
 }
 
 // NOTE: Let's dig into this, what the sdk macro should derive

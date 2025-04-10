@@ -1,5 +1,6 @@
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 
+use borderless_id_types::{BlockIdentifier, TxIdentifier, Uuid};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -10,16 +11,18 @@ pub use crate::__private::action_log::ActionRecord;
 
 /// Contract Environment
 pub mod env {
+    use borderless_id_types::{BlockIdentifier, TxIdentifier};
+
     use crate::{
         BorderlessId, ContractId,
         __private::{
             read_field, read_register,
-            registers::{REGISTER_BLOCK_ID, REGISTER_CALLER, REGISTER_EXECUTOR, REGISTER_TX_ID},
+            registers::{REGISTER_BLOCK_CTX, REGISTER_TX_CTX, REGISTER_WRITER},
             storage_keys::*,
         },
     };
 
-    use super::{Description, Metadata, Role};
+    use super::{BlockCtx, Description, Metadata, Role, TxCtx};
 
     /// Returns the contract-id of the current contract
     pub fn contract_id() -> ContractId {
@@ -49,27 +52,48 @@ pub mod env {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_META).expect("meta not in metadata")
     }
 
-    pub fn caller() -> BorderlessId {
-        let bytes = read_register(REGISTER_CALLER).expect("caller not present");
+    pub fn writer() -> BorderlessId {
+        let bytes = read_register(REGISTER_WRITER).expect("caller not present");
         BorderlessId::from_bytes(bytes.try_into().expect("caller must be a borderless-id"))
     }
 
-    pub fn executor() -> BorderlessId {
-        let bytes = read_register(REGISTER_EXECUTOR).expect("executor not present");
-        BorderlessId::from_bytes(bytes.try_into().expect("executor must be a borderless-id"))
+    pub fn tx_ctx() -> TxCtx {
+        let bytes = read_register(REGISTER_TX_CTX).expect("tx-id not present");
+        TxCtx::from_bytes(&bytes).expect("invalid data-model in tx-id register")
     }
 
-    // TODO: Tx-ID type
-    // pub fn tx_id() -> TxId {
-    //     let bytes = read_register(REGISTER_TX_ID).expect("tx-id not present");
-    //     todo!()
-    // }
+    pub fn tx_id() -> TxIdentifier {
+        let bytes = read_register(REGISTER_TX_CTX).expect("tx-id not present");
+        TxCtx::from_bytes(&bytes)
+            .expect("invalid data-model in tx-id register")
+            .tx_id
+    }
 
-    // TODO: Block-ID type
-    // pub fn block_id() -> BlockId {
-    //     let bytes = read_register(REGISTER_BLOCK_ID).expect("block-id not present");
-    //     todo!()
-    // }
+    pub fn tx_index() -> u64 {
+        let bytes = read_register(REGISTER_TX_CTX).expect("tx-id not present");
+        TxCtx::from_bytes(&bytes)
+            .expect("invalid data-model in tx-id register")
+            .index
+    }
+
+    pub fn block_ctx() -> BlockCtx {
+        let bytes = read_register(REGISTER_BLOCK_CTX).expect("block-id not present");
+        BlockCtx::from_bytes(&bytes).expect("invalid data-model in block-ctx register")
+    }
+
+    pub fn block_id() -> BlockIdentifier {
+        let bytes = read_register(REGISTER_BLOCK_CTX).expect("block-id not present");
+        BlockCtx::from_bytes(&bytes)
+            .expect("invalid data-model in block-ctx register")
+            .block_id
+    }
+
+    pub fn block_timestamp() -> u64 {
+        let bytes = read_register(REGISTER_BLOCK_CTX).expect("block-timestamp not present");
+        BlockCtx::from_bytes(&bytes)
+            .expect("invalid data-model in block-ctx register")
+            .timestamp
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -194,6 +218,7 @@ impl Default for SemVer {
     }
 }
 
+// Helper module to be able to parse SemVer from normal strings
 pub mod semver_as_string {
     use super::*;
     use serde::{self, Deserialize, Deserializer, Serializer};
@@ -214,7 +239,7 @@ pub mod semver_as_string {
         let parts: Vec<&str> = s.split('.').collect();
         if parts.len() != 3 {
             return Err(serde::de::Error::custom(
-                "Expected version in 'x.y.z' format",
+                "Expected version in 'major.minor.patch' format",
             ));
         }
         let major = parts[0].parse().map_err(serde::de::Error::custom)?;
@@ -254,7 +279,7 @@ pub struct Metadata {
     pub inactive_since: Option<u32>,
 
     /// Parent of the contract or process (in case the contract was updated / replaced)
-    pub parent: Option<uuid::Uuid>,
+    pub parent: Option<Uuid>,
 }
 
 /// Contract-Introduction.
@@ -286,14 +311,17 @@ pub struct Introduction {
 }
 
 impl Introduction {
+    /// Encode the introduction to json bytes
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(&self)
     }
 
+    /// Decode the introduction from json bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
         serde_json::from_slice(bytes)
     }
 
+    /// Pretty-Print the introduction as json
     pub fn pretty_print(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(&self)
     }
@@ -307,184 +335,67 @@ impl FromStr for Introduction {
     }
 }
 
+/// Transaction-Context
+///
+/// Combines the [`TxIdentifier`] with the index of the transaction inside the block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TxCtx {
+    pub tx_id: TxIdentifier,
+    pub index: u64,
+}
+
+impl TxCtx {
+    /// Use postcard to encode the `TxCtx`
+    pub fn to_bytes(&self) -> Result<Vec<u8>, postcard::Error> {
+        postcard::to_allocvec(&self)
+    }
+
+    /// Use postcard to decode the `TxCtx`
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, postcard::Error> {
+        postcard::from_bytes(bytes)
+    }
+}
+
+impl Display for TxCtx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Tx-ID: {}, index: {}", self.tx_id, self.index)
+    }
+}
+
+/// Block-Context
+///
+/// Combines the [`BlockIdentifier`] with the timestamp of the block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockCtx {
+    pub block_id: BlockIdentifier,
+    pub timestamp: u64,
+}
+
+impl BlockCtx {
+    /// Use postcard to encode the `BlockCtx`
+    pub fn to_bytes(&self) -> Result<Vec<u8>, postcard::Error> {
+        postcard::to_allocvec(&self)
+    }
+
+    /// Use postcard to decode the `BlockCtx`
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, postcard::Error> {
+        postcard::from_bytes(bytes)
+    }
+}
+
+impl Display for BlockCtx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Block-ID: {}, timestamp: {}",
+            self.block_id, self.timestamp
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AgentId, Did};
-    use uuid::Uuid;
-
-    #[test]
-    fn agent_id_prefix() {
-        for _ in 0..1_000_000 {
-            let base_id = Uuid::new_v4();
-            let process_id = AgentId::from(base_id);
-            let pid_string = process_id.to_string();
-            assert_eq!(
-                pid_string.chars().next(),
-                Some('a'),
-                "Process-IDs must be prefixed with 'a' in string representation"
-            );
-            let back_to_uuid: Uuid = process_id.into();
-            assert_ne!(base_id, back_to_uuid);
-            // Check, if first four bits match 'a'
-            // NOTE: Bit-level-hacking here: bits abcdefgh & 11110000 = abcd0000
-            // -> so i can match on byte level agains abcd0000 (in this case 0xb0)
-            assert_eq!(back_to_uuid.as_bytes()[0] & 0xF0, 0xa0);
-        }
-    }
-
-    #[test]
-    fn borderless_id_prefix() {
-        for _ in 0..1_000_000 {
-            let base_id = Uuid::new_v4();
-            let borderless_id = BorderlessId::from(base_id);
-            let pid_string = borderless_id.to_string();
-            assert_eq!(
-                pid_string.chars().next(),
-                Some('b'),
-                "Borderless-IDs must be prefixed with 'b' in string representation"
-            );
-            let back_to_uuid: Uuid = borderless_id.into();
-            assert_ne!(base_id, back_to_uuid);
-            // Check, if first four bits match 'b'
-            // NOTE: Bit-level-hacking here: bits abcdefgh & 11110000 = abcd0000
-            // -> so i can match on byte level agains abcd0000 (in this case 0x00)
-            assert_eq!(back_to_uuid.as_bytes()[0] & 0xF0, 0xb0);
-        }
-    }
-
-    #[test]
-    fn contract_id_prefix() {
-        for _ in 0..1_000_000 {
-            let base_id = Uuid::new_v4();
-            let contract_id = ContractId::from(base_id);
-            let cid_string = contract_id.to_string();
-            assert_eq!(
-                cid_string.chars().next(),
-                Some('c'),
-                "Contract-IDs must be prefixed with 'c' in string representation"
-            );
-            let back_to_uuid: Uuid = contract_id.into();
-            assert_ne!(base_id, back_to_uuid);
-            // Check, if first four bits match 'c'
-            // NOTE: Bit-level-hacking here: bits abcdefgh & 11110000 = abcd0000
-            // -> so i can match on byte level agains abcd0000 (in this case 0xc0)
-            assert_eq!(back_to_uuid.as_bytes()[0] & 0xF0, 0xc0);
-        }
-    }
-
-    #[test]
-    fn did_prefix() {
-        for _ in 0..1_000_000 {
-            let base_id = Uuid::new_v4();
-            let asset_id = Did::from(base_id);
-            let aid_string = asset_id.to_string();
-            assert_eq!(
-                aid_string.chars().next(),
-                Some('d'),
-                "Decentralized-IDs must be prefixed with 'd' in string representation"
-            );
-            let back_to_uuid: Uuid = asset_id.into();
-            assert_ne!(base_id, back_to_uuid);
-            // Check, if first four bits match 'd'
-            // NOTE: Bit-level-hacking here: bits abcdefgh & 11110000 = abcd0000
-            // -> so i can match on byte level agains abcd0000 (in this case 0xa0)
-            assert_eq!(back_to_uuid.as_bytes()[0] & 0xF0, 0xd0);
-        }
-    }
-
-    #[test]
-    fn differentiate_id_types() {
-        // This test ensures, that all ID types generate different bit-level representations.
-        // In other words: They do not match, even if I use the same uuid to generate them.
-        // This allows us to easily spot, which ID type we have and prevents cross-matches.
-        for _ in 0..1_000_000 {
-            let base_id = Uuid::new_v4();
-            let participant_id: Uuid = BorderlessId::from(base_id).into();
-            let asset_id: Uuid = Did::from(base_id).into();
-            let process_id: Uuid = AgentId::from(base_id).into();
-            let contract_id: Uuid = ContractId::from(base_id).into();
-            // NOTE: Check all permutations, just to be sure:
-            assert_ne!(base_id, participant_id);
-            assert_ne!(base_id, asset_id);
-            assert_ne!(base_id, process_id);
-            assert_ne!(base_id, contract_id);
-            assert_ne!(participant_id, asset_id);
-            assert_ne!(participant_id, process_id);
-            assert_ne!(participant_id, contract_id);
-            assert_ne!(asset_id, process_id);
-            assert_ne!(asset_id, contract_id);
-            assert_ne!(process_id, contract_id);
-        }
-    }
-
-    #[test]
-    fn agent_id_construction() {
-        for _ in 0..1_000_000 {
-            let base_id = Uuid::new_v4();
-            let base_u128 = base_id.as_u128();
-            let from_uuid = AgentId::from(base_id);
-            let from_u128 = AgentId::from(base_u128);
-            assert_eq!(from_uuid, from_u128);
-            let back_to_uuid: Uuid = from_uuid.into();
-            let back_to_u128: u128 = from_u128.into();
-            assert_eq!(back_to_uuid, Uuid::from_u128(back_to_u128));
-            assert_eq!(back_to_uuid.as_u128(), back_to_u128); // this is redundant - but let's stay paranoid
-            assert_ne!(base_id, back_to_uuid);
-            assert_ne!(base_id.as_u128(), back_to_u128);
-        }
-    }
-
-    #[test]
-    fn borderless_id_construction() {
-        for _ in 0..1_000_000 {
-            let base_id = Uuid::new_v4();
-            let base_u128 = base_id.as_u128();
-            let from_uuid = BorderlessId::from(base_id);
-            let from_u128 = BorderlessId::from(base_u128);
-            assert_eq!(from_uuid, from_u128);
-            let back_to_uuid: Uuid = from_uuid.into();
-            let back_to_u128: u128 = from_u128.into();
-            assert_eq!(back_to_uuid, Uuid::from_u128(back_to_u128));
-            assert_eq!(back_to_uuid.as_u128(), back_to_u128); // this is redundant - but let's stay paranoid
-            assert_ne!(base_id, back_to_uuid);
-            assert_ne!(base_id.as_u128(), back_to_u128);
-        }
-    }
-
-    #[test]
-    fn contract_id_construction() {
-        for _ in 0..1_000_000 {
-            let base_id = Uuid::new_v4();
-            let base_u128 = base_id.as_u128();
-            let from_uuid = ContractId::from(base_id);
-            let from_u128 = ContractId::from(base_u128);
-            assert_eq!(from_uuid, from_u128);
-            let back_to_uuid: Uuid = from_uuid.into();
-            let back_to_u128: u128 = from_u128.into();
-            assert_eq!(back_to_uuid, Uuid::from_u128(back_to_u128));
-            assert_eq!(back_to_uuid.as_u128(), back_to_u128); // this is redundant - but let's stay paranoid
-            assert_ne!(base_id, back_to_uuid);
-            assert_ne!(base_id.as_u128(), back_to_u128);
-        }
-    }
-
-    #[test]
-    fn did_construction() {
-        for _ in 0..1_000_000 {
-            let base_id = Uuid::new_v4();
-            let base_u128 = base_id.as_u128();
-            let from_uuid = Did::from(base_id);
-            let from_u128 = Did::from(base_u128);
-            assert_eq!(from_uuid, from_u128);
-            let back_to_uuid: Uuid = from_uuid.into();
-            let back_to_u128: u128 = from_u128.into();
-            assert_eq!(back_to_uuid, Uuid::from_u128(back_to_u128));
-            assert_eq!(back_to_uuid.as_u128(), back_to_u128); // this is redundant - but let's stay paranoid
-            assert_ne!(base_id, back_to_uuid);
-            assert_ne!(base_id.as_u128(), back_to_u128);
-        }
-    }
 
     #[test]
     fn semver_parsing() {

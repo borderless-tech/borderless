@@ -31,7 +31,7 @@ pub mod error {
         #[error("invalid type for key '{0}' in mask: Expected boolean")]
         InvalidMaskKey(String),
         #[error("invalid hash - {0}")]
-        InvalidHash(#[from] bs58::decode::Error),
+        InvalidHash(#[from] base16::DecodeError),
         #[error(
             "cannot build proof from object that contains both obfuscated and unobfuscated key"
         )]
@@ -115,12 +115,12 @@ fn hash_value(key: &str, value: &Value) -> [u8; 32] {
 pub fn prepare_document(map: &mut Map<String, Value>) {
     let mut append_keys = Vec::new();
     let self_hash = hash_value("self", &Value::Object(map.clone()));
-    let encoded_self = bs58::encode(self_hash).into_string();
+    let encoded_self = base16::encode_lower(&self_hash);
     append_keys.push((format!("{HASH_PREFIX}___self___"), encoded_self));
 
     for (key, value) in map.iter_mut() {
         let hash = hash_value(key, value);
-        let encoded = bs58::encode(hash).into_string();
+        let encoded = base16::encode_lower(&hash);
         append_keys.push((format!("{HASH_PREFIX}_{key}"), encoded));
         // Nest one level deeper
         if let Value::Object(nested) = value {
@@ -255,9 +255,7 @@ fn contains_prefix(map: &Map<String, Value>) -> bool {
 fn hash_from_obfuscated(value: &Value) -> Result<[u8; 32]> {
     if let Value::String(s) = value {
         let mut out = [0; 32];
-        bs58::decode(s)
-            .onto(&mut out)
-            .map_err(ErrorImpl::InvalidHash)?;
+        base16::decode_slice(s, &mut out).map_err(ErrorImpl::InvalidHash)?;
         Ok(out)
     } else {
         Err(ErrorImpl::NotAString.into())
@@ -342,7 +340,7 @@ pub fn gen_proof(map: &mut Map<String, Value>) -> Result<String> {
     // the proof is just the root-hash of the document
     if contains_prefix(map) {
         let proof = rebuild_proof(map)?;
-        let encoded = bs58::encode(&proof).into_string();
+        let encoded = base16::encode_lower(&proof);
         return Ok(encoded);
     }
     // Let's be extra paranoid here - in test mode, we double check,
@@ -350,7 +348,7 @@ pub fn gen_proof(map: &mut Map<String, Value>) -> Result<String> {
     #[cfg(test)]
     {
         let proof = rebuild_proof(map)?;
-        let encoded = bs58::encode(&proof).into_string();
+        let encoded = base16::encode_lower(&proof);
         prepare_document(map);
         if let Value::String(s) = map.get(&format!("{HASH_PREFIX}___self___")).unwrap() {
             assert_eq!(encoded, *s);
@@ -599,21 +597,25 @@ mod tests {
     fn float_precision() -> Result<()> {
         test_case(
             FLOAT_PRECISION,
-            "NfBP2miA6mjAE6EJAgS5tVZH5aE3LNDnRNTooCmjfQu",
+            "058c5db7818861ccf63cb8c3a5de85c756cdc32c9f0bbb8677b446373992f672",
             100,
         )
     }
 
     #[test]
     fn unicode() -> Result<()> {
-        test_case(UNICODE, "BMarBKvyJEZH2kvv7ZH4ywNrTpk8PdYQoCKJ5TA9e7WL", 100)
+        test_case(
+            UNICODE,
+            "99dac1e3f2deea4b55358318679f2ac33b211e360191e7f04ea23cc9dbffa5e5",
+            100,
+        )
     }
 
     #[test]
     fn duplicate_keys() -> Result<()> {
         test_case(
             DUPLICATES,
-            "4pVjDo4ezCPLubNZPAUZukzLLGFtHjdwMqgVRxH7uXyn",
+            "38bdd7729704ef6f7e5467eacde43d62c02bd42d126cad3942ebbaae17d57555",
             100,
         )
     }
@@ -622,7 +624,7 @@ mod tests {
     fn unordered_keys() -> Result<()> {
         test_case(
             UNORDERED,
-            "ANjm9ejyd9v8GKRLDVKKY6jNvHyvjsR6gVqXXoyitQxC",
+            "8b4abac49295aee61093583e01be00c8e11b06585e617ce3a99b2587d7faf3c5",
             100,
         )
     }
@@ -631,31 +633,43 @@ mod tests {
     fn deep_nesting() -> Result<()> {
         test_case(
             DEEP_NEST,
-            "5pBeLFGjKSjgT5SnNNXZAiFLf7mw2VPFm1mskHmCsAjN",
+            "4785149ec8ed5e9f6e97e7014522493105e0016032b56e84314f62838552745d",
             100,
         )
     }
 
     #[test]
     fn type_fidelity() -> Result<()> {
-        test_case(TYPES, "3b65vye2HGHRR3BMQpTKUoqQTHZX3h6Dq1gtncRsUSzz", 100)
+        test_case(
+            TYPES,
+            "2672def9f1fd6657c653a1d6e60ee497e8a426f4e2b85552f9e97c35b973c83f",
+            100,
+        )
     }
 
     #[test]
     fn special_strings() -> Result<()> {
-        test_case(STRINGS, "ELRukZj61C9TSxKrdcTobfJ6g1XoXTfwdFR8J6QqahM1", 100)
+        test_case(
+            STRINGS,
+            "c6222174262b9c37f282530d6525dd6333f99f22a8a65cb6749445f07105b670",
+            100,
+        )
     }
 
     #[test]
     fn empty_values() -> Result<()> {
-        test_case(EMPTY, "8EDT69kCV7nLdx9wa7qdbZ2iTzBdShhhNomSZdYhFpAY", 100)
+        test_case(
+            EMPTY,
+            "6b646fa0961c777be9d93ddc7c3bf52ee83bc56de36de5824b0656895375c4d5",
+            100,
+        )
     }
 
     #[test]
     fn array_ordering() -> Result<()> {
         test_case(
             ARRAY_ORDER,
-            "7VruJLztpS7RsMijDB9zjFkPyRNhusytFdEomgKbAox",
+            "01aa1e0cdb3c047651fbc565816d4bbf4fb51a4f022b13ac157aefd6f98e4bb7",
             100,
         )
     }

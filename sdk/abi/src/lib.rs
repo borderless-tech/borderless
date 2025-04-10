@@ -21,30 +21,18 @@ extern "C" {
     pub fn storage_remove(base_key: u64, sub_key: u64);
     pub fn storage_has_key(base_key: u64, sub_key: u64) -> u64;
 
-    pub fn storage_gen_sub_key() -> u64;
-
     pub fn storage_begin_acid_txn() -> u64;
     pub fn storage_commit_acid_txn() -> u64;
 
-    /*
-     * state.field_1 ->    base-key = 0xf4a1,  sub-key = 0x0000
-     * state.vec_1   ->    base-key = 0xa1b3,  sub-key = 0x0001 -> 0x00ff,
-     *
-     * storage_read ( base, sub ) -> key = [ contract-id, base-key, sub-key ]
-     *                                     | ---------   256 bit ---------- |
-     */
+    // --- Dangerous API (introduces side-effects)
+    pub fn storage_gen_sub_key() -> u64;
+    pub fn timestamp() -> u64; // milliseconds since epoch
 
-    // pub fn storage_iter_prefix(prefix_ptr: u64, prefix_len: u64) -> u64;
-    // pub fn storage_iter_range(start_ptr: u64, start_len: u64, end_ptr: u64, end_len: u64) -> u64;
-    // pub fn storage_iter_next(iterator_id: u64, key_register_id: u64, value_register_id: u64)
-    //     -> u64;
-
-    // --- Profiling
+    // Profiling
     pub fn tic(); // matlab style
-    pub fn tocp(); // prints the output
     pub fn toc() -> u64; // returns the nanoseconds as u64
 
-    // --- Testing
+    // Testing
     pub fn rand(min: u64, max: u64) -> u64;
 }
 
