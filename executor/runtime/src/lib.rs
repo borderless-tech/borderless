@@ -308,7 +308,7 @@ impl<'a, S: Db> Runtime<'a, S> {
             .contract_store
             .get(cid)
             .context("contract is not instantiated")?;
-        self.store.data_mut().begin_contract_execution(*cid)?;
+        self.store.data_mut().begin_immutable_exec(*cid)?;
 
         let bytes = rq.to_bytes()?;
 
@@ -326,7 +326,7 @@ impl<'a, S: Db> Runtime<'a, S> {
             .context("missing http-result")?;
 
         // Finish the execution
-        self.store.data_mut().finish_contract_execution()?;
+        self.store.data_mut().finish_immutable_exec()?;
 
         let rs = Response::from_bytes(&output)?;
         Ok(rs)

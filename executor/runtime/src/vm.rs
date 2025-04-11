@@ -42,7 +42,7 @@ pub struct VmState<'a, S: Db> {
     log_buffer: Vec<LogLine>,
 
     // Currently active contract
-    active_contract: Option<ContractId>,
+    active_contract: ActiveContract,
 }
 
 impl<'a, S: Db> VmState<'a, S> {
@@ -55,7 +55,7 @@ impl<'a, S: Db> VmState<'a, S> {
             // _marker: PhantomData,
             last_timer: None,
             log_buffer: Vec::new(),
-            active_contract: None,
+            active_contract: ActiveContract::None,
         }
     }
 
@@ -64,13 +64,17 @@ impl<'a, S: Db> VmState<'a, S> {
     /// Internally, this function does the following things:
     /// 1. Clear the log-buffer
     /// 2. Remember the contract-id, so we can generate storage-keys
+    ///
+    /// # Errors
+    ///
+    /// Calling this function while the `VmState` already has an active contract results in an error.
     pub fn begin_contract_execution(&mut self, contract_id: ContractId) -> anyhow::Result<()> {
         if self.active_contract.is_some() {
             return Err(anyhow::Error::msg(
                 "Must finish contract execution before starting new",
             ));
         }
-        self.active_contract = Some(contract_id);
+        self.active_contract = ActiveContract::Mutable(contract_id);
         self.log_buffer.clear();
         Ok(())
     }
@@ -79,23 +83,68 @@ impl<'a, S: Db> VmState<'a, S> {
     ///
     /// Internally, this function does the following things:
     /// 1. Flush the log-buffer to the database
-    /// 2. Clear the contract-id, so it can be reset next time
+    /// 2. Reset the contract-id for the next execution
     /// 3. Clear the log-buffer
+    ///
+    /// # Errors
+    ///
+    /// Calling this function while the `VmState` has no active contract results in an error.
     pub fn finish_contract_execution(&mut self) -> anyhow::Result<()> {
         match self.active_contract {
-            Some(cid) => {
+            ActiveContract::Mutable(cid) => {
                 // TODO: The flushing takes 10 ms due to lmdb being lmdb..
                 let logger = Logger::new(self.db, cid);
                 logger.flush_lines(&self.log_buffer)?;
             }
-            None => {
+            ActiveContract::Immutable(_) => {
+                return Err(anyhow::Error::msg(
+                    "Contract execution was marked as immutable",
+                ));
+            }
+            ActiveContract::None => {
                 return Err(anyhow::Error::msg(
                     "Must start contract execution before commiting",
                 ));
             }
         }
-        self.active_contract = None;
+        self.active_contract = ActiveContract::None;
         self.log_buffer.clear();
+        Ok(())
+    }
+
+    /// Sets an contract as active and marks it as immutable
+    ///
+    /// This is used for handling http-requests (as they never modify the state)
+    /// or for performing dry-runs (to check if an action *could* be executed without errors).
+    ///
+    /// # Errors
+    ///
+    /// Calling this function while the `VmState` already has an active contract results in an error.
+    pub fn begin_immutable_exec(&mut self, cid: ContractId) -> anyhow::Result<()> {
+        if self.active_contract.is_some() {
+            return Err(anyhow::Error::msg("Cannot overwrite active contract"));
+        }
+        self.active_contract = ActiveContract::Immutable(cid);
+        Ok(())
+    }
+
+    /// Marks the end of an immutable contract execution.
+    ///
+    /// Internally, this function does the following things:
+    /// 1. Reset the contract-id for the next execution
+    /// 2. Clear the log-buffer
+    ///
+    /// Please note: No logs are commited to the database.
+    ///
+    /// # Errors
+    ///
+    /// Calling this function while the `VmState` has no active contract results in an error.
+    pub fn finish_immutable_exec(&mut self) -> anyhow::Result<()> {
+        if self.active_contract.is_none() {
+            return Err(anyhow::Error::msg("Cannot clear non existing"));
+        }
+        self.active_contract = ActiveContract::None;
+        self.log_buffer.clear(); //
         Ok(())
     }
 
@@ -104,25 +153,30 @@ impl<'a, S: Db> VmState<'a, S> {
     /// Note: Does not do any further checking, if the key is in user or system space!
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
         self.active_contract
+            .as_opt()
             .map(|cid| StorageKey::new(&cid, base_key, sub_key))
             .ok_or_else(|| wasmtime::Error::msg("no contract has been activated"))
     }
 
+    /// Writes the given value into the register.
     pub fn set_register(&mut self, register_id: u64, value: Vec<u8>) {
         self.registers.insert(register_id, value.into());
     }
 
+    /// Returns a value from a register
     pub fn get_register(&self, register_id: u64) -> Option<Vec<u8>> {
         self.registers.get(&register_id).map(|v| v.borrow().clone())
     }
 
+    /// Removes a value from a register
     pub fn clear_register(&mut self, register_id: u64) {
         self.registers.remove(&register_id);
     }
 
-    // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
+    /// Begins a new acid transaction
     fn begin_acid_txn(&mut self) -> wasmtime::Result<u64> {
-        assert!(
+        // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
+        debug_assert!(
             self.active_contract.is_some(),
             "transactions should only be created when there is an active contract"
         );
@@ -134,9 +188,10 @@ impl<'a, S: Db> VmState<'a, S> {
         Ok(0)
     }
 
-    // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
+    /// Commits an acid transaction
     fn commit_acid_txn(&mut self) -> wasmtime::Result<u64> {
-        assert!(
+        // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
+        debug_assert!(
             self.active_contract.is_some(),
             "transactions should only be created when there is an active contract"
         );
@@ -353,6 +408,9 @@ pub fn storage_write(
     value_ptr: u64,
     value_len: u64,
 ) -> wasmtime::Result<()> {
+    if caller.data().active_contract.is_immutable() {
+        return Err(wasmtime::Error::msg("contract is immutable"));
+    }
     let now = Instant::now();
     // Get memory
     let memory = get_memory(&mut caller)?;
@@ -490,10 +548,59 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
 
 // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
 pub fn storage_begin_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
+    if caller.data().active_contract.is_immutable() {
+        return Err(wasmtime::Error::msg("contract is immutable"));
+    }
     caller.data_mut().begin_acid_txn()
 }
 
 // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
 pub fn storage_commit_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
+    if caller.data().active_contract.is_immutable() {
+        return Err(wasmtime::Error::msg("contract is immutable"));
+    }
     caller.data_mut().commit_acid_txn()
+}
+
+/// Represents the different states of an active contract
+///
+/// A contract can be executed with a mutable or immutable state.
+/// Processing a chain-transaction requires a mutable state,
+/// as this means the state of the contract can change and changes are written to the database.
+///
+/// An immutable contract execution is e.g. required for handling http-requests or performing dry-runs.
+/// In such a case, calls to `storage_write` will result in an error.
+enum ActiveContract {
+    Mutable(ContractId),
+    Immutable(ContractId),
+    None,
+}
+
+impl ActiveContract {
+    pub fn is_some(&self) -> bool {
+        !self.is_none()
+    }
+
+    pub fn is_none(&self) -> bool {
+        if let ActiveContract::None = &self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn as_opt(&self) -> Option<&ContractId> {
+        match self {
+            ActiveContract::Mutable(cid) | ActiveContract::Immutable(cid) => Some(cid),
+            ActiveContract::None => None,
+        }
+    }
+
+    pub fn is_immutable(&self) -> bool {
+        if let ActiveContract::Immutable(_) = &self {
+            true
+        } else {
+            false
+        }
+    }
 }
