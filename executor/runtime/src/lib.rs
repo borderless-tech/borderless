@@ -21,21 +21,21 @@ mod vm;
 
 const CONTRACT_SUB_DB: &str = "contract-db";
 
-pub struct Runtime<'a, S = Lmdb>
+pub struct Runtime<S = Lmdb>
 where
     S: Db,
 {
-    linker: Linker<VmState<'a, S>>,
-    store: Store<VmState<'a, S>>,
+    linker: Linker<VmState<S>>,
+    store: Store<VmState<S>>,
     engine: Engine,
     contract_store: HashMap<ContractId, Instance>,
 }
 
-impl<'a, S: Db> Runtime<'a, S> {
-    pub fn new(storage: &'a S) -> Result<Self> {
+impl<S: Db> Runtime<S> {
+    pub fn new(storage: &S) -> Result<Self> {
         let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
         let start = Instant::now();
-        let state = VmState::new(storage, db_ptr);
+        let state = VmState::new(storage.clone(), db_ptr);
 
         let mut config = Config::new();
         config.cranelift_opt_level(wasmtime::OptLevel::Speed);

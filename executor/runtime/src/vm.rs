@@ -31,11 +31,11 @@ use crate::logger::Logger;
 // I am not sure, if this may cause an overhead for really large operations in wasm; but I mean, the lmdb transaction also has to buffer everything somewhere,
 // so it seems like it's not a big difference (but ofc I don't know how lmdb works internally, so I may be completely wrong here)..
 
-pub struct VmState<'a, S: Db> {
+pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
-    db: &'a S,
+    db: S,
     db_ptr: S::Handle,
-    db_acid_txn: Option<<S as Db>::RwTx<'a>>,
+    db_acid_txn_buffer: Option<Vec<StorageOp>>,
     last_timer: Option<Instant>,
 
     /// Current buffer of log output for the given contract
@@ -45,14 +45,13 @@ pub struct VmState<'a, S: Db> {
     active_contract: ActiveContract,
 }
 
-impl<'a, S: Db> VmState<'a, S> {
-    pub fn new(db: &'a S, db_ptr: S::Handle) -> Self {
+impl<S: Db> VmState<S> {
+    pub fn new(db: S, db_ptr: S::Handle) -> Self {
         VmState {
             registers: Default::default(),
             db,
             db_ptr,
-            db_acid_txn: None,
-            // _marker: PhantomData,
+            db_acid_txn_buffer: None,
             last_timer: None,
             log_buffer: Vec::new(),
             active_contract: ActiveContract::None,
@@ -89,7 +88,7 @@ impl<'a, S: Db> VmState<'a, S> {
         match self.active_contract {
             ActiveContract::Mutable(cid) => {
                 // TODO: The flushing takes 10 ms due to lmdb being lmdb..
-                let logger = Logger::new(self.db, cid);
+                let logger = Logger::new(&self.db, cid);
                 logger.flush_lines(&self.log_buffer)?;
             }
             ActiveContract::Immutable(_) => {
@@ -176,11 +175,11 @@ impl<'a, S: Db> VmState<'a, S> {
             self.active_contract.is_some(),
             "transactions should only be created when there is an active contract"
         );
-        if self.db_acid_txn.is_some() {
+        if self.db_acid_txn_buffer.is_some() {
             return Ok(1);
         }
-        let txn = self.db.begin_rw_txn()?;
-        self.db_acid_txn = Some(txn);
+        // let txn = self.db.begin_rw_txn()?;
+        self.db_acid_txn_buffer = Some(Vec::new());
         Ok(0)
     }
 
@@ -192,17 +191,29 @@ impl<'a, S: Db> VmState<'a, S> {
             "transactions should only be created when there is an active contract"
         );
         let now = Instant::now();
-        match self.db_acid_txn.take() {
-            Some(txn) => {
-                txn.commit()?; // TODO: This guy is taking 10x the time of the entire module execution
-                               // (maybe in production we don't block the wasm module here ?)
-                let elapsed = now.elapsed();
-                debug!("commit-acid-txn: {elapsed:?}");
-            }
-            None => {
-                return Ok(1);
+        let buf = std::mem::replace(&mut self.db_acid_txn_buffer, None).unwrap_or_default();
+        let mut txn = self.db.begin_rw_txn()?;
+        for op in buf.into_iter() {
+            match op {
+                StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
+                StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
             }
         }
+        txn.commit();
+        let elapsed = now.elapsed();
+        debug!("commit-acid-txn: {elapsed:?}");
+        // TODO
+        // match self.db_acid_txn_buffer.take() {
+        //     Some(txn) => {
+        //         txn.commit()?; // TODO: This guy is taking 10x the time of the entire module execution
+        //                        // (maybe in production we don't block the wasm module here ?)
+        //         let elapsed = now.elapsed();
+        //         debug!("commit-acid-txn: {elapsed:?}");
+        //     }
+        //     None => {
+        //         return Ok(1);
+        //     }
+        // }
         Ok(0)
     }
 
@@ -422,8 +433,9 @@ pub fn storage_write(
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
     let mut caller_data = &mut caller.data_mut();
-    if let Some(txn) = &mut caller_data.db_acid_txn {
-        txn.write(&caller_data.db_ptr, &key, &value)?;
+    if let Some(buf) = &mut caller_data.db_acid_txn_buffer {
+        buf.push(StorageOp::write(key, value));
+        // txn.write(&caller_data.db_ptr, &key, &value)?;
     } else {
         // If not, create a new transaction and instantly commit the changes
         let mut txn = caller_data.db.begin_rw_txn()?;
@@ -449,15 +461,10 @@ pub fn storage_read(
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
     let mut caller_data = &mut caller.data_mut();
-    let value = if let Some(txn) = &mut caller_data.db_acid_txn {
-        txn.read(&caller_data.db_ptr, &key)?.map(|v| v.to_vec())
-    } else {
-        // If not, create a new transaction and instantly commit the changes
-        let txn = caller_data.db.begin_ro_txn()?;
-        let value = txn.read(&caller_data.db_ptr, &key)?.map(|v| v.to_vec());
-        txn.commit()?;
-        value
-    };
+    // If not, create a new transaction and instantly commit the changes
+    let txn = caller_data.db.begin_ro_txn()?;
+    let value = txn.read(&caller_data.db_ptr, &key)?.map(|v| v.to_vec());
+    txn.commit()?;
     if let Some(value) = value {
         // Write to register
         caller.data_mut().set_register(register_id, value);
@@ -488,8 +495,10 @@ pub fn storage_remove(
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
     let mut caller_data = &mut caller.data_mut();
-    if let Some(txn) = &mut caller_data.db_acid_txn {
-        txn.delete(&caller_data.db_ptr, &key)?;
+    // TODO
+    if let Some(buf) = &mut caller_data.db_acid_txn_buffer {
+        // txn.delete(&caller_data.db_ptr, &key)?;
+        buf.push(StorageOp::remove(key));
     } else {
         // If not, create a new transaction and instantly commit the changes
         let mut txn = caller_data.db.begin_rw_txn()?;
@@ -514,15 +523,10 @@ pub fn storage_has_key(
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
     let mut caller_data = &mut caller.data_mut();
-    let result = if let Some(txn) = &mut caller_data.db_acid_txn {
-        txn.read(&caller_data.db_ptr, &key)?.is_some()
-    } else {
-        // If not, create a new transaction
-        let txn = caller_data.db.begin_ro_txn()?;
-        let found_key = txn.read(&caller_data.db_ptr, &key)?.is_some();
-        txn.commit()?;
-        found_key
-    };
+    // If not, create a new transaction
+    let txn = caller_data.db.begin_ro_txn()?;
+    let result = txn.read(&caller_data.db_ptr, &key)?.is_some();
+    txn.commit()?;
 
     let elapsed = now.elapsed();
     debug!("storage-has-key: {:?}", elapsed);
@@ -598,5 +602,20 @@ impl ActiveContract {
         } else {
             false
         }
+    }
+}
+
+enum StorageOp {
+    Write { key: StorageKey, value: Vec<u8> },
+    Remove { key: StorageKey },
+}
+
+impl StorageOp {
+    pub fn write(key: StorageKey, value: Vec<u8>) -> Self {
+        Self::Write { key, value }
+    }
+
+    pub fn remove(key: StorageKey) -> Self {
+        Self::Remove { key }
     }
 }
