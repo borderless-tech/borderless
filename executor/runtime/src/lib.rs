@@ -177,35 +177,9 @@ impl<'a, S: Db> Runtime<'a, S> {
         writer: &BorderlessId,
         tx_ctx: TxCtx,
     ) -> Result<()> {
-        let instance = self
-            .contract_store
-            .get(cid)
-            .context("contract is not instantiated")?;
-
-        self.store.data_mut().begin_contract_execution(*cid)?;
-
-        // Prepare registers
         let input = action.to_bytes()?;
-        self.store.data_mut().set_register(REGISTER_INPUT, input);
-        self.store
-            .data_mut()
-            .set_register(REGISTER_TX_CTX, tx_ctx.to_bytes()?);
-        self.store
-            .data_mut()
-            .set_register(REGISTER_WRITER, (*writer).into_bytes().into());
-
-        // Call the actual function on the wasm side
-        let run = instance.get_typed_func::<(), ()>(&mut self.store, "process_transaction")?;
-        run.call(&mut self.store, ())?;
-
-        // Finish the execution
-        self.store.data_mut().finish_contract_execution()?;
-        Ok(())
+        self.process_chain_tx("process_transaction", *cid, input, *writer, tx_ctx)
     }
-
-    // fn process_chain_tx(&mut self, input: Vec<u8>, writer: BorderlessId, tx_ctx: TxCtx) -> Result<()> {
-
-    // }
 
     pub fn process_introduction(
         &mut self,
@@ -213,32 +187,14 @@ impl<'a, S: Db> Runtime<'a, S> {
         writer: &BorderlessId,
         tx_ctx: TxCtx,
     ) -> Result<()> {
-        let instance = self
-            .contract_store
-            .get(&introduction.contract_id)
-            .context("contract is not instantiated")?;
-
-        self.store
-            .data_mut()
-            .begin_contract_execution(introduction.contract_id)?;
-
-        // Prepare registers
         let input = introduction.to_bytes()?;
-        self.store.data_mut().set_register(REGISTER_INPUT, input);
-        self.store
-            .data_mut()
-            .set_register(REGISTER_TX_CTX, tx_ctx.to_bytes()?);
-        self.store
-            .data_mut()
-            .set_register(REGISTER_WRITER, (*writer).into_bytes().into());
-
-        // Get introduction function and call it
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_introduction")?;
-        func.call(&mut self.store, ())?;
-
-        // Finish the execution
-        self.store.data_mut().finish_contract_execution()?;
-        Ok(())
+        self.process_chain_tx(
+            "process_introduction",
+            introduction.contract_id,
+            input,
+            *writer,
+            tx_ctx,
+        )
     }
 
     pub fn process_revocation(
@@ -248,6 +204,40 @@ impl<'a, S: Db> Runtime<'a, S> {
         _tx_ctx: TxCtx,
     ) -> Result<()> {
         todo!()
+    }
+
+    /// Abstraction over all possible chain transactions
+    fn process_chain_tx(
+        &mut self,
+        contract_method: &str,
+        cid: ContractId,
+        input: Vec<u8>,
+        writer: BorderlessId,
+        tx_ctx: TxCtx,
+    ) -> Result<()> {
+        let instance = self
+            .contract_store
+            .get(&cid)
+            .context("contract is not instantiated")?;
+
+        self.store.data_mut().begin_contract_execution(cid)?;
+
+        // Prepare registers
+        self.store.data_mut().set_register(REGISTER_INPUT, input);
+        self.store
+            .data_mut()
+            .set_register(REGISTER_TX_CTX, tx_ctx.to_bytes()?);
+        self.store
+            .data_mut()
+            .set_register(REGISTER_WRITER, writer.into_bytes().into());
+
+        // Call the actual function on the wasm side
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, contract_method)?;
+        func.call(&mut self.store, ())?;
+
+        // Finish the execution
+        self.store.data_mut().finish_contract_execution()?;
+        Ok(())
     }
 
     pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
