@@ -52,11 +52,9 @@ pub extern "C" fn process_http_rq() {
 }
 
 use borderless_sdk::__private::{
-    dev, read_field, read_register,
-    registers::{REGISTER_INPUT, REGISTER_INPUT_HTTP, REGISTER_OUTPUT_HTTP},
-    storage_begin_acid_txn, storage_commit_acid_txn,
-    storage_keys::make_user_key,
-    write_field, write_register,
+    dev, read_field, read_register, read_string_from_register, registers::*,
+    storage_begin_acid_txn, storage_commit_acid_txn, storage_keys::make_user_key, write_field,
+    write_register, write_string_to_register,
 };
 use borderless_sdk::{contract::CallAction, serialize::from_value};
 
@@ -174,19 +172,25 @@ fn test_env() {
 }
 
 fn exec_http_rq() -> Result<()> {
-    let bytes = read_register(REGISTER_INPUT_HTTP).context("missing http input")?;
-    let rq = Request::from_bytes(&bytes)?;
+    // let bytes = read_register(REGISTER_INPUT_HTTP).context("missing http input")?;
+    // let rq = Request::from_bytes(&bytes)?;
 
-    let rs = generate_response(rq)?;
-    let rs_bytes = rs.to_bytes()?;
+    // let rs = generate_response(rq)?;
+    // let rs_bytes = rs.to_bytes()?;
 
-    write_register(REGISTER_OUTPUT_HTTP, rs_bytes);
+    // write_register(REGISTER_OUTPUT_HTTP, rs_bytes);
+
+    let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
+    let (status, payload) = generate_response(path)?;
+
+    write_register(REGISTER_OUTPUT_HTTP_STATUS, status.to_be_bytes());
+    write_string_to_register(REGISTER_OUTPUT_HTTP_RESULT, payload);
 
     Ok(())
 }
 
-fn generate_response(rq: Request) -> Result<Response> {
-    let path = rq.path.strip_prefix('/').unwrap_or(&rq.path);
+fn generate_response(path: String) -> Result<(u16, String)> {
+    let path = path.strip_prefix('/').unwrap_or(&path);
 
     let storage_key_switch = make_user_key(xxh3_64("FLIPPER::switch".as_bytes()));
     let storage_key_counter = make_user_key(xxh3_64("FLIPPER::counter".as_bytes()));
@@ -196,41 +200,28 @@ fn generate_response(rq: Request) -> Result<Response> {
         let switch = read_field(storage_key_switch, 0).context("missing field switch")?;
         let counter = read_field(storage_key_counter, 0).context("missing field counter")?;
         let state = Flipper { switch, counter };
-        return Ok(Response {
-            status: 200,
-            payload: to_payload(&state, "")?.unwrap().into_bytes(),
-        });
+        return Ok((200, to_payload(&state, "")?.unwrap()));
     }
     let (prefix, suffix) = match path.find('/') {
         Some(idx) => path.split_at(idx),
         None => (path, ""),
     };
 
-    match prefix {
+    let payload = match prefix {
         "switch" => {
             let switch: bool = read_field(storage_key_switch, 0).context("missing field switch")?;
-            let payload = to_payload(&switch, suffix)?.map(|s| s.into_bytes());
-            return Ok(Response {
-                status: if payload.is_some() { 200 } else { 404 },
-                payload: payload.unwrap_or_default(),
-            });
+            to_payload(&switch, suffix)?
         }
         "counter" => {
             let counter: u32 =
                 read_field(storage_key_counter, 0).context("missing field counter")?;
-            let payload = to_payload(&counter, suffix)?.map(|s| s.into_bytes());
-            return Ok(Response {
-                status: if payload.is_some() { 200 } else { 404 },
-                payload: payload.unwrap_or_default(),
-            });
+            to_payload(&counter, suffix)?
         }
-        _ => {
-            return Ok(Response {
-                status: 404,
-                payload: Vec::new(),
-            });
-        }
-    }
+        _ => None,
+    };
+
+    let status = if payload.is_some() { 200 } else { 404 };
+    Ok((status, payload.unwrap_or_default()))
 }
 
 // NOTE: Let's dig into this, what the sdk macro should derive

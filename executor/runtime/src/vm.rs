@@ -84,6 +84,7 @@ impl<'a, S: Db> VmState<'a, S> {
     pub fn finish_contract_execution(&mut self) -> anyhow::Result<()> {
         match self.active_contract {
             Some(cid) => {
+                // TODO: The flushing takes 10 ms due to lmdb being lmdb..
                 let logger = Logger::new(self.db, cid);
                 logger.flush_lines(&self.log_buffer)?;
             }

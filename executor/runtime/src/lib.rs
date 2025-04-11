@@ -5,10 +5,7 @@ use std::time::Instant;
 use anyhow::{Context, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
-use borderless_sdk::__private::registers::{
-    REGISTER_BLOCK_CTX, REGISTER_INPUT, REGISTER_INPUT_HTTP, REGISTER_OUTPUT_HTTP, REGISTER_TX_CTX,
-    REGISTER_WRITER,
-};
+use borderless_sdk::__private::registers::*;
 use borderless_sdk::contract::{BlockCtx, Introduction, TxCtx};
 use borderless_sdk::http::{Request, Response};
 use borderless_sdk::{
@@ -206,6 +203,10 @@ impl<'a, S: Db> Runtime<'a, S> {
         Ok(())
     }
 
+    // fn process_chain_tx(&mut self, input: Vec<u8>, writer: BorderlessId, tx_ctx: TxCtx) -> Result<()> {
+
+    // }
+
     pub fn process_introduction(
         &mut self,
         introduction: &Introduction,
@@ -259,19 +260,40 @@ impl<'a, S: Db> Runtime<'a, S> {
 
     // --- NOTE: Maybe we should create a separate runtime for the HTTP handling ?
 
-    pub fn process_http_get_rq(
-        &mut self,
-        cid: &ContractId,
-        path: String,
-        query: Option<String>,
-    ) -> Result<Response> {
-        let rq = Request {
-            method: borderless_sdk::__private::http::Method::GET,
-            path,
-            query,
-            payload: Vec::new(),
-        };
-        self.process_http_rq(cid, rq)
+    pub fn process_http_get_rq(&mut self, cid: &ContractId, path: String) -> Result<Response> {
+        let instance = self
+            .contract_store
+            .get(cid)
+            .context("contract is not instantiated")?;
+        self.store.data_mut().begin_contract_execution(*cid)?;
+
+        self.store
+            .data_mut()
+            .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());
+
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_http_rq")?;
+        func.call(&mut self.store, ())?;
+
+        let status = self
+            .store
+            .data()
+            .get_register(REGISTER_OUTPUT_HTTP_STATUS)
+            .context("missing http-status")?;
+        let status = u16::from_be_bytes(status.try_into().unwrap());
+
+        let result = self
+            .store
+            .data()
+            .get_register(REGISTER_OUTPUT_HTTP_RESULT)
+            .context("missing http-result")?;
+
+        // Finish the execution
+        self.store.data_mut().finish_contract_execution()?;
+
+        Ok(Response {
+            status,
+            payload: result,
+        })
     }
 
     pub fn process_http_post_rq(
