@@ -18,7 +18,6 @@ resolver = "2"
 borderless-abi = { path = "sdk/abi" }
 borderless-id-types = { path = "primitives/id-types" }
 borderless-hash = { path = "primitives/hash" }
-borderless-sdk = { path = "sdk/core" }
 
 # External dependencies
 anyhow = "1.0"

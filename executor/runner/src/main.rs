@@ -19,6 +19,9 @@ use borderless_sdk::{
 use clap::{Parser, Subcommand};
 
 use log::info;
+use server::start_contract_server;
+
+mod server;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -77,7 +80,8 @@ enum ContractAction {
     Api,
 }
 
-fn main() -> Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
     // Initialize logging
     colog::init();
 
@@ -86,27 +90,15 @@ fn main() -> Result<()> {
     let db = Lmdb::new(&args.db, 2).context("failed to open database")?;
 
     match args.command {
-        Commands::Contract(cmd) => contract(cmd, db)?,
+        Commands::Contract(cmd) => contract(cmd, db).await?,
     }
     Ok(())
 }
 
-fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
-    // Create runtime
-    let mut rt = Runtime::new(&db)?;
-
-    let cid: ContractId = if let Some(cid) = command.contract_id {
-        cid
-    } else {
-        // Otherwise: Read from env
-        "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse()?
-    };
-    rt.instantiate_contract(cid, command.contract)?;
-
-    let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
-
+/// Generates a new dummy tx-ctx
+pub fn generate_tx_ctx(rt: &mut Runtime, cid: &ContractId) -> Result<TxCtx> {
     // We now have to provide additional context when executing the contract
-    let n_actions = rt.len_actions(&cid)?.unwrap_or_default();
+    let n_actions = rt.len_actions(cid)?.unwrap_or_default();
     let tx_hash = Hash256::digest(&n_actions.to_be_bytes());
     let tx_ctx = TxCtx {
         tx_id: TxIdentifier::new(0, n_actions, tx_hash),
@@ -120,6 +112,22 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             .unwrap()
             .as_secs(),
     )?;
+    Ok(tx_ctx)
+}
+
+async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
+    // Create runtime
+    let mut rt = Runtime::new(&db)?;
+
+    let cid: ContractId = if let Some(cid) = command.contract_id {
+        cid
+    } else {
+        // Otherwise: Read from env
+        "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse()?
+    };
+    rt.instantiate_contract(cid, command.contract)?;
+
+    let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
 
     // Parse command
     match command.action {
@@ -129,6 +137,7 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let introduction = Introduction::from_str(&data)?;
 
             let cid = introduction.contract_id;
+            let tx_ctx = generate_tx_ctx(&mut rt, &cid)?;
             info!("Introduce contract {cid}");
             let start = Instant::now();
             rt.process_introduction(&introduction, &writer, tx_ctx)?;
@@ -142,6 +151,7 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             // Parse action
             let data = read_to_string(action)?;
             let action = CallAction::from_str(&data)?;
+            let tx_ctx = generate_tx_ctx(&mut rt, &cid)?;
 
             info!("Run contract {cid}");
             let start = Instant::now();
@@ -168,23 +178,24 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let log = Logger::new(&db, cid).get_full_log()?;
             log.into_iter().for_each(print_log_line);
         }
-        ContractAction::Api => loop {
-            let mut buf = String::new();
-            std::io::stdin().read_line(&mut buf)?;
-            let input = buf.trim().to_lowercase();
-            if input.is_empty() {
-                break;
-            }
-            if input.starts_with('/') {
-                let now = Instant::now();
-                // TODO: Query
-                let rs = rt.http_get_state(&cid, input)?;
-                let elapsed = now.elapsed();
-                let value = String::from_utf8(rs.payload)?;
-                info!("{}: {}, time elapsed: {elapsed:?}", rs.status, value);
-                continue;
-            }
-        },
+        ContractAction::Api => {
+            start_contract_server().await?;
+            // let mut buf = String::new();
+            // std::io::stdin().read_line(&mut buf)?;
+            // let input = buf.trim().to_lowercase();
+            // if input.is_empty() {
+            //     break;
+            // }
+            // if input.starts_with('/') {
+            //     let now = Instant::now();
+            //     // TODO: Query
+            //     let rs = rt.http_get_state(&cid, input)?;
+            //     let elapsed = now.elapsed();
+            //     let value = String::from_utf8(rs.payload)?;
+            //     info!("{}: {}, time elapsed: {elapsed:?}", rs.status, value);
+            //     continue;
+            // }
+        }
     }
     Ok(())
 }
