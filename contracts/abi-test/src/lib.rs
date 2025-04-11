@@ -4,7 +4,6 @@ use borderless_sdk::__private::action_log::ActionLog;
 use borderless_sdk::__private::http::to_payload;
 use borderless_sdk::__private::write_metadata_client;
 use borderless_sdk::contract::Introduction;
-use borderless_sdk::http::{Method, Request, Response};
 use borderless_sdk::{error, info, new_error, Context, Result};
 
 #[no_mangle]
@@ -41,7 +40,7 @@ pub extern "C" fn process_revocation() {
 }
 
 #[no_mangle]
-pub extern "C" fn process_http_rq() {
+pub extern "C" fn http_get_state() {
     dev::tic();
     let result = exec_http_rq();
     let elapsed = dev::toc();
@@ -172,14 +171,6 @@ fn test_env() {
 }
 
 fn exec_http_rq() -> Result<()> {
-    // let bytes = read_register(REGISTER_INPUT_HTTP).context("missing http input")?;
-    // let rq = Request::from_bytes(&bytes)?;
-
-    // let rs = generate_response(rq)?;
-    // let rs_bytes = rs.to_bytes()?;
-
-    // write_register(REGISTER_OUTPUT_HTTP, rs_bytes);
-
     let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
     let (status, payload) = generate_response(path)?;
 
@@ -194,6 +185,12 @@ fn generate_response(path: String) -> Result<(u16, String)> {
 
     let storage_key_switch = make_user_key(xxh3_64("FLIPPER::switch".as_bytes()));
     let storage_key_counter = make_user_key(xxh3_64("FLIPPER::counter".as_bytes()));
+
+    // Extract query string
+    let (path, _query) = match path.split_once('?') {
+        Some((path, query)) => (path, Some(query)),
+        None => (path, None),
+    };
 
     // Quick-shot, check if the user wants to access the entire state
     if path.is_empty() {

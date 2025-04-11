@@ -220,7 +220,7 @@ impl<'a, S: Db> Runtime<'a, S> {
             .get(&cid)
             .context("contract is not instantiated")?;
 
-        self.store.data_mut().begin_contract_execution(cid)?;
+        self.store.data_mut().begin_mutable_exec(cid)?;
 
         // Prepare registers
         self.store.data_mut().set_register(REGISTER_INPUT, input);
@@ -236,7 +236,7 @@ impl<'a, S: Db> Runtime<'a, S> {
         func.call(&mut self.store, ())?;
 
         // Finish the execution
-        self.store.data_mut().finish_contract_execution()?;
+        self.store.data_mut().finish_mutable_exec()?;
         Ok(())
     }
 
@@ -250,18 +250,18 @@ impl<'a, S: Db> Runtime<'a, S> {
 
     // --- NOTE: Maybe we should create a separate runtime for the HTTP handling ?
 
-    pub fn process_http_get_rq(&mut self, cid: &ContractId, path: String) -> Result<Response> {
+    pub fn http_get_state(&mut self, cid: &ContractId, path: String) -> Result<Response> {
         let instance = self
             .contract_store
             .get(cid)
             .context("contract is not instantiated")?;
-        self.store.data_mut().begin_contract_execution(*cid)?;
+        self.store.data_mut().begin_immutable_exec(*cid)?;
 
         self.store
             .data_mut()
             .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());
 
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_http_rq")?;
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "http_get_state")?;
         func.call(&mut self.store, ())?;
 
         let status = self
@@ -278,7 +278,7 @@ impl<'a, S: Db> Runtime<'a, S> {
             .context("missing http-result")?;
 
         // Finish the execution
-        self.store.data_mut().finish_contract_execution()?;
+        self.store.data_mut().finish_immutable_exec()?;
 
         Ok(Response {
             status,
@@ -286,49 +286,12 @@ impl<'a, S: Db> Runtime<'a, S> {
         })
     }
 
-    pub fn process_http_post_rq(
+    pub fn http_post_action(
         &mut self,
-        cid: &ContractId,
-        path: String,
-        payload: Vec<u8>,
+        _cid: &ContractId,
+        _path: String,
+        _payload: Vec<u8>,
     ) -> Result<Response> {
-        let rq = Request {
-            method: borderless_sdk::__private::http::Method::POST,
-            path,
-            query: None,
-            payload,
-        };
-        self.process_http_rq(cid, rq)
-    }
-
-    // TODO: We need a decorator pattern, so that we call finish_contract_execution,
-    // in case something went wrong
-    pub fn process_http_rq(&mut self, cid: &ContractId, rq: Request) -> Result<Response> {
-        let instance = self
-            .contract_store
-            .get(cid)
-            .context("contract is not instantiated")?;
-        self.store.data_mut().begin_immutable_exec(*cid)?;
-
-        let bytes = rq.to_bytes()?;
-
-        self.store
-            .data_mut()
-            .set_register(REGISTER_INPUT_HTTP, bytes);
-
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_http_rq")?;
-        func.call(&mut self.store, ())?;
-
-        let output = self
-            .store
-            .data()
-            .get_register(REGISTER_OUTPUT_HTTP)
-            .context("missing http-result")?;
-
-        // Finish the execution
-        self.store.data_mut().finish_immutable_exec()?;
-
-        let rs = Response::from_bytes(&output)?;
-        Ok(rs)
+        todo!()
     }
 }

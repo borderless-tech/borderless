@@ -178,7 +178,7 @@ fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             if input.starts_with('/') {
                 let now = Instant::now();
                 // TODO: Query
-                let rs = rt.process_http_get_rq(&cid, input)?;
+                let rs = rt.http_get_state(&cid, input)?;
                 let elapsed = now.elapsed();
                 let value = String::from_utf8(rs.payload)?;
                 info!("{}: {}, time elapsed: {elapsed:?}", rs.status, value);

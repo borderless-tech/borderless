@@ -59,16 +59,12 @@ impl<'a, S: Db> VmState<'a, S> {
         }
     }
 
-    /// Marks the start of a new contract execution
-    ///
-    /// Internally, this function does the following things:
-    /// 1. Clear the log-buffer
-    /// 2. Remember the contract-id, so we can generate storage-keys
+    /// Sets an contract as active and marks it as mutable
     ///
     /// # Errors
     ///
     /// Calling this function while the `VmState` already has an active contract results in an error.
-    pub fn begin_contract_execution(&mut self, contract_id: ContractId) -> anyhow::Result<()> {
+    pub fn begin_mutable_exec(&mut self, contract_id: ContractId) -> anyhow::Result<()> {
         if self.active_contract.is_some() {
             return Err(anyhow::Error::msg(
                 "Must finish contract execution before starting new",
@@ -79,7 +75,7 @@ impl<'a, S: Db> VmState<'a, S> {
         Ok(())
     }
 
-    /// Marks the end of a new contract execution
+    /// Marks the end of a mutable contract execution.
     ///
     /// Internally, this function does the following things:
     /// 1. Flush the log-buffer to the database
@@ -89,7 +85,7 @@ impl<'a, S: Db> VmState<'a, S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
-    pub fn finish_contract_execution(&mut self) -> anyhow::Result<()> {
+    pub fn finish_mutable_exec(&mut self) -> anyhow::Result<()> {
         match self.active_contract {
             ActiveContract::Mutable(cid) => {
                 // TODO: The flushing takes 10 ms due to lmdb being lmdb..
@@ -139,13 +135,13 @@ impl<'a, S: Db> VmState<'a, S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
-    pub fn finish_immutable_exec(&mut self) -> anyhow::Result<()> {
+    pub fn finish_immutable_exec(&mut self) -> anyhow::Result<Vec<LogLine>> {
         if self.active_contract.is_none() {
             return Err(anyhow::Error::msg("Cannot clear non existing"));
         }
         self.active_contract = ActiveContract::None;
-        self.log_buffer.clear(); //
-        Ok(())
+        let log_output = std::mem::replace(&mut self.log_buffer, Vec::new());
+        Ok(log_output)
     }
 
     /// Generates the storage key based on the currently active contract.
