@@ -1709,8 +1709,10 @@ dependencies = [
  "borderless-sdk",
  "clap",
  "colog",
- "hyper",
+ "http",
  "log",
+ "serde",
+ "serde_json",
  "tokio",
  "tower",
 ]

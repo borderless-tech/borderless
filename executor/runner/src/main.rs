@@ -179,7 +179,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             log.into_iter().for_each(print_log_line);
         }
         ContractAction::Api => {
-            start_contract_server().await?;
+            start_contract_server(rt).await?;
             // let mut buf = String::new();
             // std::io::stdin().read_line(&mut buf)?;
             // let input = buf.trim().to_lowercase();

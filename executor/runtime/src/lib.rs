@@ -250,7 +250,7 @@ impl<S: Db> Runtime<S> {
 
     // --- NOTE: Maybe we should create a separate runtime for the HTTP handling ?
 
-    pub fn http_get_state(&mut self, cid: &ContractId, path: String) -> Result<Response> {
+    pub fn http_get_state(&mut self, cid: &ContractId, path: String) -> Result<(u16, Vec<u8>)> {
         let instance = self
             .contract_store
             .get(cid)
@@ -280,10 +280,7 @@ impl<S: Db> Runtime<S> {
         // Finish the execution
         self.store.data_mut().finish_immutable_exec()?;
 
-        Ok(Response {
-            status,
-            payload: result,
-        })
+        Ok((status, result))
     }
 
     pub fn http_post_action(
@@ -293,5 +290,17 @@ impl<S: Db> Runtime<S> {
         _payload: Vec<u8>,
     ) -> Result<Response> {
         todo!()
+    }
+
+    pub fn available_contracts(&self) -> Vec<ContractId> {
+        self.contract_store.keys().cloned().collect()
+    }
+
+    // TODO: Refactor the entire HTTP logic. I think we should write an http/ module here,
+    // where we implement all required logic.
+    // Same for the borderless sdk. Types like pagination etc. should be defined there.
+    // (for borderless sdk the http stuff should be gated behind a feature flag)
+    pub fn get_db(&self) -> S {
+        self.store.data().db.clone()
     }
 }

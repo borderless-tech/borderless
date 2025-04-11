@@ -33,7 +33,7 @@ use crate::logger::Logger;
 
 pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
-    db: S,
+    pub(super) db: S,
     db_ptr: S::Handle,
     db_acid_txn_buffer: Option<Vec<StorageOp>>,
     last_timer: Option<Instant>,
