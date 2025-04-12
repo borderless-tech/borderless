@@ -77,7 +77,7 @@ where
         None => return Ok(None),
     };
     let value = from_postcard_bytes(bytes)?;
-    Ok(value)
+    Ok(Some(value))
 }
 
 fn read_contract_info(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<Info>> {
