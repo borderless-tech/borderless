@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 
@@ -26,7 +25,6 @@ pub struct Runtime<S = Lmdb>
 where
     S: Db,
 {
-    // I think we should group the three wasm types in another struct, so we can easy borrow them
     linker: Linker<VmState<S>>,
     store: Store<VmState<S>>,
     engine: Engine,

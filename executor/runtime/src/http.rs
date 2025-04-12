@@ -1,7 +1,6 @@
 use anyhow::Result;
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_sdk::{
-    contract::CallAction,
     http::{queries::Pagination, PaginatedElements, TxAction},
     ContractId,
 };
