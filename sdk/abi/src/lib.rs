@@ -21,6 +21,7 @@ extern "C" {
     pub fn storage_remove(base_key: u64, sub_key: u64);
     pub fn storage_has_key(base_key: u64, sub_key: u64) -> u64;
 
+    // TODO: Remove !
     pub fn storage_begin_acid_txn() -> u64;
     pub fn storage_commit_acid_txn() -> u64;
 

@@ -25,12 +25,14 @@ use borderless_kv_store::*;
 
 use crate::{logger::Logger, CONTRACT_SUB_DB};
 
-// NOTE: There is an option to get rid of the lifetime and borrowing in the VmState (which is tbh. quite annoying);
-// Instead of opening the transaction and using it to buffer the writes,
-// we could create a Vec<T> to store all calls to storage_write and storage_remove, and then commit them, once the contract has finished.
+// TODO: We can change the entire logic, of how data is commited !
 //
-// I am not sure, if this may cause an overhead for really large operations in wasm; but I mean, the lmdb transaction also has to buffer everything somewhere,
-// so it seems like it's not a big difference (but ofc I don't know how lmdb works internally, so I may be completely wrong here)..
+// Since we now directly have the storage buffer, and don't have to hold the acid-txn,
+// we can get rid of the storage-abi functions for the acid txn,
+// and also save the action and introduction from the host-side.
+//
+// This also enables us to set the StorageKeys in get_storage_key to purely user-keys,
+// and leave the system-keys for the host side !!
 
 pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
