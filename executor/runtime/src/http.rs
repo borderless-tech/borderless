@@ -2,7 +2,7 @@ use anyhow::Result;
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_sdk::{
     contract::CallAction,
-    http::{queries::Pagination, PaginatedElements},
+    http::{queries::Pagination, PaginatedElements, TxAction},
     ContractId,
 };
 use bytes::Bytes;
@@ -14,6 +14,7 @@ use serde::Serialize;
 use std::{
     convert::Infallible,
     task::{Context, Poll},
+    time::Instant,
 };
 use std::{
     future::{ready, Ready},
@@ -21,7 +22,7 @@ use std::{
 };
 pub use tower::Service;
 
-use crate::{logger::Logger, Runtime};
+use crate::{logger::Logger, vm::len_actions, Runtime};
 
 pub type Request<T = Bytes> = http::Request<T>;
 pub type Response<T = Bytes> = http::Response<T>;
@@ -106,7 +107,6 @@ impl<S: Db> RtService<S> {
                 todo!()
             }
         };
-        info!("{route}");
 
         // Build truncated path
         let mut trunc = String::new();
@@ -125,6 +125,7 @@ impl<S: Db> RtService<S> {
         let mut rt = self.rt.lock();
         match route {
             "state" => {
+                // TODO: The contract should also parse query parameters !
                 let (status, payload) = rt.http_get_state(&contract_id, trunc)?;
                 if status == 200 {
                     return Ok(json_body(payload));
@@ -137,31 +138,40 @@ impl<S: Db> RtService<S> {
 
                 // Extract pagination
                 let pagination = Pagination::from_query(query).unwrap_or_default();
+
+                // Get logs
                 let log = logger.get_logs_paginated(pagination)?;
                 return Ok(json_response(&log));
             }
             "txs" => {
-                let mut idx = 0;
-                // TODO: Generate a real output type for this
-                // TODO: Pagination
-                let mut out = Vec::new();
-                while let Some(record) = rt.read_action(&contract_id, idx)? {
-                    let action = CallAction::from_bytes(&record.value)?;
-                    out.push(action);
-                    idx += 1;
+                // Extract pagination
+                let pagination = Pagination::from_query(query).unwrap_or_default();
+
+                // Get actions
+                let n_actions = len_actions(&self.db, &contract_id)?.unwrap_or_default() as usize;
+
+                let mut elements = Vec::new();
+                for idx in pagination.to_range() {
+                    match rt.read_action(&contract_id, idx)? {
+                        Some(record) => {
+                            let action = TxAction::try_from(record)?;
+                            elements.push(action);
+                        }
+                        None => break,
+                    }
                 }
-                return Ok(json_response(&out));
+                let paginated = PaginatedElements {
+                    elements,
+                    total_elements: n_actions,
+                    pagination,
+                };
+                return Ok(json_response(&paginated));
             }
             _ => return Ok(reject_404()),
         }
-
-        Ok(reject_404())
     }
 }
 
-// TODO: Polish this, and put this into the http module of the runtime
-//
-// We can simply use this as the service in the contract node aswell, so we don't have to duplicate logic
 impl<S: Db> Service<Request> for RtService<S> {
     type Response = Response;
     type Error = Infallible;
@@ -172,10 +182,13 @@ impl<S: Db> Service<Request> for RtService<S> {
     }
 
     fn call(&mut self, req: Request) -> Self::Future {
+        let start = Instant::now();
         let result: Response = match self.process_rq(req) {
             Ok(r) => r,
             Err(e) => into_server_error(e),
         };
+        let elapsed = start.elapsed();
+        info!("Time elapsed: {elapsed:?}");
         ready(Ok(result))
     }
 }

@@ -640,7 +640,7 @@ pub fn read_action(
 }
 
 /// Returns the length of all actions
-pub fn len_actions(db: impl Db, cid: &ContractId) -> anyhow::Result<Option<u64>> {
+pub fn len_actions(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<u64>> {
     let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN);
     let db_ptr = db.open_sub_db(CONTRACT_SUB_DB)?;
     let txn = db.begin_ro_txn()?;

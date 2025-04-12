@@ -201,7 +201,7 @@ pub mod queries {
     /// The page numbers start at "1", so they match what you would display in a frontend.
     ///
     /// The default implementation returns you `page=1` and `per_page=1000`.
-    #[derive(Serialize)]
+    #[derive(Serialize, Clone)]
     pub struct Pagination {
         pub page: usize,
         pub per_page: usize,
@@ -262,6 +262,14 @@ pub mod queries {
                 }
                 _ => None,
             }
+        }
+
+        /// Converts the pagination into a range to iterate over
+        ///
+        /// Note: The index of the range starts at "0" and not at "1",
+        /// like the pagination does. No manual conversion needed.
+        pub fn to_range(&self) -> std::ops::Range<usize> {
+            self.clone().into()
         }
     }
 
