@@ -1,6 +1,10 @@
 use anyhow::Result;
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
-use borderless_sdk::{contract::CallAction, ContractId};
+use borderless_sdk::{
+    contract::CallAction,
+    http::{queries::Pagination, PaginatedElements},
+    ContractId,
+};
 use bytes::Bytes;
 use http::{header::CONTENT_TYPE, HeaderValue, StatusCode};
 use log::info;
@@ -77,6 +81,7 @@ impl<S: Db> RtService<S> {
 
     fn process_rq(&self, req: Request) -> anyhow::Result<Response> {
         let path = req.uri().path();
+        let query = req.uri().query();
 
         info!("{path}");
 
@@ -88,59 +93,66 @@ impl<S: Db> RtService<S> {
         let mut pieces = path.split('/').skip(1);
 
         // Extract contract-id from first piece
-        let contract_id: ContractId =
-            if let Some(contract_id) = pieces.next().and_then(|first| first.parse().ok()) {
-                contract_id
-            } else {
-                return Ok(reject_404());
-            };
+        let contract_id: ContractId = match pieces.next().and_then(|first| first.parse().ok()) {
+            Some(cid) => cid,
+            None => return Ok(reject_404()),
+        };
 
-        if let Some(route) = pieces.next() {
-            // Build truncated path
-            let mut trunc = String::new();
-            for piece in pieces {
-                trunc.push('/');
-                trunc.push_str(piece);
+        // Get top-level route
+        let route = match pieces.next() {
+            Some(r) => r,
+            None => {
+                // Get full contract info
+                todo!()
             }
-            if trunc.is_empty() {
-                trunc.push('/');
-            }
-            if let Some(query) = req.uri().query() {
-                trunc.push('?');
-                trunc.push_str(query);
-            }
+        };
+        info!("{route}");
 
-            let mut rt = self.rt.lock();
-            match route {
-                "state" => {
-                    let (status, payload) = rt.http_get_state(&contract_id, trunc)?;
-                    if status == 200 {
-                        return Ok(json_body(payload));
-                    } else {
-                        return Ok(reject_404());
-                    }
-                }
-                "logs" => {
-                    let logger = Logger::new(&self.db, contract_id);
+        // Build truncated path
+        let mut trunc = String::new();
+        for piece in pieces {
+            trunc.push('/');
+            trunc.push_str(piece);
+        }
+        if trunc.is_empty() {
+            trunc.push('/');
+        }
+        if let Some(query) = req.uri().query() {
+            trunc.push('?');
+            trunc.push_str(query);
+        }
 
-                    // TODO: Pagination and return type
-                    let log = logger.get_full_log().unwrap();
-                    return Ok(json_response(&log));
+        let mut rt = self.rt.lock();
+        match route {
+            "state" => {
+                let (status, payload) = rt.http_get_state(&contract_id, trunc)?;
+                if status == 200 {
+                    return Ok(json_body(payload));
+                } else {
+                    return Ok(reject_404());
                 }
-                "txs" => {
-                    let mut idx = 0;
-                    // TODO: Generate a real output type for this
-                    // TODO: Pagination
-                    let mut out = Vec::new();
-                    while let Some(record) = rt.read_action(&contract_id, idx)? {
-                        let action = CallAction::from_bytes(&record.value)?;
-                        out.push(action);
-                        idx += 1;
-                    }
-                    return Ok(json_response(&out));
-                }
-                _ => return Ok(reject_404()),
             }
+            "log" => {
+                let logger = Logger::new(&self.db, contract_id);
+
+                // Extract pagination
+                let pagination = Pagination::from_query(query).unwrap_or_default();
+                let log = logger.get_logs_paginated(pagination)?;
+                return Ok(json_response(&log));
+            }
+            "txs" => {
+                let mut idx = 0;
+                // TODO: Generate a real output type for this
+                // TODO: Pagination
+                let mut out = Vec::new();
+                while let Some(record) = rt.read_action(&contract_id, idx)? {
+                    let action = CallAction::from_bytes(&record.value)?;
+                    out.push(action);
+                    idx += 1;
+                }
+                return Ok(json_response(&out));
+            }
+            _ => return Ok(reject_404()),
         }
 
         Ok(reject_404())

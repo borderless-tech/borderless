@@ -304,11 +304,6 @@ impl<S: Db> CodeStore<S> {
     }
 
     pub fn insert_contract(&self, cid: ContractId, module: Module) -> Result<()> {
-        // TODO: We have to write a "store" that saves all modules
-        // let module = Module::from_file(&self.engine, path)?;
-
-        // let instance = self.linker.instantiate(&mut self.store, &module)?;
-        // self.contract_store.insert(contract_id, instance);
         let module_bytes = module.serialize()?;
         let mut txn = self.db.begin_rw_txn()?;
         txn.write(&self.db_ptr, &cid, &module_bytes)?;

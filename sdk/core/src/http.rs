@@ -1,6 +1,7 @@
 //! Definition of generic models used throughout different APIs
 
 use borderless_id_types::TxIdentifier;
+use queries::Pagination;
 use serde::Serialize;
 
 use crate::contract::{ActionRecord, CallAction};
@@ -22,6 +23,8 @@ where
 {
     pub elements: Vec<T>,
     pub total_elements: usize,
+    #[serde(flatten)]
+    pub pagination: Pagination,
 }
 
 /// Wrapper to connect contract-actions with their tx-identifier and the related timestamp
@@ -57,6 +60,7 @@ pub mod queries {
     };
 
     use borderless_id_types::{AgentId, ContractId};
+    use serde::Serialize;
 
     pub struct Query {
         /// Key-Value pairs of the query, where the key is one of the following keywords:
@@ -193,9 +197,23 @@ pub mod queries {
     }
 
     /// Simple struct that is used to add pagination to some endpoint like: `/endpoint?page=1&per_page=10`
+    ///
+    /// The page numbers start at "1", so they match what you would display in a frontend.
+    ///
+    /// The default implementation returns you `page=1` and `per_page=1000`.
+    #[derive(Serialize)]
     pub struct Pagination {
         pub page: usize,
         pub per_page: usize,
+    }
+
+    impl Default for Pagination {
+        fn default() -> Self {
+            Self {
+                page: 1,
+                per_page: 100,
+            }
+        }
     }
 
     impl Pagination {
@@ -227,6 +245,20 @@ pub mod queries {
                     let page = usize::from_str(page_num).ok()?;
                     let per_page = usize::from_str(per_page_num).ok()?;
                     Some(Pagination { page, per_page })
+                }
+                (Some(page_str), None) => {
+                    let page_num: &str = page_str.split('=').nth(1)?;
+                    let page = usize::from_str(page_num).ok()?;
+                    let mut pagination = Pagination::default();
+                    pagination.page = page;
+                    Some(pagination)
+                }
+                (None, Some(per_page_str)) => {
+                    let per_page_num: &str = per_page_str.split('=').nth(1)?;
+                    let per_page = usize::from_str(per_page_num).ok()?;
+                    let mut pagination = Pagination::default();
+                    pagination.per_page = per_page;
+                    Some(pagination)
                 }
                 _ => None,
             }

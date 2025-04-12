@@ -4,6 +4,7 @@ use anyhow::Result;
 use borderless_kv_store::*;
 use borderless_sdk::{
     __private::storage_keys::{StorageKey, BASE_KEY_LOGS},
+    http::{queries::Pagination, PaginatedElements},
     log::{LogLevel, LogLine},
     ContractId,
 };
@@ -202,18 +203,9 @@ impl<'a, S: Db> Logger<'a, S> {
     }
 
     /// Retrieves log lines for the given page and the total number of pages.
-    ///
-    /// # Arguments
-    ///
-    /// * `page` - Zero-based page index.
-    /// * `per_page` - The number of log lines per page.
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing:
-    /// - A Vec of LogLine for the requested page.
-    /// - The total number of pages.
-    pub fn get_logs_paginated(&self, page: u64, per_page: u64) -> Result<(Vec<LogLine>, u64)> {
+    pub fn get_logs_paginated(&self, pagination: Pagination) -> Result<PaginatedElements<LogLine>> {
+        let page = pagination.page as u64;
+        let per_page = pagination.per_page as u64;
         let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
         let meta_key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, SUB_KEY_META);
@@ -237,14 +229,19 @@ impl<'a, S: Db> Logger<'a, S> {
         } else {
             (total_count + per_page - 1) / per_page
         };
+        let total_elements = (total_pages * per_page) as usize;
 
         // Calculate the logical start and end indices for the requested page.
-        let page_start = meta.start + page * per_page;
+        let page_start = meta.start + page.saturating_sub(1) * per_page;
         // If the start index is beyond the end of the stored logs, return an empty Vec.
         if page_start >= meta.end {
-            return Ok((Vec::new(), total_pages));
+            return Ok(PaginatedElements {
+                elements: Vec::new(),
+                total_elements,
+                pagination,
+            });
         }
-        let page_end = std::cmp::min(meta.start + (page + 1) * per_page, meta.end);
+        let page_end = std::cmp::min(meta.start + page * per_page, meta.end);
 
         // Retrieve the logs for the calculated range.
         let mut logs = Vec::new();
@@ -257,7 +254,11 @@ impl<'a, S: Db> Logger<'a, S> {
                 logs.push(log_line);
             }
         }
-        Ok((logs, total_pages))
+        Ok(PaginatedElements {
+            elements: logs,
+            total_elements,
+            pagination,
+        })
     }
 }
 
