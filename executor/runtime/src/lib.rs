@@ -15,6 +15,7 @@ use borderless_sdk::{BlockIdentifier, BorderlessId};
 use vm::VmState;
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
 
+pub mod http;
 pub mod logger;
 mod vm;
 
