@@ -38,6 +38,11 @@ macro_rules! impl_uuid {
             pub fn as_bytes(&self) -> &[u8; 16] {
                 self.0.as_bytes()
             }
+
+            pub fn parse_str(s: &str) -> Result<Self, uuid::Error> {
+                let uuid = Uuid::parse_str(s)?;
+                Ok(uuid.into())
+            }
         }
 
         impl From<u128> for $type {
