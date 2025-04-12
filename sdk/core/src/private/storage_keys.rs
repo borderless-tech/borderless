@@ -169,7 +169,7 @@ impl StorageKey {
     pub fn to_hex(&self) -> String {
         use std::fmt::Write;
         self.0.iter().fold(String::new(), |mut output, b| {
-            let _ = write!(output, "{b:02X}");
+            let _ = write!(output, "{b:02x}");
             output
         })
     }
