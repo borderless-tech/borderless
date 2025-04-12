@@ -249,6 +249,11 @@ impl<S: Db> RtService<S> {
                 let meta = read_contract_meta(&self.db, &contract_id)?;
                 return Ok(json_response(&meta));
             }
+            // Same as empty path
+            "" => {
+                let full_info = read_contract_full(&self.db, &contract_id)?;
+                return Ok(json_response(&full_info));
+            }
             _ => return Ok(reject_404()),
         }
     }
