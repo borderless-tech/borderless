@@ -1,6 +1,9 @@
 //! Definition of generic models used throughout different APIs
 
+use borderless_id_types::TxIdentifier;
 use serde::Serialize;
+
+use crate::contract::{ActionRecord, CallAction};
 
 /// Default return type for all routes that return lists.
 ///
@@ -19,6 +22,31 @@ where
 {
     pub elements: Vec<T>,
     pub total_elements: usize,
+}
+
+/// Wrapper to connect contract-actions with their tx-identifier and the related timestamp
+#[derive(Debug, Clone, Serialize)]
+pub struct TxAction {
+    /// Transaction identifier
+    pub tx_id: TxIdentifier,
+    /// Serializable action object
+    pub action: CallAction,
+    pub commited: u64,
+}
+
+impl TryFrom<ActionRecord> for TxAction {
+    type Error = serde_json::Error;
+
+    fn try_from(record: ActionRecord) -> Result<Self, Self::Error> {
+        // Hm, I thought we could get around the additional parsing step here..
+        // I still haven't given up ! TODO maybe construct the raw json value here, and see if this is faster.
+        let action = serde_json::from_slice(&record.value)?;
+        Ok(Self {
+            tx_id: record.tx_ctx.tx_id,
+            action,
+            commited: record.commited,
+        })
+    }
 }
 
 pub mod queries {

@@ -9,6 +9,7 @@ use std::{
 use anyhow::Context;
 use borderless_sdk::{
     __private::action_log::SUB_KEY_LOG_LEN,
+    __private::from_postcard_bytes,
     __private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
     contract::{ActionRecord, CallAction},
     log::LogLine,
@@ -22,7 +23,7 @@ use rand::{random, Rng};
 
 use borderless_kv_store::*;
 
-use crate::logger::Logger;
+use crate::{logger::Logger, CONTRACT_SUB_DB};
 
 // NOTE: There is an option to get rid of the lifetime and borrowing in the VmState (which is tbh. quite annoying);
 // Instead of opening the transaction and using it to buffer the writes,
@@ -217,13 +218,13 @@ impl<S: Db> VmState<S> {
         Ok(0)
     }
 
+    // TODO: Don't use this, use the free-floating function instead
     /// Tries to read the action with the given index for the currently active contract
     pub fn read_action(
         &self,
         cid: &ContractId,
         idx: usize,
     ) -> anyhow::Result<Option<ActionRecord>> {
-        use borderless_sdk::__private::from_postcard_bytes;
         let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, idx as u64);
 
         let txn = self.db.begin_ro_txn()?;
@@ -236,9 +237,9 @@ impl<S: Db> VmState<S> {
         Ok(value)
     }
 
+    // TODO: Don't use this, use the free-floating function instead
     /// Returns the length of all actions
     pub fn len_actions(&self, cid: &ContractId) -> anyhow::Result<Option<u64>> {
-        use borderless_sdk::__private::from_postcard_bytes;
         let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN);
         let txn = self.db.begin_ro_txn()?;
         let value = if let Some(bytes) = txn.read(&self.db_ptr, &storage_key)? {
@@ -618,4 +619,35 @@ impl StorageOp {
     pub fn remove(key: StorageKey) -> Self {
         Self::Remove { key }
     }
+}
+
+/// Reads an action from the database
+pub fn read_action(
+    db: impl Db,
+    cid: &ContractId,
+    idx: usize,
+) -> anyhow::Result<Option<ActionRecord>> {
+    let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, idx as u64);
+    let db_ptr = db.open_sub_db(CONTRACT_SUB_DB)?;
+    let txn = db.begin_ro_txn()?;
+    let value = if let Some(bytes) = txn.read(&db_ptr, &storage_key)? {
+        Some(from_postcard_bytes(bytes)?)
+    } else {
+        None
+    };
+    txn.commit()?;
+    Ok(value)
+}
+
+/// Returns the length of all actions
+pub fn len_actions(db: impl Db, cid: &ContractId) -> anyhow::Result<Option<u64>> {
+    let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN);
+    let db_ptr = db.open_sub_db(CONTRACT_SUB_DB)?;
+    let txn = db.begin_ro_txn()?;
+    let value = if let Some(bytes) = txn.read(&db_ptr, &storage_key)? {
+        Some(from_postcard_bytes(bytes)?)
+    } else {
+        None
+    };
+    Ok(value)
 }
