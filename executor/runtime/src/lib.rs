@@ -7,7 +7,6 @@ use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
 use borderless_sdk::__private::registers::*;
 use borderless_sdk::contract::{BlockCtx, Introduction, TxCtx};
-use borderless_sdk::http::{Request, Response};
 use borderless_sdk::{
     contract::{ActionRecord, CallAction},
     ContractId,
@@ -288,7 +287,7 @@ impl<S: Db> Runtime<S> {
         _cid: &ContractId,
         _path: String,
         _payload: Vec<u8>,
-    ) -> Result<Response> {
+    ) -> Result<(u16, Vec<u8>)> {
         todo!()
     }
 

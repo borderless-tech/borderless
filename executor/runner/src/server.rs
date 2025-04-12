@@ -98,7 +98,6 @@ impl Service<Request<Body>> for RtService {
             let mut rt = self.rt.lock().unwrap();
             match route {
                 "state" => {
-                    info!("called state");
                     let (status, payload) = rt.http_get_state(&contract_id, trunc).unwrap();
                     if status == 200 {
                         return ready(Ok(json_body(payload)));
