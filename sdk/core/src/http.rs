@@ -1,4 +1,25 @@
-pub use crate::__private::http::{Method, Request, Response};
+//! Definition of generic models used throughout different APIs
+
+use serde::Serialize;
+
+/// Default return type for all routes that return lists.
+///
+/// Since we never want to have an infinitely large list returned from an endpoint,
+/// the number of entries an endpoint returns by default is limited.
+///
+/// However, the user must know, how many elements there are in total,
+/// as this information is crucial for building pagination elements in a frontend.
+///
+/// This type serves as a wrapper around `Vec<T>` (which will be serialized to a list in json),
+/// that also includes how many elements there are in total.
+#[derive(Serialize)]
+pub struct PaginatedElements<T>
+where
+    T: Serialize,
+{
+    pub elements: Vec<T>,
+    pub total_elements: usize,
+}
 
 pub mod queries {
     use std::{
