@@ -1747,12 +1747,8 @@ dependencies = [
  "borderless-sdk",
  "clap",
  "colog",
- "http",
  "log",
- "serde",
- "serde_json",
  "tokio",
- "tower",
 ]
 
 [[package]]

@@ -12,8 +12,4 @@ clap = { version = "4.5.32", features = ["derive"] }
 colog = "1.3.0"
 log.workspace = true
 tokio = { version = "1.44.2", features = ["macros", "rt"] }
-tower = { version = "0.5.2", features = ["make"] }
 axum = "0.8.3"
-http = "1.3.1"
-serde_json.workspace = true
-serde.workspace = true

@@ -15,7 +15,7 @@ use std::{
     future::{ready, Ready},
     sync::Arc,
 };
-use tower::Service;
+pub use tower::Service;
 
 use crate::{logger::Logger, Runtime};
 
@@ -36,8 +36,8 @@ fn json_response<S: Serialize>(value: &S) -> Response<Bytes> {
 fn json_body(bytes: Vec<u8>) -> Response<Bytes> {
     let mut resp = Response::new(bytes.into());
     resp.headers_mut().insert(
-        http::header::CONTENT_TYPE,
-        http::header::HeaderValue::from_static("application/json"),
+        CONTENT_TYPE,
+        HeaderValue::from_static(APPLICATION_JSON.as_ref()),
     );
     resp
 }
@@ -58,7 +58,7 @@ pub fn into_server_error<E: ToString>(error: E) -> Response {
 
 /// Simple service around the runtime
 #[derive(Clone)]
-struct RtService<S = Lmdb>
+pub struct RtService<S = Lmdb>
 where
     S: Db,
 {
@@ -150,7 +150,7 @@ impl<S: Db> RtService<S> {
 // TODO: Polish this, and put this into the http module of the runtime
 //
 // We can simply use this as the service in the contract node aswell, so we don't have to duplicate logic
-impl Service<Request> for RtService {
+impl<S: Db> Service<Request> for RtService<S> {
     type Response = Response;
     type Error = Infallible;
     type Future = Ready<Result<Self::Response, Self::Error>>;
