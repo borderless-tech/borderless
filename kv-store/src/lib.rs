@@ -340,7 +340,7 @@ pub trait Db: Clone + std::marker::Send + std::marker::Sync {
 /// Provides access to the database name and the underlying database object.
 /// The handle is used in transaction operations to specify which database to interact with.
 /// This abstraction allows the same transaction methods to operate on different databases.
-pub trait KvHandle<DB>
+pub trait KvHandle<DB>: std::marker::Send + std::marker::Sync
 where
     DB: KvDatabase,
 {
