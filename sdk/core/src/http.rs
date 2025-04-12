@@ -4,7 +4,7 @@ use borderless_id_types::TxIdentifier;
 use queries::Pagination;
 use serde::Serialize;
 
-use crate::contract::{ActionRecord, CallAction};
+use crate::contract::{ActionRecord, CallAction, Description, Info, Metadata};
 
 /// Default return type for all routes that return lists.
 ///
@@ -35,6 +35,16 @@ pub struct TxAction {
     /// Serializable action object
     pub action: CallAction,
     pub commited: u64,
+}
+
+/// Json description of a contract
+///
+/// Groups the most relevant information around a contract in a single datastructure.
+#[derive(Debug, Clone, Serialize)]
+pub struct ContractInfo {
+    pub info: Option<Info>,
+    pub desc: Option<Description>,
+    pub meta: Option<Metadata>,
 }
 
 impl TryFrom<ActionRecord> for TxAction {

@@ -1,6 +1,10 @@
 use anyhow::Result;
+use borderless_kv_store::RawRead;
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
+use borderless_sdk::__private::{from_postcard_bytes, storage_keys::*};
+use borderless_sdk::http::ContractInfo;
 use borderless_sdk::{
+    contract::{Description, Info, Metadata},
     http::{queries::Pagination, PaginatedElements, TxAction},
     ContractId,
 };
@@ -9,7 +13,7 @@ use http::{header::CONTENT_TYPE, HeaderValue, StatusCode};
 use log::info;
 use mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8};
 use parking_lot::Mutex;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use std::{
     convert::Infallible,
     task::{Context, Poll},
@@ -21,6 +25,7 @@ use std::{
 };
 pub use tower::Service;
 
+use crate::CONTRACT_SUB_DB;
 use crate::{logger::Logger, vm::len_actions, Runtime};
 
 pub type Request<T = Bytes> = http::Request<T>;
@@ -58,6 +63,71 @@ pub fn into_server_error<E: ToString>(error: E) -> Response {
     );
     *resp.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
     resp
+}
+
+fn read_key<S, D>(db: &S, key: StorageKey) -> anyhow::Result<Option<D>>
+where
+    S: Db,
+    D: DeserializeOwned,
+{
+    let db_ptr = db.open_sub_db(CONTRACT_SUB_DB)?;
+    let txn = db.begin_ro_txn()?;
+    let bytes = match txn.read(&db_ptr, &key)? {
+        Some(bytes) => bytes,
+        None => return Ok(None),
+    };
+    let value = from_postcard_bytes(bytes)?;
+    Ok(value)
+}
+
+fn read_contract_info(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<Info>> {
+    let participants = read_key(
+        db,
+        StorageKey::system_key(cid, BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS),
+    )?;
+    let roles = read_key(
+        db,
+        StorageKey::system_key(cid, BASE_KEY_METADATA, META_SUB_KEY_ROLES),
+    )?;
+    let sinks = read_key(
+        db,
+        StorageKey::system_key(cid, BASE_KEY_METADATA, META_SUB_KEY_SINKS),
+    )?;
+    info!("{participants:?}, {roles:?}, {sinks:?}");
+    match (participants, roles, sinks) {
+        (Some(participants), Some(roles), Some(sinks)) => Ok(Some(Info {
+            contract_id: *cid,
+            participants,
+            roles,
+            sinks,
+        })),
+        _ => Ok(None),
+    }
+}
+
+fn read_contract_desc(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<Description>> {
+    read_key(
+        db,
+        StorageKey::system_key(cid, BASE_KEY_METADATA, META_SUB_KEY_DESC),
+    )
+}
+
+fn read_contract_meta(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<Metadata>> {
+    read_key(
+        db,
+        StorageKey::system_key(cid, BASE_KEY_METADATA, META_SUB_KEY_META),
+    )
+}
+
+// TODO: Query params
+fn read_contract_full(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<ContractInfo>> {
+    let info = read_contract_info(db, cid)?;
+    info!("- {info:?}");
+    let desc = read_contract_desc(db, cid)?;
+    info!("- {desc:?}");
+    let meta = read_contract_meta(db, cid)?;
+    info!("- {meta:?}");
+    Ok(Some(ContractInfo { info, desc, meta }))
 }
 
 /// Simple service around the runtime
@@ -103,7 +173,8 @@ impl<S: Db> RtService<S> {
             Some(r) => r,
             None => {
                 // Get full contract info
-                todo!()
+                let full_info = read_contract_full(&self.db, &contract_id)?;
+                return Ok(json_response(&full_info));
             }
         };
 
@@ -165,6 +236,18 @@ impl<S: Db> RtService<S> {
                     pagination,
                 };
                 return Ok(json_response(&paginated));
+            }
+            "info" => {
+                let info = read_contract_info(&self.db, &contract_id)?;
+                return Ok(json_response(&info));
+            }
+            "desc" => {
+                let desc = read_contract_desc(&self.db, &contract_id)?;
+                return Ok(json_response(&desc));
+            }
+            "meta" => {
+                let meta = read_contract_meta(&self.db, &contract_id)?;
+                return Ok(json_response(&meta));
             }
             _ => return Ok(reject_404()),
         }

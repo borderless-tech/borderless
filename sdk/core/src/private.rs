@@ -172,6 +172,7 @@ where
     storage_write(base_key, sub_key, value);
 }
 
+// TODO: Remove ! Introductions should be commited by the host !
 /// Helper function, that stores all information from the contract-introduction in the key-value-storage
 ///
 /// Must be called from the webassembly code ("client-side"), as it internally relies on [`write_field`].
