@@ -81,7 +81,7 @@ impl<S: Db> RtService<S> {
         info!("{path}");
 
         if path == "/" {
-            let contracts = self.rt.lock().available_contracts();
+            let contracts = self.rt.lock().available_contracts()?;
             return Ok(json_response(&contracts));
         }
 

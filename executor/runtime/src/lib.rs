@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use anyhow::{Context, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
-use borderless_kv_store::Db;
+use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use borderless_sdk::__private::registers::*;
 use borderless_sdk::contract::{BlockCtx, Introduction, TxCtx};
 use borderless_sdk::{
@@ -20,15 +20,17 @@ pub mod logger;
 mod vm;
 
 const CONTRACT_SUB_DB: &str = "contract-db";
+const WASM_CODE_SUB_DB: &str = "wasm-code-db";
 
 pub struct Runtime<S = Lmdb>
 where
     S: Db,
 {
+    // I think we should group the three wasm types in another struct, so we can easy borrow them
     linker: Linker<VmState<S>>,
     store: Store<VmState<S>>,
     engine: Engine,
-    contract_store: HashMap<ContractId, Instance>,
+    contract_store: CodeStore<S>,
 }
 
 impl<S: Db> Runtime<S> {
@@ -36,6 +38,8 @@ impl<S: Db> Runtime<S> {
         let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
         let start = Instant::now();
         let state = VmState::new(storage.clone(), db_ptr);
+
+        let contract_store = CodeStore::new(storage.clone())?;
 
         let mut config = Config::new();
         config.cranelift_opt_level(wasmtime::OptLevel::Speed);
@@ -131,20 +135,18 @@ impl<S: Db> Runtime<S> {
             linker,
             store,
             engine,
-            contract_store: HashMap::new(),
+            contract_store,
         })
     }
 
+    // TODO
     pub fn instantiate_contract(
         &mut self,
         contract_id: ContractId,
         path: impl AsRef<Path>,
     ) -> Result<()> {
-        // TODO: We have to write a "store" that saves all modules
         let module = Module::from_file(&self.engine, path)?;
-
-        let instance = self.linker.instantiate(&mut self.store, &module)?;
-        self.contract_store.insert(contract_id, instance);
+        self.contract_store.insert_contract(contract_id, module)?;
         Ok(())
     }
 
@@ -161,14 +163,6 @@ impl<S: Db> Runtime<S> {
             .set_register(REGISTER_BLOCK_CTX, ctx.to_bytes()?);
         Ok(())
     }
-
-    // TODO: This is the interface of the executor
-    // contract_id: ContractId,
-    // writer_pid: ParticipantId,
-    // tx_context: TxCtx, < TxIdentifier + block-timestamp
-    // tx_type: TxType,
-    // raw_data: Vec<u8>,
-    // -> we also require the tx-sequence number
 
     pub fn process_transaction(
         &mut self,
@@ -217,7 +211,7 @@ impl<S: Db> Runtime<S> {
     ) -> Result<()> {
         let instance = self
             .contract_store
-            .get(&cid)
+            .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
             .context("contract is not instantiated")?;
 
         self.store.data_mut().begin_mutable_exec(cid)?;
@@ -253,7 +247,7 @@ impl<S: Db> Runtime<S> {
     pub fn http_get_state(&mut self, cid: &ContractId, path: String) -> Result<(u16, Vec<u8>)> {
         let instance = self
             .contract_store
-            .get(cid)
+            .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
             .context("contract is not instantiated")?;
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
@@ -292,15 +286,67 @@ impl<S: Db> Runtime<S> {
         todo!()
     }
 
-    pub fn available_contracts(&self) -> Vec<ContractId> {
-        self.contract_store.keys().cloned().collect()
+    pub fn available_contracts(&self) -> Result<Vec<ContractId>> {
+        self.contract_store.available_contracts()
+    }
+}
+
+/// Storage for our webassembly code
+struct CodeStore<S: Db> {
+    db: S,
+    db_ptr: S::Handle,
+}
+
+impl<S: Db> CodeStore<S> {
+    pub fn new(db: S) -> Result<Self> {
+        let db_ptr = db.create_sub_db(WASM_CODE_SUB_DB)?;
+        Ok(Self { db, db_ptr })
     }
 
-    // TODO: Refactor the entire HTTP logic. I think we should write an http/ module here,
-    // where we implement all required logic.
-    // Same for the borderless sdk. Types like pagination etc. should be defined there.
-    // (for borderless sdk the http stuff should be gated behind a feature flag)
-    pub fn get_db(&self) -> S {
-        self.store.data().db.clone()
+    pub fn insert_contract(&self, cid: ContractId, module: Module) -> Result<()> {
+        // TODO: We have to write a "store" that saves all modules
+        // let module = Module::from_file(&self.engine, path)?;
+
+        // let instance = self.linker.instantiate(&mut self.store, &module)?;
+        // self.contract_store.insert(contract_id, instance);
+        let module_bytes = module.serialize()?;
+        let mut txn = self.db.begin_rw_txn()?;
+        txn.write(&self.db_ptr, &cid, &module_bytes)?;
+        txn.commit()?;
+        Ok(())
+    }
+
+    pub fn get_contract(
+        &self,
+        cid: &ContractId,
+        engine: &Engine,
+        store: &mut Store<VmState<S>>,
+        linker: &mut Linker<VmState<S>>,
+    ) -> Result<Option<Instance>> {
+        let txn = self.db.begin_ro_txn()?;
+        let module_bytes = txn.read(&self.db_ptr, cid)?;
+        let module = match module_bytes {
+            Some(bytes) => unsafe { Module::deserialize(engine, bytes)? },
+            None => return Ok(None),
+        };
+        txn.commit()?;
+        let instance = linker.instantiate(store, &module)?;
+        Ok(Some(instance))
+    }
+
+    pub fn available_contracts(&self) -> Result<Vec<ContractId>> {
+        use borderless_kv_store::*;
+
+        let mut out = Vec::new();
+        let txn = self.db.begin_ro_txn()?;
+        let mut cursor = txn.ro_cursor(&self.db_ptr)?;
+        // TODO: if we store contracts and agents in the same db, we have to change the logic here
+        for (key, _value) in cursor.iter() {
+            let cid = ContractId::from_bytes(key.try_into()?);
+            out.push(cid);
+        }
+        drop(cursor);
+        txn.commit()?;
+        Ok(out)
     }
 }
