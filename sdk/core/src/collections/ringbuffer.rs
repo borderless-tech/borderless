@@ -62,10 +62,7 @@ impl<T: Serialize + DeserializeOwned> RingBuffer<T> {
     /// Pushes a value to the buffer
     pub fn push(&mut self, value: T) {
         let idx = self.len();
-        self.cache.push(Op::Push {
-            idx,
-            value,
-        });
+        self.cache.push(Op::Push { idx, value });
     }
 
     /// Remove an element from the buffer. If the buffer is already empty, this function returns `false`.

@@ -311,6 +311,7 @@ dependencies = [
  "borderless-abi",
  "borderless-hash",
  "borderless-id-types",
+ "nohash-hasher",
  "postcard",
  "rand 0.9.0",
  "serde",
@@ -1416,6 +1417,12 @@ name = "nohash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0f889fb66f7acdf83442c35775764b51fed3c606ab9cee51500dbde2cf528ca"
+
+[[package]]
+name = "nohash-hasher"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bf50223579dc7cdcfb3bfcacf7069ff68243f8c363f62ffa99cf000a6b9c451"
 
 [[package]]
 name = "object"

@@ -2,14 +2,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::cache::CacheOp::{Remove, Update};
+use super::lazyvec::ROOT_KEY;
 use super::node::Node;
-use super::tree::ROOT_KEY;
 use nohash_hasher::IntMap;
 use serde::{Deserialize, Serialize};
 
-use sdk::{
-    read_field, storage_begin_acid_txn, storage_commit_acid_txn, storage_has_key,
-    storage_random_key, storage_remove, write_field,
+use crate::__private::{
+    read_field, storage_begin_acid_txn, storage_commit_acid_txn, storage_gen_sub_key,
+    storage_has_key, storage_remove, write_field,
 };
 
 enum CacheOp {
@@ -55,7 +55,7 @@ where
     }
 
     pub(crate) fn new_key(&mut self) -> u64 {
-        storage_random_key()
+        storage_gen_sub_key()
     }
 
     // TODO

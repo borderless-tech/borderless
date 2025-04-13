@@ -1,7 +1,7 @@
-use crate::bplustree::proxy::Proxy;
+use super::proxy::Proxy;
 use serde::{Deserialize, Serialize};
 
-use super::BPlusTree;
+use super::lazyvec::BPlusTree;
 
 /// Immutable B+Tree Iterator
 pub struct BPlusTreeIt<'a, V, const ORDER: usize, const BASE_KEY: u64> {
@@ -10,7 +10,7 @@ pub struct BPlusTreeIt<'a, V, const ORDER: usize, const BASE_KEY: u64> {
 }
 
 impl<'a, V, const ORDER: usize, const BASE_KEY: u64> Iterator
-for BPlusTreeIt<'a, V, ORDER, BASE_KEY>
+    for BPlusTreeIt<'a, V, ORDER, BASE_KEY>
 where
     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
 {
