@@ -1,16 +1,15 @@
 use super::proxy::Proxy;
 use serde::{Deserialize, Serialize};
 
-use super::lazyvec::BPlusTree;
+use super::lazyvec::LazyVec;
 
 /// Immutable B+Tree Iterator
-pub struct BPlusTreeIt<'a, V, const ORDER: usize, const BASE_KEY: u64> {
-    tree: &'a BPlusTree<V, ORDER, BASE_KEY>,
+pub struct LazyVecIt<'a, V, const ORDER: usize, const BASE_KEY: u64> {
+    tree: &'a LazyVec<V, ORDER, BASE_KEY>,
     global_idx: usize,
 }
 
-impl<'a, V, const ORDER: usize, const BASE_KEY: u64> Iterator
-    for BPlusTreeIt<'a, V, ORDER, BASE_KEY>
+impl<'a, V, const ORDER: usize, const BASE_KEY: u64> Iterator for LazyVecIt<'a, V, ORDER, BASE_KEY>
 where
     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
 {
@@ -23,12 +22,12 @@ where
     }
 }
 
-impl<'a, V, const ORDER: usize, const BASE_KEY: u64> BPlusTreeIt<'a, V, ORDER, BASE_KEY>
+impl<'a, V, const ORDER: usize, const BASE_KEY: u64> LazyVecIt<'a, V, ORDER, BASE_KEY>
 where
     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
 {
-    pub(crate) fn new(tree: &'a BPlusTree<V, ORDER, BASE_KEY>) -> Self {
-        BPlusTreeIt {
+    pub(crate) fn new(tree: &'a LazyVec<V, ORDER, BASE_KEY>) -> Self {
+        LazyVecIt {
             tree,
             global_idx: 0,
         }
@@ -36,13 +35,13 @@ where
 }
 
 // /// Mutable B+Tree Iterator
-// pub struct BPlusTreeItMut<'a, V, const ORDER: usize, const BASE_KEY: u64> {
-//     tree: &'a mut BPlusTree<V, ORDER, BASE_KEY>,
+// pub struct LazyVecItMut<'a, V, const ORDER: usize, const BASE_KEY: u64> {
+//     tree: &'a mut LazyVec<V, ORDER, BASE_KEY>,
 //     global_idx: usize,
 // }
 
 // impl<'a, V, const ORDER: usize, const BASE_KEY: u64> Iterator
-//     for BPlusTreeItMut<'a, V, ORDER, BASE_KEY>
+//     for LazyVecItMut<'a, V, ORDER, BASE_KEY>
 // where
 //     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
 // {
@@ -55,12 +54,12 @@ where
 //     }
 // }
 
-// impl<'a, V, const ORDER: usize, const BASE_KEY: u64> BPlusTreeItMut<'a, V, ORDER, BASE_KEY>
+// impl<'a, V, const ORDER: usize, const BASE_KEY: u64> LazyVecItMut<'a, V, ORDER, BASE_KEY>
 // where
 //     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
 // {
-//     pub(crate) fn new(tree: &'a mut BPlusTree<V, ORDER, BASE_KEY>) -> Self {
-//         BPlusTreeItMut {
+//     pub(crate) fn new(tree: &'a mut LazyVec<V, ORDER, BASE_KEY>) -> Self {
+//         LazyVecItMut {
 //             tree,
 //             global_idx: 0,
 //         }

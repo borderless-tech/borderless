@@ -1,6 +1,6 @@
-// use super::iterator::BPlusTreeItMut;
+// use super::iterator::LazyVecItMut;
 use super::cache::Cache;
-use super::iterator::BPlusTreeIt;
+use super::iterator::LazyVecIt;
 use super::node::Node;
 use super::proxy::{Proxy, ProxyMut};
 use serde::{Deserialize, Serialize};
@@ -11,11 +11,11 @@ use std::marker::PhantomData;
 
 pub(crate) const ROOT_KEY: u64 = 0;
 
-pub struct BPlusTree<V, const ORDER: usize = 16, const BASE_KEY: u64 = 1999999> {
+pub struct LazyVec<V, const ORDER: usize = 16, const BASE_KEY: u64 = 1999999> {
     cache: Cache<V>,
 }
 
-impl<V: Serialize, const ORDER: usize, const BASE_KEY: u64> Debug for BPlusTree<V, ORDER, BASE_KEY>
+impl<V: Serialize, const ORDER: usize, const BASE_KEY: u64> Debug for LazyVec<V, ORDER, BASE_KEY>
 where
     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
 {
@@ -27,7 +27,7 @@ where
     }
 }
 
-impl<V, const ORDER: usize, const BASE_KEY: u64> BPlusTree<V, ORDER, BASE_KEY>
+impl<V, const ORDER: usize, const BASE_KEY: u64> LazyVec<V, ORDER, BASE_KEY>
 where
     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
 {
@@ -51,7 +51,7 @@ where
 }
 
 // // TODO
-// impl<V, const ORDER: usize, const BASE_KEY: u64> Index<usize> for BPlusTree<V, ORDER, BASE_KEY>
+// impl<V, const ORDER: usize, const BASE_KEY: u64> Index<usize> for LazyVec<V, ORDER, BASE_KEY>
 // where
 //     V: Clone + PartialEq + Serialize + for<'de> Deserialize<'de>,
 // {
@@ -62,7 +62,7 @@ where
 //     }
 // }
 
-// impl<V, const ORDER: usize, const BASE_KEY: u64> IndexMut<usize> for BPlusTree<V, ORDER, BASE_KEY>
+// impl<V, const ORDER: usize, const BASE_KEY: u64> IndexMut<usize> for LazyVec<V, ORDER, BASE_KEY>
 // where
 //     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
 // {
@@ -71,7 +71,7 @@ where
 //     }
 // }
 
-impl<const ORDER: usize, const BASE_KEY: u64, V> BPlusTree<V, ORDER, BASE_KEY>
+impl<const ORDER: usize, const BASE_KEY: u64, V> LazyVec<V, ORDER, BASE_KEY>
 where
     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
 {
@@ -702,12 +702,12 @@ where
         }
     }
 
-    pub fn iter(&self) -> BPlusTreeIt<V, ORDER, BASE_KEY> {
-        BPlusTreeIt::new(self)
+    pub fn iter(&self) -> LazyVecIt<V, ORDER, BASE_KEY> {
+        LazyVecIt::new(self)
     }
 
     // TODO Who needs mutable iterators anyway..
-    // pub fn iter_mut(&mut self) -> BPlusTreeItMut<V, ORDER, BASE_KEY> {
-    //     BPlusTreeItMut::new(self)
+    // pub fn iter_mut(&mut self) -> LazyVecItMut<V, ORDER, BASE_KEY> {
+    //     LazyVecItMut::new(self)
     // }
 }
