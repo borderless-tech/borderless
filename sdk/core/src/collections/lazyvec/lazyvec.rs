@@ -11,11 +11,12 @@ use std::marker::PhantomData;
 
 pub(crate) const ROOT_KEY: u64 = 0;
 
-pub struct LazyVec<V, const ORDER: usize = 16, const BASE_KEY: u64 = 1999999> {
+pub struct LazyVec<V> {
     cache: Cache<V>,
+    order: usize,
 }
 
-impl<V: Serialize, const ORDER: usize, const BASE_KEY: u64> Debug for LazyVec<V, ORDER, BASE_KEY>
+impl<V: Serialize> Debug for LazyVec<V>
 where
     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
 {
@@ -27,7 +28,7 @@ where
     }
 }
 
-impl<V, const ORDER: usize, const BASE_KEY: u64> LazyVec<V, ORDER, BASE_KEY>
+impl<V> LazyVec<V>
 where
     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
 {
@@ -51,7 +52,7 @@ where
 }
 
 // // TODO
-// impl<V, const ORDER: usize, const BASE_KEY: u64> Index<usize> for LazyVec<V, ORDER, BASE_KEY>
+// impl<V> Index<usize> for LazyVec<V>
 // where
 //     V: Clone + PartialEq + Serialize + for<'de> Deserialize<'de>,
 // {
@@ -62,7 +63,7 @@ where
 //     }
 // }
 
-// impl<V, const ORDER: usize, const BASE_KEY: u64> IndexMut<usize> for LazyVec<V, ORDER, BASE_KEY>
+// impl<V> IndexMut<usize> for LazyVec<V>
 // where
 //     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
 // {
@@ -71,7 +72,7 @@ where
 //     }
 // }
 
-impl<const ORDER: usize, const BASE_KEY: u64, V> LazyVec<V, ORDER, BASE_KEY>
+impl<V> LazyVec<V>
 where
     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
 {
@@ -96,15 +97,17 @@ where
         }
     }
 
-    pub fn new() -> Self {
+    pub fn new(base_key: u64, order: usize) -> Self {
         Self {
-            cache: Cache::new(BASE_KEY, true),
+            cache: Cache::new(base_key, order, true),
+            order,
         }
     }
 
-    pub fn open() -> Self {
+    pub fn open(base_key: u64, order: usize) -> Self {
         Self {
-            cache: Cache::new(BASE_KEY, false),
+            cache: Cache::new(base_key, order, false),
+            order,
         }
     }
 
@@ -271,8 +274,8 @@ where
 
         if node.is_leaf() {
             // Create new leaf node when the order constraint is exceeded
-            if node.values.len() >= ORDER {
-                let new_leaf = Node::generate_leaf(ORDER, vec![value], node.next);
+            if node.values.len() >= self.order {
+                let new_leaf = Node::generate_leaf(self.order, vec![value], node.next);
                 // Store newly created leaf into the DB
                 let new_key = self.new_key();
                 self.cache.write(new_key, new_leaf);
@@ -288,8 +291,8 @@ where
             match self.push_internal(value, last_child) {
                 Some(key) => {
                     // Create new internal node when the order constraint is exceeded
-                    if node.keys.len() >= ORDER {
-                        let new_int = Node::generate_internal(ORDER, node.level, key);
+                    if node.keys.len() >= self.order {
+                        let new_int = Node::generate_internal(self.order, node.level, key);
                         // Store newly created internal node into the DB
                         let new_key = self.new_key();
                         self.cache.write(new_key, new_int);
@@ -357,8 +360,9 @@ where
             node.values.insert(index, element);
 
             // Split leaf when threshold is hit
-            if node.values.len() >= ORDER * 2 {
-                let new_leaf = Node::generate_leaf(ORDER, node.values.split_off(ORDER), node.next);
+            if node.values.len() >= self.order * 2 {
+                let new_leaf =
+                    Node::generate_leaf(self.order, node.values.split_off(self.order), node.next);
                 // Store newly created leaf into the DB
                 let new_key = self.new_key();
                 self.cache.write(new_key, new_leaf);
@@ -392,14 +396,14 @@ where
                 // Internal node to leaf handle
 
                 // Update key of recently split leaf
-                node.keys[tgt_index] = ORDER;
+                node.keys[tgt_index] = self.order;
                 // Insert new leaf
                 let pos = tgt_index.saturating_add(1);
-                node.keys.insert(pos, ORDER);
+                node.keys.insert(pos, self.order);
                 node.children.insert(pos, leaf);
 
                 // Triggers propagation mechanism
-                if node.keys.len() > ORDER {
+                if node.keys.len() > self.order {
                     node.keys.pop();
                     result = node.children.pop();
                 }
@@ -498,7 +502,7 @@ where
                 let last_child = self.cache.read(last_key);
                 let last_child = last_child.borrow();
 
-                if last_child.next.is_none() && node.keys.len() <= ORDER {
+                if last_child.next.is_none() && node.keys.len() <= self.order {
                     None
                 } else {
                     node.keys.pop();
@@ -518,7 +522,7 @@ where
                 // Ensures the tree remains balanced during insertions
                 if current.is_some() {
                     // if the current internal node is underpopulated
-                    if node.keys.len() < ORDER {
+                    if node.keys.len() < self.order {
                         let leaf_key = current.take().unwrap();
                         let subtree = self.create_subtree(node.level().saturating_sub(1), leaf_key);
                         node.keys.push(self.get_node_rank(subtree));
@@ -702,7 +706,7 @@ where
         }
     }
 
-    pub fn iter(&self) -> LazyVecIt<V, ORDER, BASE_KEY> {
+    pub fn iter(&self) -> LazyVecIt<V> {
         LazyVecIt::new(self)
     }
 
