@@ -2,7 +2,6 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::time::Instant;
 
-use ahash::HashMap;
 use anyhow::{Context, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
@@ -277,17 +276,51 @@ impl<S: Db> Runtime<S> {
         for l in log {
             logger::print_log_line(l);
         }
-
         Ok((status, result))
     }
 
     pub fn http_post_action(
         &mut self,
-        _cid: &ContractId,
-        _path: String,
-        _payload: Vec<u8>,
+        cid: &ContractId,
+        path: String,
+        payload: Vec<u8>,
     ) -> Result<(u16, Vec<u8>)> {
-        todo!()
+        let instance = self
+            .contract_store
+            .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
+            .context("contract is not instantiated")?;
+        self.store.data_mut().begin_immutable_exec(*cid)?;
+
+        self.store
+            .data_mut()
+            .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());
+
+        self.store
+            .data_mut()
+            .set_register(REGISTER_INPUT_HTTP_PAYLOAD, payload);
+
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "http_post_action")?;
+        func.call(&mut self.store, ())?;
+
+        let status = self
+            .store
+            .data()
+            .get_register(REGISTER_OUTPUT_HTTP_STATUS)
+            .context("missing http-status")?;
+        let status = u16::from_be_bytes(status.try_into().unwrap());
+
+        let result = self
+            .store
+            .data()
+            .get_register(REGISTER_OUTPUT_HTTP_RESULT)
+            .context("missing http-result")?;
+
+        // Finish the execution
+        let log = self.store.data_mut().finish_immutable_exec()?;
+        for l in log {
+            logger::print_log_line(l);
+        }
+        Ok((status, result))
     }
 
     pub fn available_contracts(&self) -> Result<Vec<ContractId>> {

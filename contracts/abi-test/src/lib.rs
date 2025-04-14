@@ -42,7 +42,18 @@ pub extern "C" fn process_revocation() {
 #[no_mangle]
 pub extern "C" fn http_get_state() {
     dev::tic();
-    let result = exec_http_rq();
+    let result = exec_get_state();
+    let elapsed = dev::toc();
+    match result {
+        Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
+        Err(e) => error!("execution failed: {e:?}"),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn http_post_action() {
+    dev::tic();
+    let result = exec_post_action();
     let elapsed = dev::toc();
     match result {
         Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
@@ -172,9 +183,9 @@ fn test_env() {
     info!("TxCtx: {}", env::tx_ctx());
 }
 
-fn exec_http_rq() -> Result<()> {
+fn exec_get_state() -> Result<()> {
     let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
-    let (status, payload) = generate_response(path)?;
+    let (status, payload) = get_state_response(path)?;
 
     write_register(REGISTER_OUTPUT_HTTP_STATUS, status.to_be_bytes());
     write_string_to_register(REGISTER_OUTPUT_HTTP_RESULT, payload);
@@ -182,7 +193,7 @@ fn exec_http_rq() -> Result<()> {
     Ok(())
 }
 
-fn generate_response(path: String) -> Result<(u16, String)> {
+fn get_state_response(path: String) -> Result<(u16, String)> {
     let path = path.strip_prefix('/').unwrap_or(&path);
 
     let storage_key_switch = make_user_key(xxh3_64("FLIPPER::switch".as_bytes()));
@@ -223,6 +234,71 @@ fn generate_response(path: String) -> Result<(u16, String)> {
     Ok((status, payload.unwrap_or_default()))
 }
 
+fn exec_post_action() -> Result<()> {
+    let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
+    let payload = read_register(REGISTER_INPUT_HTTP_PAYLOAD).context("missing http-payload")?;
+    let (status, payload) = match post_action_response(path, payload) {
+        Ok((s, p)) => (s, p),
+        Err(e) => (
+            400,
+            format!("{{ \"status\": \"failed\", \"error\": \"{e}\" }}"),
+        ),
+    };
+    write_register(REGISTER_OUTPUT_HTTP_STATUS, status.to_be_bytes());
+    write_string_to_register(REGISTER_OUTPUT_HTTP_RESULT, payload);
+
+    Ok(())
+}
+
+// TODO: Ok, this will be more complicated, if we handle all possible cases..
+//
+// /action               -> accept CallAction object
+// /action/{method_name} -> accept params for function
+// /action/{method_id}   -> accept params for function
+//
+// We can also implement a GET method for the actions, which will return a list of all possible actions and their schemas.
+fn post_action_response(path: String, payload: Vec<u8>) -> Result<(u16, String)> {
+    let path = path.replace("-", "_"); // Convert from kebab-case to snake_case
+    let path = path.strip_prefix('/').unwrap_or(&path); // stip leading "/"
+
+    let content = String::from_utf8(payload.clone()).unwrap_or_default();
+    info!("{content}");
+
+    match path {
+        "" => {
+            let action = CallAction::from_bytes(&payload).context("failed to parse action")?;
+
+            let method = action.method_name().unwrap();
+
+            match method {
+                "flip_switch" => {
+                    let _args: FlipSwitchArgs = from_value(action.params)?;
+                }
+                "set_switch" => {
+                    let _args: SetSwitchArgs = from_value(action.params)?;
+                }
+                "print_env" => {
+                    // Empty args
+                    let _args: FlipSwitchArgs = from_value(action.params)?;
+                }
+                other => return Err(new_error!("unknown method: {other}")),
+            }
+        }
+        "flip_switch" => {
+            let _args: FlipSwitchArgs = borderless_sdk::serialize::from_slice(&payload)?;
+        }
+        "set_switch" => {
+            let _args: SetSwitchArgs = borderless_sdk::serialize::from_slice(&payload)?;
+        }
+        "print_env" => {
+            let _args: FlipSwitchArgs = borderless_sdk::serialize::from_slice(&payload)?;
+        }
+        other => return Err(new_error!("unknown method: {other}")),
+    }
+
+    Ok((200, "{ \"status\": \"OK\" }".to_string()))
+}
+
 // NOTE: Let's dig into this, what the sdk macro should derive
 //
 
@@ -255,3 +331,6 @@ impl Flipper {
 struct SetSwitchArgs {
     switch: bool,
 }
+
+#[derive(serde::Deserialize)]
+struct FlipSwitchArgs {}

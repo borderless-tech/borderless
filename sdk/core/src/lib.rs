@@ -6,6 +6,7 @@ pub mod storage;
 pub use anyhow::{anyhow as new_error, Context, Error, Result};
 
 pub mod serialize {
+    pub use serde_json::from_slice;
     pub use serde_json::from_value;
 }
 

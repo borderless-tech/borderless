@@ -9,6 +9,8 @@ use borderless_sdk::{
     ContractId,
 };
 use bytes::Bytes;
+use http::method::Method;
+use http::request::Parts;
 use http::{header::CONTENT_TYPE, HeaderValue, StatusCode};
 use log::info;
 use mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8};
@@ -38,6 +40,18 @@ fn reject_404() -> Response {
     resp
 }
 
+fn method_not_allowed() -> Response {
+    let mut resp = Response::new(Bytes::new());
+    *resp.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
+    resp
+}
+
+fn unsupported_media_type() -> Response {
+    let mut resp = Response::new(Bytes::new());
+    *resp.status_mut() = StatusCode::UNSUPPORTED_MEDIA_TYPE;
+    resp
+}
+
 fn json_response<S: Serialize>(value: &S) -> Response<Bytes> {
     let bytes = serde_json::to_vec(value).unwrap();
     json_body(bytes)
@@ -50,6 +64,24 @@ fn json_body(bytes: Vec<u8>) -> Response<Bytes> {
         HeaderValue::from_static(APPLICATION_JSON.as_ref()),
     );
     resp
+}
+
+fn json_resp(status: StatusCode, bytes: Vec<u8>) -> Response<Bytes> {
+    let mut resp = Response::new(bytes.into());
+    *resp.status_mut() = status;
+    resp.headers_mut().insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static(APPLICATION_JSON.as_ref()),
+    );
+    resp
+}
+
+fn check_json_content(parts: &Parts) -> bool {
+    if let Some(content_type) = parts.headers.get(CONTENT_TYPE) {
+        content_type.as_bytes() == APPLICATION_JSON.as_ref().as_bytes()
+    } else {
+        false
+    }
 }
 
 /// Converts any error-type into a http-response with status-code 500
@@ -151,6 +183,14 @@ impl<S: Db> RtService<S> {
     }
 
     fn process_rq(&self, req: Request) -> anyhow::Result<Response> {
+        match *req.method() {
+            Method::GET => self.process_get_rq(req),
+            Method::POST => self.process_post_rq(req),
+            _ => Ok(method_not_allowed()),
+        }
+    }
+
+    fn process_get_rq(&self, req: Request) -> anyhow::Result<Response> {
         let path = req.uri().path();
         let query = req.uri().query();
 
@@ -188,7 +228,7 @@ impl<S: Db> RtService<S> {
         if trunc.is_empty() {
             trunc.push('/');
         }
-        if let Some(query) = req.uri().query() {
+        if let Some(query) = query {
             trunc.push('?');
             trunc.push_str(query);
         }
@@ -255,6 +295,57 @@ impl<S: Db> RtService<S> {
                 let full_info = read_contract_full(&self.db, &contract_id)?;
                 return Ok(json_response(&full_info));
             }
+            _ => return Ok(reject_404()),
+        }
+    }
+
+    fn process_post_rq(&self, req: Request) -> anyhow::Result<Response> {
+        let path = req.uri().path();
+
+        if path == "/" {
+            return Ok(method_not_allowed());
+        }
+
+        let mut pieces = path.split('/').skip(1);
+
+        // Extract contract-id from first piece
+        let contract_id: ContractId = match pieces.next().and_then(|first| first.parse().ok()) {
+            Some(cid) => cid,
+            None => return Ok(method_not_allowed()),
+        };
+
+        // Get top-level route
+        let route = match pieces.next() {
+            Some(r) => r,
+            None => return Ok(method_not_allowed()),
+        };
+
+        // Build truncated path
+        let mut trunc = String::new();
+        for piece in pieces {
+            trunc.push('/');
+            trunc.push_str(piece);
+        }
+        if trunc.is_empty() {
+            trunc.push('/');
+        }
+        if let Some(query) = req.uri().query() {
+            trunc.push('?');
+            trunc.push_str(query);
+        }
+        match route {
+            "action" => {
+                // Check request header
+                let (parts, payload) = req.into_parts();
+                if !check_json_content(&parts) {
+                    return Ok(unsupported_media_type());
+                }
+
+                let mut rt = self.rt.lock();
+                let (status, payload) = rt.http_post_action(&contract_id, trunc, payload.into())?;
+                return Ok(json_resp(status.try_into().unwrap(), payload));
+            }
+            "" => return Ok(method_not_allowed()),
             _ => return Ok(reject_404()),
         }
     }

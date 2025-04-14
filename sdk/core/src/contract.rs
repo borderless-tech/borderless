@@ -99,7 +99,7 @@ pub mod env {
 #[serde(untagged)]
 pub enum MethodOrId {
     ByName { method: String },
-    ById { method_id: u32 },
+    ById { method_id: u32 }, // < TODO Use first bit for blinding here, to distinguish user and system actions ?
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
