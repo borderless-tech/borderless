@@ -140,6 +140,8 @@ fn exec_introduction() -> Result<()> {
 
     storage_begin_acid_txn();
     // Write introduction values
+    //
+    // TODO: We can let the
     write_metadata_client(&introduction);
 
     // Write state

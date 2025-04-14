@@ -14,6 +14,7 @@ use log::info;
 use mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8};
 use parking_lot::Mutex;
 use serde::{de::DeserializeOwned, Serialize};
+use std::num::NonZeroUsize;
 use std::{
     convert::Infallible,
     task::{Context, Poll},
@@ -141,8 +142,8 @@ where
 }
 
 impl<S: Db> RtService<S> {
-    pub fn new(db: S) -> anyhow::Result<Self> {
-        let rt = Runtime::new(&db)?;
+    pub fn new(db: S, cache_size: NonZeroUsize) -> anyhow::Result<Self> {
+        let rt = Runtime::new(&db, cache_size)?;
         Ok(Self {
             rt: Arc::new(Mutex::new(rt)),
             db,

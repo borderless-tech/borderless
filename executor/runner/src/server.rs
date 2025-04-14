@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use anyhow::Result;
 use axum::{
     body::{to_bytes, Body},
@@ -25,7 +27,7 @@ async fn contract_handler(
 }
 
 pub async fn start_contract_server(db: impl Db + 'static) -> Result<()> {
-    let srv = RtService::new(db)?;
+    let srv = RtService::new(db, NonZeroUsize::new(10).unwrap())?;
 
     // Create a router and attach the custom service to a route
     let contract = Router::new().fallback(contract_handler).with_state(srv);

@@ -1,6 +1,8 @@
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::time::Instant;
 
+use ahash::HashMap;
 use anyhow::{Context, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
@@ -11,6 +13,7 @@ use borderless_sdk::{
     ContractId,
 };
 use borderless_sdk::{BlockIdentifier, BorderlessId};
+use lru::LruCache;
 use vm::VmState;
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
 
@@ -32,12 +35,12 @@ where
 }
 
 impl<S: Db> Runtime<S> {
-    pub fn new(storage: &S) -> Result<Self> {
+    pub fn new(storage: &S, cache_size: NonZeroUsize) -> Result<Self> {
         let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
         let start = Instant::now();
         let state = VmState::new(storage.clone(), db_ptr);
 
-        let contract_store = CodeStore::new(storage.clone())?;
+        let contract_store = CodeStore::new(storage.clone(), cache_size)?;
 
         let mut config = Config::new();
         config.cranelift_opt_level(wasmtime::OptLevel::Speed);
@@ -243,10 +246,13 @@ impl<S: Db> Runtime<S> {
     // --- NOTE: Maybe we should create a separate runtime for the HTTP handling ?
 
     pub fn http_get_state(&mut self, cid: &ContractId, path: String) -> Result<(u16, Vec<u8>)> {
+        let start = Instant::now();
         let instance = self
             .contract_store
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
             .context("contract is not instantiated")?;
+        let elapsed = start.elapsed();
+        log::info!("loading instance took: {elapsed:?}");
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
         self.store
@@ -270,7 +276,10 @@ impl<S: Db> Runtime<S> {
             .context("missing http-result")?;
 
         // Finish the execution
-        self.store.data_mut().finish_immutable_exec()?;
+        let log = self.store.data_mut().finish_immutable_exec()?;
+        for l in log {
+            logger::print_log_line(l);
+        }
 
         Ok((status, result))
     }
@@ -293,12 +302,14 @@ impl<S: Db> Runtime<S> {
 struct CodeStore<S: Db> {
     db: S,
     db_ptr: S::Handle,
+    cache: LruCache<ContractId, Instance, ahash::RandomState>,
 }
 
 impl<S: Db> CodeStore<S> {
-    pub fn new(db: S) -> Result<Self> {
+    pub fn new(db: S, cache_size: NonZeroUsize) -> Result<Self> {
         let db_ptr = db.create_sub_db(WASM_CODE_SUB_DB)?;
-        Ok(Self { db, db_ptr })
+        let cache = LruCache::with_hasher(cache_size, ahash::RandomState::default());
+        Ok(Self { db, db_ptr, cache })
     }
 
     pub fn insert_contract(&self, cid: ContractId, module: Module) -> Result<()> {
@@ -310,12 +321,15 @@ impl<S: Db> CodeStore<S> {
     }
 
     pub fn get_contract(
-        &self,
+        &mut self,
         cid: &ContractId,
         engine: &Engine,
         store: &mut Store<VmState<S>>,
         linker: &mut Linker<VmState<S>>,
     ) -> Result<Option<Instance>> {
+        if let Some(instance) = self.cache.get(cid) {
+            return Ok(Some(instance.clone()));
+        }
         let txn = self.db.begin_ro_txn()?;
         let module_bytes = txn.read(&self.db_ptr, cid)?;
         let module = match module_bytes {
@@ -324,6 +338,7 @@ impl<S: Db> CodeStore<S> {
         };
         txn.commit()?;
         let instance = linker.instantiate(store, &module)?;
+        self.cache.push(*cid, instance.clone());
         Ok(Some(instance))
     }
 
