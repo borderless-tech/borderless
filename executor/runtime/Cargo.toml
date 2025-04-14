@@ -21,3 +21,4 @@ parking_lot = "0.12.3"
 mime = "0.3.17"
 ahash = "0.8.11"
 lru = "0.14.0"
+serde_bytes.workspace = true

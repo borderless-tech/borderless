@@ -8,13 +8,16 @@ use std::{
 
 use anyhow::Context;
 use borderless_sdk::{
-    __private::action_log::SUB_KEY_LOG_LEN,
-    __private::from_postcard_bytes,
-    __private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
-    contract::{ActionRecord, CallAction},
+    __private::{
+        action_log::SUB_KEY_LOG_LEN,
+        from_postcard_bytes,
+        storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
+    },
+    contract::{ActionRecord, CallAction, Introduction, TxCtx},
     log::LogLine,
     ContractId,
 };
+use serde::{de::DeserializeOwned, Serialize};
 use wasmtime::{Caller, Extern, Memory};
 
 use log::{debug, error, info, trace, warn};
@@ -23,7 +26,7 @@ use rand::{random, Rng};
 
 use borderless_kv_store::*;
 
-use crate::{logger::Logger, CONTRACT_SUB_DB};
+use crate::{action_log::ActionLog, logger::Logger, CONTRACT_SUB_DB};
 
 // TODO: We can change the entire logic, of how data is commited !
 //
@@ -88,24 +91,9 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
-    pub fn finish_mutable_exec(&mut self) -> anyhow::Result<()> {
-        match self.active_contract {
-            ActiveContract::Mutable(cid) => {
-                let logger = Logger::new(&self.db, cid);
-                let now = Instant::now();
-                let buf = std::mem::replace(&mut self.db_acid_txn_buffer, None).unwrap_or_default();
-                let mut txn = self.db.begin_rw_txn()?;
-                for op in buf.into_iter() {
-                    match op {
-                        StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
-                        StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
-                    }
-                }
-                logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
-                txn.commit();
-                let elapsed = now.elapsed();
-                debug!("commit-acid-txn: {elapsed:?}");
-            }
+    pub fn finish_mutable_exec(&mut self, commit: Commit) -> anyhow::Result<()> {
+        let cid = match self.active_contract {
+            ActiveContract::Mutable(cid) => cid,
             ActiveContract::Immutable(_) => {
                 return Err(anyhow::Error::msg(
                     "Contract execution was marked as immutable",
@@ -116,7 +104,41 @@ impl<S: Db> VmState<S> {
                     "Must start contract execution before commiting",
                 ));
             }
+        };
+        let now = Instant::now();
+
+        // Commit storage buffer
+        let buf = std::mem::replace(&mut self.db_acid_txn_buffer, None).unwrap_or_default();
+        let mut txn = self.db.begin_rw_txn()?;
+        for op in buf.into_iter() {
+            match op {
+                StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
+                StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
+            }
         }
+        // Commit external item (introduction, action or revocation)
+        match commit {
+            Commit::Action { action, tx_ctx } => {
+                let action_log = ActionLog::new(&self.db, cid);
+                action_log.commit(&self.db_ptr, &mut txn, action, tx_ctx)?;
+            }
+            Commit::Introduction(intro) => {
+                write_introduction::<S>(&self.db_ptr, &mut txn, intro)?;
+            }
+            Commit::Revocation(_) => todo!(),
+        }
+
+        // Flush log
+        let logger = Logger::new(&self.db, cid);
+        logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
+
+        // Commit txn
+        txn.commit();
+
+        let elapsed = now.elapsed();
+        debug!("commit-acid-txn: {elapsed:?}");
+
+        // Reset everything
         self.active_contract = ActiveContract::None;
         self.log_buffer.clear();
 
@@ -155,6 +177,7 @@ impl<S: Db> VmState<S> {
             return Err(anyhow::Error::msg("Cannot clear non existing contract"));
         }
         self.active_contract = ActiveContract::None;
+        self.db_acid_txn_buffer = None;
         let log_output = std::mem::replace(&mut self.log_buffer, Vec::new());
         Ok(log_output)
     }
@@ -498,6 +521,16 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
     Ok(value)
 }
 
+/// External data that must be commited in the contract
+pub enum Commit<'a> {
+    Action {
+        action: &'a CallAction,
+        tx_ctx: TxCtx,
+    },
+    Introduction(&'a Introduction),
+    Revocation(()),
+}
+
 /// Represents the different states of an active contract
 ///
 /// A contract can be executed with a mutable or immutable state.
@@ -589,4 +622,118 @@ pub fn len_actions(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<u64>
         None
     };
     Ok(value)
+}
+
+// Helper function to write fields with system-keys
+pub(crate) fn write_system_value<S: Db, D: Serialize>(
+    db_ptr: &S::Handle,
+    txn: &mut <S as Db>::RwTx<'_>,
+    cid: &ContractId,
+    base_key: u64,
+    sub_key: u64,
+    data: &D,
+) -> anyhow::Result<()> {
+    let key = StorageKey::system_key(&cid, base_key, sub_key);
+    let bytes = postcard::to_allocvec(data)?;
+    txn.write(db_ptr, &key, &bytes)?;
+    Ok(())
+}
+
+// Helper function to write fields with system-keys
+pub(crate) fn read_system_value<S: Db, D: DeserializeOwned>(
+    db_ptr: &S::Handle,
+    txn: &<S as Db>::RwTx<'_>,
+    cid: &ContractId,
+    base_key: u64,
+    sub_key: u64,
+) -> anyhow::Result<Option<D>> {
+    let key = StorageKey::system_key(&cid, base_key, sub_key);
+    let bytes = txn.read(db_ptr, &key)?;
+    match bytes {
+        Some(val) => {
+            let out = postcard::from_bytes(val)?;
+            Ok(Some(out))
+        }
+        None => Ok(None),
+    }
+}
+
+fn write_introduction<S: Db>(
+    db_ptr: &S::Handle,
+    txn: &mut <S as Db>::RwTx<'_>,
+    introduction: &Introduction,
+) -> anyhow::Result<()> {
+    use borderless_sdk::__private::storage_keys::*;
+    let cid = introduction.contract_id;
+
+    // Write contract-id
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_CONTRACT_ID,
+        &introduction.contract_id,
+    )?;
+
+    // Write participant list
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_PARTICIPANTS,
+        &introduction.participants,
+    )?;
+
+    // Write roles list
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_ROLES,
+        &introduction.roles,
+    )?;
+
+    // Write sink list
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_SINKS,
+        &introduction.sinks,
+    )?;
+
+    // Write description
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_DESC,
+        &introduction.desc,
+    )?;
+
+    // Write meta
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_META,
+        &introduction.meta,
+    )?;
+
+    // Write initial state
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_INIT_STATE,
+        &introduction.initial_state,
+    )?;
+    Ok(())
 }

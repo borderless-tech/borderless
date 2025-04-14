@@ -323,6 +323,7 @@ where
 
                 let mut elements = Vec::new();
                 for idx in pagination.to_range() {
+                    // TODO: We can utilize the action log here !
                     match read_action(&self.db, &contract_id, idx)? {
                         Some(record) => {
                             let action = TxAction::try_from(record)?;

@@ -1,8 +1,6 @@
 use std::fmt::Display;
 
-use borderless_sdk::__private::action_log::ActionLog;
 use borderless_sdk::__private::http::to_payload;
-use borderless_sdk::__private::write_metadata_client;
 use borderless_sdk::contract::Introduction;
 use borderless_sdk::{error, info, new_error, Context, Result};
 
@@ -75,11 +73,6 @@ fn exec_run() -> Result<()> {
     info!("read {} bytes", input.len());
 
     let action = CallAction::from_bytes(&input)?;
-
-    let mut action_log = ActionLog::open();
-    let tx_ctx = borderless_sdk::contract::env::tx_ctx();
-    action_log.push(input, tx_ctx);
-
     let s = action.pretty_print()?;
     info!("{s}");
 
@@ -112,7 +105,6 @@ fn exec_run() -> Result<()> {
     // Commit state
     write_field(storage_key_switch, 0, &state.switch);
     write_field(storage_key_counter, 0, &state.counter);
-    action_log.commit();
     info!("Commited flipper: {state}");
 
     Ok(())
@@ -134,30 +126,12 @@ fn exec_introduction() -> Result<()> {
         state.switch, state.counter
     );
 
-    // TODO: Implement 'real' storage handling here,
-    // and reserve the keyspace for the contract
-    //
-    // - [x] add introduction data
-    // - [-] prepare action buffer
-    // ...
-    // + define additional data, that the contract requires and how it is stored / passed into it
     let storage_key_switch = make_user_key(xxh3_64("FLIPPER::switch".as_bytes()));
     let storage_key_counter = make_user_key(xxh3_64("FLIPPER::counter".as_bytes()));
-
-    let action_log = ActionLog::open();
-
-    // Write introduction values
-    //
-    // TODO: We can let the
-    write_metadata_client(&introduction);
 
     // Write state
     write_field(storage_key_switch, 0, &state.switch);
     write_field(storage_key_counter, 0, &state.counter);
-    // Clear actions vector
-    // (TODO: In production we might not want to do this, but instead fail, if the contract already has actions)
-    //  -> I think this can / should be done from the outside
-    action_log.clear();
 
     Ok(())
 }

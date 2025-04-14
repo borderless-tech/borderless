@@ -375,6 +375,7 @@ pub struct Metadata {
     /// Time when the contract or process was created (seconds since unix epoch)
     pub active_since: u64,
 
+    // TODO: TxCtx ?
     /// Time when the contract or process was revoked or archived (seconds since unix epoch)
     pub inactive_since: Option<u32>,
 

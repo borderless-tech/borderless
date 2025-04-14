@@ -15,9 +15,10 @@ use borderless_sdk::{
 use borderless_sdk::{BlockIdentifier, BorderlessId};
 use lru::LruCache;
 use parking_lot::Mutex;
-use vm::VmState;
+use vm::{Commit, VmState};
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
 
+pub mod action_log;
 pub mod http;
 pub mod logger;
 mod vm;
@@ -169,7 +170,13 @@ impl<S: Db> Runtime<S> {
         tx_ctx: TxCtx,
     ) -> Result<()> {
         let input = action.to_bytes()?;
-        self.process_chain_tx("process_transaction", *cid, input, *writer, tx_ctx)
+
+        self.store.data_mut().begin_mutable_exec(*cid)?;
+        self.process_chain_tx("process_transaction", *cid, input, *writer, &tx_ctx)?;
+        self.store
+            .data_mut()
+            .finish_mutable_exec(Commit::Action { action, tx_ctx })?;
+        Ok(())
     }
 
     pub fn process_introduction(
@@ -179,13 +186,20 @@ impl<S: Db> Runtime<S> {
         tx_ctx: TxCtx,
     ) -> Result<()> {
         let input = introduction.to_bytes()?;
+        self.store
+            .data_mut()
+            .begin_mutable_exec(introduction.contract_id)?;
         self.process_chain_tx(
             "process_introduction",
             introduction.contract_id,
             input,
             *writer,
-            tx_ctx,
-        )
+            &tx_ctx,
+        )?;
+        self.store
+            .data_mut()
+            .finish_mutable_exec(Commit::Introduction(introduction))?;
+        Ok(())
     }
 
     pub fn process_revocation(
@@ -204,14 +218,12 @@ impl<S: Db> Runtime<S> {
         cid: ContractId,
         input: Vec<u8>,
         writer: BorderlessId,
-        tx_ctx: TxCtx,
+        tx_ctx: &TxCtx,
     ) -> Result<()> {
         let instance = self
             .contract_store
             .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
             .context("contract is not instantiated")?;
-
-        self.store.data_mut().begin_mutable_exec(cid)?;
 
         // Prepare registers
         self.store.data_mut().set_register(REGISTER_INPUT, input);
@@ -225,9 +237,6 @@ impl<S: Db> Runtime<S> {
         // Call the actual function on the wasm side
         let func = instance.get_typed_func::<(), ()>(&mut self.store, contract_method)?;
         func.call(&mut self.store, ())?;
-
-        // Finish the execution
-        self.store.data_mut().finish_mutable_exec()?;
         Ok(())
     }
 
