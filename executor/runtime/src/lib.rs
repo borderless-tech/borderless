@@ -165,7 +165,7 @@ impl<S: Db> Runtime<S> {
     pub fn process_transaction(
         &mut self,
         cid: &ContractId,
-        action: &CallAction,
+        action: CallAction,
         writer: &BorderlessId,
         tx_ctx: TxCtx,
     ) -> Result<()> {
@@ -181,7 +181,7 @@ impl<S: Db> Runtime<S> {
 
     pub fn process_introduction(
         &mut self,
-        introduction: &Introduction,
+        introduction: Introduction,
         writer: &BorderlessId,
         tx_ctx: TxCtx,
     ) -> Result<()> {
@@ -198,7 +198,10 @@ impl<S: Db> Runtime<S> {
         )?;
         self.store
             .data_mut()
-            .finish_mutable_exec(Commit::Introduction(introduction))?;
+            .finish_mutable_exec(Commit::Introduction {
+                introduction,
+                tx_ctx,
+            })?;
         Ok(())
     }
 

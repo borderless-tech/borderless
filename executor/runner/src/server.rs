@@ -54,7 +54,7 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
         let hash = tx_ctx.tx_id.hash.clone();
 
         let mut rt = self.rt.lock();
-        rt.process_transaction(&cid, &action, &self.writer, tx_ctx)
+        rt.process_transaction(&cid, action, &self.writer, tx_ctx)
             .unwrap();
 
         let fut = async move { Ok(hash) };

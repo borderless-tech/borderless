@@ -13,7 +13,7 @@ use borderless_sdk::{
         from_postcard_bytes,
         storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
     },
-    contract::{ActionRecord, CallAction, Introduction, TxCtx},
+    contract::{ActionRecord, CallAction, Introduction, Metadata, TxCtx},
     log::LogLine,
     ContractId,
 };
@@ -120,10 +120,20 @@ impl<S: Db> VmState<S> {
         match commit {
             Commit::Action { action, tx_ctx } => {
                 let action_log = ActionLog::new(&self.db, cid);
-                action_log.commit(&self.db_ptr, &mut txn, action, tx_ctx)?;
+                action_log.commit(&self.db_ptr, &mut txn, &action, tx_ctx)?;
             }
-            Commit::Introduction(intro) => {
-                write_introduction::<S>(&self.db_ptr, &mut txn, intro)?;
+            Commit::Introduction {
+                mut introduction,
+                tx_ctx,
+            } => {
+                introduction.meta.active_since = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .context("timestamp < 1970")?
+                    .as_millis()
+                    .try_into()
+                    .context("u64 should fit for 584942417 years")?;
+                introduction.meta.tx_ctx = Some(tx_ctx);
+                write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
             }
             Commit::Revocation(_) => todo!(),
         }
@@ -184,11 +194,11 @@ impl<S: Db> VmState<S> {
 
     /// Generates the storage key based on the currently active contract.
     ///
-    /// Note: Does not do any further checking, if the key is in user or system space!
+    /// Note: This function only generates user-keys, as values with system-keys must be commited by the host.
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
         self.active_contract
             .as_opt()
-            .map(|cid| StorageKey::new(&cid, base_key, sub_key))
+            .map(|cid| StorageKey::user_key(&cid, base_key, sub_key))
             .ok_or_else(|| wasmtime::Error::msg("no contract has been activated"))
     }
 
@@ -522,12 +532,15 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
 }
 
 /// External data that must be commited in the contract
-pub enum Commit<'a> {
+pub enum Commit {
     Action {
-        action: &'a CallAction,
+        action: CallAction,
         tx_ctx: TxCtx,
     },
-    Introduction(&'a Introduction),
+    Introduction {
+        introduction: Introduction,
+        tx_ctx: TxCtx,
+    },
     Revocation(()),
 }
 

@@ -370,12 +370,14 @@ pub struct Metadata {
     /// SemVer compatible version string
     pub version: SemVer,
 
-    // TODO: Does this field make sense in the introduction ?
     #[serde(default)]
     /// Time when the contract or process was created (seconds since unix epoch)
     pub active_since: u64,
 
-    // TODO: TxCtx ?
+    #[serde(default)]
+    /// Transaction context of the contract-introduction transaction
+    pub tx_ctx: Option<TxCtx>,
+
     /// Time when the contract or process was revoked or archived (seconds since unix epoch)
     pub inactive_since: Option<u32>,
 
