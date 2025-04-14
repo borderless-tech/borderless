@@ -139,7 +139,7 @@ impl<S: Db> VmState<S> {
     /// Calling this function while the `VmState` has no active contract results in an error.
     pub fn finish_immutable_exec(&mut self) -> anyhow::Result<Vec<LogLine>> {
         if self.active_contract.is_none() {
-            return Err(anyhow::Error::msg("Cannot clear non existing"));
+            return Err(anyhow::Error::msg("Cannot clear non existing contract"));
         }
         self.active_contract = ActiveContract::None;
         let log_output = std::mem::replace(&mut self.log_buffer, Vec::new());
@@ -205,18 +205,6 @@ impl<S: Db> VmState<S> {
         txn.commit();
         let elapsed = now.elapsed();
         debug!("commit-acid-txn: {elapsed:?}");
-        // TODO
-        // match self.db_acid_txn_buffer.take() {
-        //     Some(txn) => {
-        //         txn.commit()?; // TODO: This guy is taking 10x the time of the entire module execution
-        //                        // (maybe in production we don't block the wasm module here ?)
-        //         let elapsed = now.elapsed();
-        //         debug!("commit-acid-txn: {elapsed:?}");
-        //     }
-        //     None => {
-        //         return Ok(1);
-        //     }
-        // }
         Ok(0)
     }
 
@@ -441,10 +429,11 @@ pub fn storage_write(
         buf.push(StorageOp::write(key, value));
         // txn.write(&caller_data.db_ptr, &key, &value)?;
     } else {
+        // TODO: If not, just ignore it, because it's a dry-run
         // If not, create a new transaction and instantly commit the changes
-        let mut txn = caller_data.db.begin_rw_txn()?;
-        txn.write(&caller_data.db_ptr, &key, &value)?;
-        txn.commit()?;
+        // let mut txn = caller_data.db.begin_rw_txn()?;
+        // txn.write(&caller_data.db_ptr, &key, &value)?;
+        // txn.commit()?;
     }
 
     let elapsed = now.elapsed();
@@ -504,10 +493,11 @@ pub fn storage_remove(
         // txn.delete(&caller_data.db_ptr, &key)?;
         buf.push(StorageOp::remove(key));
     } else {
+        // TODO: If not, ignore it, because it's a dry-run
         // If not, create a new transaction and instantly commit the changes
-        let mut txn = caller_data.db.begin_rw_txn()?;
-        txn.delete(&caller_data.db_ptr, &key)?;
-        txn.commit()?;
+        // let mut txn = caller_data.db.begin_rw_txn()?;
+        // txn.delete(&caller_data.db_ptr, &key)?;
+        // txn.commit()?;
     }
 
     let elapsed = now.elapsed();
@@ -553,18 +543,20 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
 // DEPRECATED
 // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
 pub fn storage_begin_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
-    // if caller.data().active_contract.is_immutable() {
-    //     return Err(wasmtime::Error::msg("contract is immutable"));
-    // }
+    if caller.data().active_contract.is_immutable() {
+        // return Err(wasmtime::Error::msg("contract is immutable"));
+        return Ok(0);
+    }
     caller.data_mut().begin_acid_txn()
 }
 
 // DEPRECATED
 // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
 pub fn storage_commit_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
-    // if caller.data().active_contract.is_immutable() {
-    //     return Err(wasmtime::Error::msg("contract is immutable"));
-    // }
+    if caller.data().active_contract.is_immutable() {
+        // return Err(wasmtime::Error::msg("contract is immutable"));
+        return Ok(0);
+    }
     caller.data_mut().commit_acid_txn()
 }
 
