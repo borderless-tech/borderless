@@ -64,19 +64,21 @@ impl<'a, S: Db> Logger<'a, S> {
     /// # Errors
     ///
     /// Returns an error if any database operation fails or if serialization/deserialization of log lines or metadata fails.
-    pub fn flush_lines(&self, lines: &[LogLine]) -> Result<()> {
-        let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
-        let mut txn = self.db.begin_rw_txn()?;
-
+    pub fn flush_lines(
+        &self,
+        lines: &[LogLine],
+        db_ptr: &S::Handle,
+        txn: &mut <S as Db>::RwTx<'_>,
+    ) -> Result<()> {
         // Retrieve meta info, or initialize it if not present.
         let meta_key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, SUB_KEY_META);
-        let mut meta = match txn.read(&db_ptr, &meta_key)? {
+        let mut meta = match txn.read(db_ptr, &meta_key)? {
             Some(bytes) => postcard::from_bytes(bytes)?,
             None => {
                 // Initialize with flush info set to 0.
                 let meta = BufferMeta::default();
                 let bytes = postcard::to_allocvec(&meta)?;
-                txn.write(&db_ptr, &meta_key, &bytes)?;
+                txn.write(db_ptr, &meta_key, &bytes)?;
                 meta
             }
         };
@@ -99,15 +101,13 @@ impl<'a, S: Db> Logger<'a, S> {
             let index = (meta.end + i as u64) % MAX_LOG_BUFFER_SIZE;
             let key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, index);
             let bytes = postcard::to_allocvec(line)?;
-            txn.write(&db_ptr, &key, &bytes)?;
+            txn.write(db_ptr, &key, &bytes)?;
         }
 
         // Update meta with the new end.
         meta.end += new_line_count;
         let meta_bytes = postcard::to_allocvec(&meta)?;
-        txn.write(&db_ptr, &meta_key, &meta_bytes)?;
-
-        txn.commit()?;
+        txn.write(db_ptr, &meta_key, &meta_bytes)?;
         Ok(())
     }
 

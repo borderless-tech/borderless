@@ -29,6 +29,7 @@ use std::{
 };
 pub use tower::Service;
 
+use crate::vm::read_action;
 use crate::CONTRACT_SUB_DB;
 use crate::{logger::Logger, vm::len_actions, Runtime};
 
@@ -322,7 +323,7 @@ where
 
                 let mut elements = Vec::new();
                 for idx in pagination.to_range() {
-                    match rt.read_action(&contract_id, idx)? {
+                    match read_action(&self.db, &contract_id, idx)? {
                         Some(record) => {
                             let action = TxAction::try_from(record)?;
                             elements.push(action);

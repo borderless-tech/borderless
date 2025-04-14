@@ -74,6 +74,7 @@ impl<S: Db> VmState<S> {
         }
         self.active_contract = ActiveContract::Mutable(contract_id);
         self.log_buffer.clear();
+        self.db_acid_txn_buffer = Some(Vec::new());
         Ok(())
     }
 
@@ -90,9 +91,20 @@ impl<S: Db> VmState<S> {
     pub fn finish_mutable_exec(&mut self) -> anyhow::Result<()> {
         match self.active_contract {
             ActiveContract::Mutable(cid) => {
-                // TODO: The flushing takes 10 ms due to lmdb being lmdb..
                 let logger = Logger::new(&self.db, cid);
-                logger.flush_lines(&self.log_buffer)?;
+                let now = Instant::now();
+                let buf = std::mem::replace(&mut self.db_acid_txn_buffer, None).unwrap_or_default();
+                let mut txn = self.db.begin_rw_txn()?;
+                for op in buf.into_iter() {
+                    match op {
+                        StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
+                        StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
+                    }
+                }
+                logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
+                txn.commit();
+                let elapsed = now.elapsed();
+                debug!("commit-acid-txn: {elapsed:?}");
             }
             ActiveContract::Immutable(_) => {
                 return Err(anyhow::Error::msg(
@@ -107,6 +119,7 @@ impl<S: Db> VmState<S> {
         }
         self.active_contract = ActiveContract::None;
         self.log_buffer.clear();
+
         Ok(())
     }
 
@@ -171,73 +184,18 @@ impl<S: Db> VmState<S> {
         self.registers.remove(&register_id);
     }
 
-    /// Begins a new acid transaction
-    fn begin_acid_txn(&mut self) -> wasmtime::Result<u64> {
-        // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-        debug_assert!(
-            self.active_contract.is_some(),
-            "transactions should only be created when there is an active contract"
-        );
-        if self.db_acid_txn_buffer.is_some() {
-            return Ok(1);
-        }
-        // let txn = self.db.begin_rw_txn()?;
-        self.db_acid_txn_buffer = Some(Vec::new());
-        Ok(0)
-    }
-
-    /// Commits an acid transaction
-    fn commit_acid_txn(&mut self) -> wasmtime::Result<u64> {
-        // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-        debug_assert!(
-            self.active_contract.is_some(),
-            "transactions should only be created when there is an active contract"
-        );
-        let now = Instant::now();
-        let buf = std::mem::replace(&mut self.db_acid_txn_buffer, None).unwrap_or_default();
-        let mut txn = self.db.begin_rw_txn()?;
-        for op in buf.into_iter() {
-            match op {
-                StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
-                StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
-            }
-        }
-        txn.commit();
-        let elapsed = now.elapsed();
-        debug!("commit-acid-txn: {elapsed:?}");
-        Ok(0)
-    }
-
-    // TODO: Don't use this, use the free-floating function instead
     /// Tries to read the action with the given index for the currently active contract
     pub fn read_action(
         &self,
         cid: &ContractId,
         idx: usize,
     ) -> anyhow::Result<Option<ActionRecord>> {
-        let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, idx as u64);
-
-        let txn = self.db.begin_ro_txn()?;
-        let value = if let Some(bytes) = txn.read(&self.db_ptr, &storage_key)? {
-            Some(from_postcard_bytes(bytes)?)
-        } else {
-            None
-        };
-        txn.commit()?;
-        Ok(value)
+        read_action(&self.db, cid, idx)
     }
 
-    // TODO: Don't use this, use the free-floating function instead
     /// Returns the length of all actions
     pub fn len_actions(&self, cid: &ContractId) -> anyhow::Result<Option<u64>> {
-        let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN);
-        let txn = self.db.begin_ro_txn()?;
-        let value = if let Some(bytes) = txn.read(&self.db_ptr, &storage_key)? {
-            Some(from_postcard_bytes(bytes)?)
-        } else {
-            None
-        };
-        Ok(value)
+        len_actions(&self.db, cid)
     }
 }
 
@@ -540,26 +498,6 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
     Ok(value)
 }
 
-// DEPRECATED
-// NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-pub fn storage_begin_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
-    if caller.data().active_contract.is_immutable() {
-        // return Err(wasmtime::Error::msg("contract is immutable"));
-        return Ok(0);
-    }
-    caller.data_mut().begin_acid_txn()
-}
-
-// DEPRECATED
-// NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-pub fn storage_commit_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
-    if caller.data().active_contract.is_immutable() {
-        // return Err(wasmtime::Error::msg("contract is immutable"));
-        return Ok(0);
-    }
-    caller.data_mut().commit_acid_txn()
-}
-
 /// Represents the different states of an active contract
 ///
 /// A contract can be executed with a mutable or immutable state.
@@ -603,6 +541,10 @@ impl ActiveContract {
     }
 }
 
+/// Enum that represents a storage operation
+///
+/// All storage operations are commited to the key-value-store
+/// once the contract finished its execution.
 enum StorageOp {
     Write { key: StorageKey, value: Vec<u8> },
     Remove { key: StorageKey },
@@ -620,7 +562,7 @@ impl StorageOp {
 
 /// Reads an action from the database
 pub fn read_action(
-    db: impl Db,
+    db: &impl Db,
     cid: &ContractId,
     idx: usize,
 ) -> anyhow::Result<Option<ActionRecord>> {

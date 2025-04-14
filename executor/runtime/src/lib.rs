@@ -108,17 +108,6 @@ impl<S: Db> Runtime<S> {
             },
         )?;
 
-        linker.func_wrap(
-            "env",
-            "storage_begin_acid_txn",
-            |caller: Caller<'_, VmState<S>>| vm::storage_begin_acid_txn(caller),
-        )?;
-        linker.func_wrap(
-            "env",
-            "storage_commit_acid_txn",
-            |caller: Caller<'_, VmState<S>>| vm::storage_commit_acid_txn(caller),
-        )?;
-
         // NOTE: Those functions introduce side-effects;
         // they should only be used by us or during development of a contract
         linker.func_wrap("env", "storage_gen_sub_key", vm::storage_gen_sub_key)?;
@@ -277,14 +266,6 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
-    pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
-        self.store.data().read_action(cid, idx)
-    }
-
-    pub fn len_actions(&self, cid: &ContractId) -> Result<Option<u64>> {
-        self.store.data().len_actions(cid)
-    }
-
     // --- NOTE: Maybe we should create a separate runtime for the HTTP handling ?
 
     pub fn http_get_state(&mut self, cid: &ContractId, path: String) -> Result<(u16, Vec<u8>)> {
@@ -376,6 +357,14 @@ impl<S: Db> Runtime<S> {
             let error = String::from_utf8(result)?;
             Ok(Err((status, error)))
         }
+    }
+
+    pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
+        self.store.data().read_action(cid, idx)
+    }
+
+    pub fn len_actions(&self, cid: &ContractId) -> Result<Option<u64>> {
+        self.store.data().len_actions(cid)
     }
 
     pub fn available_contracts(&self) -> Result<Vec<ContractId>> {

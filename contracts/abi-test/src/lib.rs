@@ -63,8 +63,7 @@ pub extern "C" fn http_post_action() {
 
 use borderless_sdk::__private::{
     dev, read_field, read_register, read_string_from_register, registers::*,
-    storage_begin_acid_txn, storage_commit_acid_txn, storage_keys::make_user_key, write_field,
-    write_register, write_string_to_register,
+    storage_keys::make_user_key, write_field, write_register, write_string_to_register,
 };
 use borderless_sdk::{contract::CallAction, serialize::from_value};
 
@@ -111,11 +110,9 @@ fn exec_run() -> Result<()> {
     }
 
     // Commit state
-    storage_begin_acid_txn();
     write_field(storage_key_switch, 0, &state.switch);
     write_field(storage_key_counter, 0, &state.counter);
     action_log.commit();
-    storage_commit_acid_txn();
     info!("Commited flipper: {state}");
 
     Ok(())
@@ -149,7 +146,6 @@ fn exec_introduction() -> Result<()> {
 
     let action_log = ActionLog::open();
 
-    storage_begin_acid_txn();
     // Write introduction values
     //
     // TODO: We can let the
@@ -162,7 +158,6 @@ fn exec_introduction() -> Result<()> {
     // (TODO: In production we might not want to do this, but instead fail, if the contract already has actions)
     //  -> I think this can / should be done from the outside
     action_log.clear();
-    storage_commit_acid_txn();
 
     Ok(())
 }
