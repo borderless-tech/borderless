@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{Context, Result}; // TODO: Replace with real error, since this is a library
+use anyhow::{anyhow, Context, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use borderless_sdk::__private::registers::*;
@@ -16,7 +16,7 @@ use borderless_sdk::{BlockIdentifier, BorderlessId};
 use lru::LruCache;
 use parking_lot::Mutex;
 use vm::{Commit, VmState};
-use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
+use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Instance, Linker, Module, Store};
 
 pub mod action_log;
 pub mod http;
@@ -112,7 +112,7 @@ impl<S: Db> Runtime<S> {
         // NOTE: Those functions introduce side-effects;
         // they should only be used by us or during development of a contract
         linker.func_wrap("env", "storage_gen_sub_key", vm::storage_gen_sub_key)?;
-        linker.func_wrap("env", "timestamp", vm::timestamp)?;
+        linker.func_wrap("env", "timestamp", vm::timestamp)?; // < TODO can this be removed ?
         linker.func_wrap("env", "tic", |caller: Caller<'_, VmState<S>>| {
             vm::tic(caller)
         })?;
@@ -144,6 +144,27 @@ impl<S: Db> Runtime<S> {
         path: impl AsRef<Path>,
     ) -> Result<()> {
         let module = Module::from_file(&self.engine, path)?;
+        let functions = [
+            "process_transaction",
+            "process_introduction",
+            "process_revocation",
+            "http_get_state",
+            "http_post_action",
+        ];
+        for func in functions {
+            let exp = module
+                .get_export(func)
+                .context(format!("missing required export: '{func}'"))?;
+            if let ExternType::Func(func_type) = exp {
+                if !func_type.matches(&FuncType::new(&self.engine, [], [])) {
+                    return Err(anyhow!("function '{func}' has invalid type"));
+                }
+            } else {
+                return Err(anyhow!(
+                    "invalid export type for '{func}' - expected function"
+                ));
+            }
+        }
         self.contract_store.insert_contract(contract_id, module)?;
         Ok(())
     }
