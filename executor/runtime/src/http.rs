@@ -2,6 +2,8 @@ use anyhow::Result;
 use borderless_kv_store::RawRead;
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_sdk::__private::{from_postcard_bytes, storage_keys::*};
+use borderless_sdk::contract::CallAction;
+use borderless_sdk::hash::Hash256;
 use borderless_sdk::http::ContractInfo;
 use borderless_sdk::{
     contract::{Description, Info, Metadata},
@@ -16,15 +18,13 @@ use log::info;
 use mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8};
 use parking_lot::Mutex;
 use serde::{de::DeserializeOwned, Serialize};
-use std::num::NonZeroUsize;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 use std::{
     convert::Infallible,
     task::{Context, Poll},
     time::Instant,
-};
-use std::{
-    future::{ready, Ready},
-    sync::Arc,
 };
 pub use tower::Service;
 
@@ -52,11 +52,11 @@ fn unsupported_media_type() -> Response {
     resp
 }
 
-fn bad_request(err: String) -> Response {
-    let mut resp = Response::new(err.into_bytes().into());
-    *resp.status_mut() = StatusCode::BAD_REQUEST;
-    resp
-}
+// fn bad_request(err: String) -> Response {
+//     let mut resp = Response::new(err.into_bytes().into());
+//     *resp.status_mut() = StatusCode::BAD_REQUEST;
+//     resp
+// }
 
 fn err_response(status: StatusCode, err_msg: String) -> Response {
     let mut resp = Response::new(err_msg.into_bytes().into());
@@ -128,7 +128,6 @@ fn read_contract_info(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<I
         db,
         StorageKey::system_key(cid, BASE_KEY_METADATA, META_SUB_KEY_SINKS),
     )?;
-    info!("{participants:?}, {roles:?}, {sinks:?}");
     match (participants, roles, sinks) {
         (Some(participants), Some(roles), Some(sinks)) => Ok(Some(Info {
             contract_id: *cid,
@@ -157,37 +156,74 @@ fn read_contract_meta(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<M
 // TODO: Query params
 fn read_contract_full(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<ContractInfo>> {
     let info = read_contract_info(db, cid)?;
-    info!("- {info:?}");
     let desc = read_contract_desc(db, cid)?;
-    info!("- {desc:?}");
     let meta = read_contract_meta(db, cid)?;
-    info!("- {meta:?}");
     Ok(Some(ContractInfo { info, desc, meta }))
+}
+
+pub trait ActionWriter: Clone + Send + Sync {
+    type Error: std::error::Error + Send + Sync;
+
+    fn write_action(
+        &self,
+        action: CallAction,
+    ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send + 'static;
+}
+
+/// A dummy implementation of an action-writer, that does nothing with the action.
+#[derive(Clone)]
+pub struct NoActionWriter;
+
+impl ActionWriter for NoActionWriter {
+    type Error = Infallible;
+
+    fn write_action(
+        &self,
+        _action: CallAction,
+    ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send + 'static {
+        async move { Ok(Hash256::zero()) }
+    }
+}
+
+#[derive(Serialize)]
+pub struct ActionResp {
+    pub success: bool,
+    pub action: CallAction,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tx_hash: Option<Hash256>,
 }
 
 /// Simple service around the runtime
 #[derive(Clone)]
-pub struct RtService<S = Lmdb>
+pub struct ContractService<A, S = Lmdb>
 where
-    S: Db,
+    A: ActionWriter + 'static,
+    S: Db + 'static,
 {
     rt: Arc<Mutex<Runtime<S>>>,
     db: S,
+    writer: A,
 }
 
-impl<S: Db> RtService<S> {
-    pub fn new(db: S, cache_size: NonZeroUsize) -> anyhow::Result<Self> {
-        let rt = Runtime::new(&db, cache_size)?;
+impl<A, S> ContractService<A, S>
+where
+    A: ActionWriter + 'static,
+    S: Db + 'static,
+{
+    pub fn new(db: S, rt: Runtime<S>, writer: A) -> anyhow::Result<Self> {
         Ok(Self {
             rt: Arc::new(Mutex::new(rt)),
             db,
+            writer,
         })
     }
 
-    fn process_rq(&self, req: Request) -> anyhow::Result<Response> {
+    async fn process_rq(&self, req: Request) -> anyhow::Result<Response> {
         match *req.method() {
             Method::GET => self.process_get_rq(req),
-            Method::POST => self.process_post_rq(req),
+            Method::POST => self.process_post_rq(req).await,
             _ => Ok(method_not_allowed()),
         }
     }
@@ -301,7 +337,7 @@ impl<S: Db> RtService<S> {
         }
     }
 
-    fn process_post_rq(&self, req: Request) -> anyhow::Result<Response> {
+    async fn process_post_rq(&self, req: Request) -> anyhow::Result<Response> {
         let path = req.uri().path();
 
         if path == "/" {
@@ -349,11 +385,27 @@ impl<S: Db> RtService<S> {
                     return Ok(unsupported_media_type());
                 }
 
-                let mut rt = self.rt.lock();
-                match rt.http_post_action(&contract_id, trunc, payload.into())? {
-                    Ok(action) => Ok(json_response(&action)),
-                    Err((status, err)) => Ok(err_response(status.try_into().unwrap(), err)),
-                }
+                let action = {
+                    let mut rt = self.rt.lock();
+                    match rt.http_post_action(&contract_id, trunc, payload.into())? {
+                        Ok(action) => {
+                            // TODO: Perform dry-run of action ( and return action resp in case of error )
+                            action
+                        }
+                        Err((status, err)) => {
+                            return Ok(err_response(status.try_into().unwrap(), err))
+                        }
+                    }
+                };
+                let tx_hash = self.writer.write_action(action.clone()).await?;
+                // Build action response
+                let resp = ActionResp {
+                    success: true,
+                    error: None,
+                    action,
+                    tx_hash: Some(tx_hash),
+                };
+                Ok(json_response(&resp))
             }
             "" => Ok(method_not_allowed()),
             _ => Ok(reject_404()),
@@ -361,10 +413,14 @@ impl<S: Db> RtService<S> {
     }
 }
 
-impl<S: Db> Service<Request> for RtService<S> {
+impl<A, S> Service<Request> for ContractService<A, S>
+where
+    A: ActionWriter + 'static,
+    S: Db + 'static,
+{
     type Response = Response;
     type Error = Infallible;
-    type Future = Ready<Result<Self::Response, Self::Error>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -372,12 +428,16 @@ impl<S: Db> Service<Request> for RtService<S> {
 
     fn call(&mut self, req: Request) -> Self::Future {
         let start = Instant::now();
-        let result: Response = match self.process_rq(req) {
-            Ok(r) => r,
-            Err(e) => into_server_error(e),
+        let this = self.clone();
+        let fut = async move {
+            let result: Response = match this.process_rq(req).await {
+                Ok(r) => r,
+                Err(e) => into_server_error(e),
+            };
+            Ok(result)
         };
         let elapsed = start.elapsed();
         info!("Time elapsed: {elapsed:?}");
-        ready(Ok(result))
+        Box::pin(fut)
     }
 }

@@ -8,12 +8,15 @@ use axum::{
     Router,
 };
 use borderless_kv_store::Db;
-use borderless_runtime::http::{RtService, Service};
+use borderless_runtime::{
+    http::{ActionWriter, ContractService, NoActionWriter, Service},
+    Runtime,
+};
 use log::info;
 
 /// Wraps the contract service
 async fn contract_handler(
-    State(mut srv): State<RtService<impl Db + 'static>>,
+    State(mut srv): State<ContractService<impl ActionWriter, impl Db + 'static>>,
     req: Request<Body>,
 ) -> Response<Body> {
     let (parts, body) = req.into_parts();
@@ -27,7 +30,8 @@ async fn contract_handler(
 }
 
 pub async fn start_contract_server(db: impl Db + 'static) -> Result<()> {
-    let srv = RtService::new(db, NonZeroUsize::new(10).unwrap())?;
+    let rt = Runtime::new(&db, NonZeroUsize::new(10).unwrap())?;
+    let srv = ContractService::new(db, rt, NoActionWriter)?;
 
     // Create a router and attach the custom service to a route
     let contract = Router::new().fallback(contract_handler).with_state(srv);

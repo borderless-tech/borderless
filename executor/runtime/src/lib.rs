@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::time::Instant;
 
-use anyhow::{anyhow, Context, Result}; // TODO: Replace with real error, since this is a library
+use anyhow::{Context, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use borderless_sdk::__private::registers::*;
