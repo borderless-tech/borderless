@@ -1,6 +1,7 @@
 use anyhow::Result;
 use borderless_kv_store::RawRead;
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
+use borderless_sdk::BorderlessId;
 use borderless_sdk::__private::{from_postcard_bytes, storage_keys::*};
 use borderless_sdk::contract::CallAction;
 use borderless_sdk::hash::Hash256;
@@ -206,7 +207,10 @@ where
 {
     rt: Arc<Mutex<Runtime<S>>>,
     db: S,
-    writer: A,
+    writer: BorderlessId,
+    // TODO: This is not optimal. The runtime is not tied to a tx-writer,
+    // and for our multi-tenant contract-node we require this to be flexible.
+    action_writer: A,
 }
 
 impl<A, S> ContractService<A, S>
@@ -214,16 +218,27 @@ where
     A: ActionWriter + 'static,
     S: Db + 'static,
 {
-    pub fn new(db: S, rt: Runtime<S>, writer: A) -> Self {
+    pub fn new(db: S, rt: Runtime<S>, action_writer: A, writer: BorderlessId) -> Self {
         Self {
             rt: Arc::new(Mutex::new(rt)),
             db,
             writer,
+            action_writer,
         }
     }
 
-    pub fn with_shared(db: S, rt: Arc<Mutex<Runtime<S>>>, writer: A) -> Self {
-        Self { rt, db, writer }
+    pub fn with_shared(
+        db: S,
+        rt: Arc<Mutex<Runtime<S>>>,
+        action_writer: A,
+        writer: BorderlessId,
+    ) -> Self {
+        Self {
+            rt,
+            db,
+            writer,
+            action_writer,
+        }
     }
 
     async fn process_rq(&self, req: Request) -> anyhow::Result<Response> {
@@ -395,7 +410,18 @@ where
                     let mut rt = self.rt.lock();
                     match rt.http_post_action(&contract_id, trunc, payload.into())? {
                         Ok(action) => {
-                            // TODO: Perform dry-run of action ( and return action resp in case of error )
+                            // Perform dry-run of action ( and return action resp in case of error )
+                            if let Err(e) = rt.perform_dry_run(&contract_id, &action, &self.writer)
+                            {
+                                let resp = ActionResp {
+                                    success: false,
+                                    action,
+                                    error: Some(e.to_string()),
+                                    tx_hash: None,
+                                };
+                                return Ok(json_response(&resp));
+                            }
+
                             action
                         }
                         Err((status, err)) => {
@@ -404,7 +430,7 @@ where
                     }
                 };
                 let tx_hash = self
-                    .writer
+                    .action_writer
                     .write_action(contract_id, action.clone())
                     .await?;
                 // Build action response

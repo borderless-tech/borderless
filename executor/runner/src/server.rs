@@ -65,11 +65,11 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
 pub async fn start_contract_server(db: impl Db + 'static) -> Result<()> {
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
     let rt = Runtime::new(&db, NonZeroUsize::new(10).unwrap())?.into_shared();
-    let writer = ActionApplier {
+    let action_writer = ActionApplier {
         rt: rt.clone(),
         writer,
     };
-    let srv = ContractService::with_shared(db, rt, writer);
+    let srv = ContractService::with_shared(db, rt, action_writer, writer);
 
     // Create a router and attach the custom service to a route
     let contract = Router::new().fallback(contract_handler).with_state(srv);

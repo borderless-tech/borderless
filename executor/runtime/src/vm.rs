@@ -418,9 +418,10 @@ pub fn storage_write(
     value_ptr: u64,
     value_len: u64,
 ) -> wasmtime::Result<()> {
-    if caller.data().active_contract.is_immutable() {
-        return Err(wasmtime::Error::msg("contract is immutable"));
-    }
+    // TODO:
+    // if caller.data().active_contract.is_immutable() {
+    //     return Err(wasmtime::Error::msg("contract is immutable"));
+    // }
     let now = Instant::now();
     // Get memory
     let memory = get_memory(&mut caller)?;
@@ -549,19 +550,21 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
     Ok(value)
 }
 
+// DEPRECATED
 // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
 pub fn storage_begin_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
-    if caller.data().active_contract.is_immutable() {
-        return Err(wasmtime::Error::msg("contract is immutable"));
-    }
+    // if caller.data().active_contract.is_immutable() {
+    //     return Err(wasmtime::Error::msg("contract is immutable"));
+    // }
     caller.data_mut().begin_acid_txn()
 }
 
+// DEPRECATED
 // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
 pub fn storage_commit_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
-    if caller.data().active_contract.is_immutable() {
-        return Err(wasmtime::Error::msg("contract is immutable"));
-    }
+    // if caller.data().active_contract.is_immutable() {
+    //     return Err(wasmtime::Error::msg("contract is immutable"));
+    // }
     caller.data_mut().commit_acid_txn()
 }
 

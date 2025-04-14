@@ -242,6 +242,41 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
+    /// Executes an action without commiting the state
+    pub fn perform_dry_run(
+        &mut self,
+        cid: &ContractId,
+        action: &CallAction,
+        writer: &BorderlessId,
+    ) -> Result<()> {
+        let input = action.to_bytes()?;
+        let tx_ctx = TxCtx::dummy();
+
+        let instance = self
+            .contract_store
+            .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
+            .context("contract is not instantiated")?;
+
+        self.store.data_mut().begin_immutable_exec(*cid)?;
+
+        // Prepare registers
+        self.store.data_mut().set_register(REGISTER_INPUT, input);
+        self.store
+            .data_mut()
+            .set_register(REGISTER_TX_CTX, tx_ctx.to_bytes()?);
+        self.store
+            .data_mut()
+            .set_register(REGISTER_WRITER, writer.into_bytes().into());
+
+        // Call the actual function on the wasm side
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_transaction")?;
+        func.call(&mut self.store, ())?;
+
+        // Finish the execution
+        self.store.data_mut().finish_immutable_exec()?;
+        Ok(())
+    }
+
     pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
         self.store.data().read_action(cid, idx)
     }
