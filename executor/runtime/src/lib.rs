@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::time::Instant;
 
-use anyhow::{Context, Result}; // TODO: Replace with real error, since this is a library
+use anyhow::{anyhow, Context, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use borderless_sdk::__private::registers::*;
@@ -279,12 +279,17 @@ impl<S: Db> Runtime<S> {
         Ok((status, result))
     }
 
+    /// Uses a POST request to parse and generate a [`CallAction`] object.
+    ///
+    /// The return type is a nested result. The outer result type should convert to a server error,
+    /// as it represents errors in the runtime itself.
+    /// The inner error type comes from the wasm code and contains the error status and message.
     pub fn http_post_action(
         &mut self,
         cid: &ContractId,
         path: String,
         payload: Vec<u8>,
-    ) -> Result<(u16, Vec<u8>)> {
+    ) -> Result<std::result::Result<CallAction, (u16, String)>> {
         let instance = self
             .contract_store
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
@@ -320,7 +325,14 @@ impl<S: Db> Runtime<S> {
         for l in log {
             logger::print_log_line(l);
         }
-        Ok((status, result))
+
+        if status == 200 {
+            let action = CallAction::from_bytes(&result)?;
+            Ok(Ok(action))
+        } else {
+            let error = String::from_utf8(result)?;
+            Ok(Err((status, error)))
+        }
     }
 
     pub fn available_contracts(&self) -> Result<Vec<ContractId>> {

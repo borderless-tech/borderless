@@ -8,6 +8,7 @@ pub use anyhow::{anyhow as new_error, Context, Error, Result};
 pub mod serialize {
     pub use serde_json::from_slice;
     pub use serde_json::from_value;
+    pub use serde_json::to_value;
 }
 
 /// This module is **not** part of the public API.

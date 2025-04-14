@@ -52,6 +52,18 @@ fn unsupported_media_type() -> Response {
     resp
 }
 
+fn bad_request(err: String) -> Response {
+    let mut resp = Response::new(err.into_bytes().into());
+    *resp.status_mut() = StatusCode::BAD_REQUEST;
+    resp
+}
+
+fn err_response(status: StatusCode, err_msg: String) -> Response {
+    let mut resp = Response::new(err_msg.into_bytes().into());
+    *resp.status_mut() = status;
+    resp
+}
+
 fn json_response<S: Serialize>(value: &S) -> Response<Bytes> {
     let bytes = serde_json::to_vec(value).unwrap();
     json_body(bytes)
@@ -59,16 +71,6 @@ fn json_response<S: Serialize>(value: &S) -> Response<Bytes> {
 
 fn json_body(bytes: Vec<u8>) -> Response<Bytes> {
     let mut resp = Response::new(bytes.into());
-    resp.headers_mut().insert(
-        CONTENT_TYPE,
-        HeaderValue::from_static(APPLICATION_JSON.as_ref()),
-    );
-    resp
-}
-
-fn json_resp(status: StatusCode, bytes: Vec<u8>) -> Response<Bytes> {
-    let mut resp = Response::new(bytes.into());
-    *resp.status_mut() = status;
     resp.headers_mut().insert(
         CONTENT_TYPE,
         HeaderValue::from_static(APPLICATION_JSON.as_ref()),
@@ -342,11 +344,13 @@ impl<S: Db> RtService<S> {
                 }
 
                 let mut rt = self.rt.lock();
-                let (status, payload) = rt.http_post_action(&contract_id, trunc, payload.into())?;
-                return Ok(json_resp(status.try_into().unwrap(), payload));
+                match rt.http_post_action(&contract_id, trunc, payload.into())? {
+                    Ok(action) => Ok(json_response(&action)),
+                    Err((status, err)) => Ok(err_response(status.try_into().unwrap(), err)),
+                }
             }
-            "" => return Ok(method_not_allowed()),
-            _ => return Ok(reject_404()),
+            "" => Ok(method_not_allowed()),
+            _ => Ok(reject_404()),
         }
     }
 }

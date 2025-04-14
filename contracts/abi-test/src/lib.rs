@@ -237,15 +237,16 @@ fn get_state_response(path: String) -> Result<(u16, String)> {
 fn exec_post_action() -> Result<()> {
     let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
     let payload = read_register(REGISTER_INPUT_HTTP_PAYLOAD).context("missing http-payload")?;
-    let (status, payload) = match post_action_response(path, payload) {
-        Ok((s, p)) => (s, p),
-        Err(e) => (
-            400,
-            format!("{{ \"status\": \"failed\", \"error\": \"{e}\" }}"),
-        ),
+    match post_action_response(path, payload) {
+        Ok(action) => {
+            write_register(REGISTER_OUTPUT_HTTP_STATUS, 200u16.to_be_bytes());
+            write_register(REGISTER_OUTPUT_HTTP_RESULT, action.to_bytes()?);
+        }
+        Err(e) => {
+            write_register(REGISTER_OUTPUT_HTTP_STATUS, 400u16.to_be_bytes());
+            write_string_to_register(REGISTER_OUTPUT_HTTP_RESULT, e.to_string());
+        }
     };
-    write_register(REGISTER_OUTPUT_HTTP_STATUS, status.to_be_bytes());
-    write_string_to_register(REGISTER_OUTPUT_HTTP_RESULT, payload);
 
     Ok(())
 }
@@ -257,13 +258,15 @@ fn exec_post_action() -> Result<()> {
 // /action/{method_id}   -> accept params for function
 //
 // We can also implement a GET method for the actions, which will return a list of all possible actions and their schemas.
-fn post_action_response(path: String, payload: Vec<u8>) -> Result<(u16, String)> {
+// TODO: Add own error type here, so we can convert to the correct status code
+fn post_action_response(path: String, payload: Vec<u8>) -> Result<CallAction> {
     let path = path.replace("-", "_"); // Convert from kebab-case to snake_case
     let path = path.strip_prefix('/').unwrap_or(&path); // stip leading "/"
 
     let content = String::from_utf8(payload.clone()).unwrap_or_default();
     info!("{content}");
 
+    // TODO: Check access of writer
     match path {
         "" => {
             let action = CallAction::from_bytes(&payload).context("failed to parse action")?;
@@ -272,31 +275,37 @@ fn post_action_response(path: String, payload: Vec<u8>) -> Result<(u16, String)>
 
             match method {
                 "flip_switch" => {
-                    let _args: FlipSwitchArgs = from_value(action.params)?;
+                    let _args: FlipSwitchArgs = from_value(action.params.clone())?;
                 }
                 "set_switch" => {
-                    let _args: SetSwitchArgs = from_value(action.params)?;
+                    let _args: SetSwitchArgs = from_value(action.params.clone())?;
                 }
                 "print_env" => {
                     // Empty args
-                    let _args: FlipSwitchArgs = from_value(action.params)?;
+                    let _args: FlipSwitchArgs = from_value(action.params.clone())?;
                 }
                 other => return Err(new_error!("unknown method: {other}")),
             }
+            // At this point, the action is validated and can be returned
+            Ok(action)
         }
         "flip_switch" => {
-            let _args: FlipSwitchArgs = borderless_sdk::serialize::from_slice(&payload)?;
+            let args: FlipSwitchArgs = borderless_sdk::serialize::from_slice(&payload)?;
+            let value = borderless_sdk::serialize::to_value(&args)?;
+            Ok(CallAction::by_method("flip_switch", value))
         }
         "set_switch" => {
-            let _args: SetSwitchArgs = borderless_sdk::serialize::from_slice(&payload)?;
+            let args: SetSwitchArgs = borderless_sdk::serialize::from_slice(&payload)?;
+            let value = borderless_sdk::serialize::to_value(&args)?;
+            Ok(CallAction::by_method("set_switch", value))
         }
         "print_env" => {
-            let _args: FlipSwitchArgs = borderless_sdk::serialize::from_slice(&payload)?;
+            let args: FlipSwitchArgs = borderless_sdk::serialize::from_slice(&payload)?;
+            let value = borderless_sdk::serialize::to_value(&args)?;
+            Ok(CallAction::by_method("print_env", value))
         }
         other => return Err(new_error!("unknown method: {other}")),
     }
-
-    Ok((200, "{ \"status\": \"OK\" }".to_string()))
 }
 
 // NOTE: Let's dig into this, what the sdk macro should derive
@@ -327,10 +336,10 @@ impl Flipper {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct SetSwitchArgs {
     switch: bool,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct FlipSwitchArgs {}
