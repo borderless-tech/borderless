@@ -9,10 +9,10 @@ use axum::{
 };
 use borderless_kv_store::Db;
 use borderless_runtime::{
-    http::{ActionWriter, ContractService, NoActionWriter, Service},
+    http::{ActionWriter, ContractService, Service},
     Runtime, SharedRuntime,
 };
-use borderless_sdk::{hash::Hash256, ContractId};
+use borderless_sdk::{BorderlessId, ContractId};
 use log::info;
 
 use crate::generate_tx_ctx;
@@ -36,6 +36,7 @@ async fn contract_handler(
 #[derive(Clone)]
 struct ActionApplier<S: Db> {
     rt: SharedRuntime<S>,
+    writer: BorderlessId,
 }
 
 impl<S: Db> ActionWriter for ActionApplier<S> {
@@ -52,10 +53,8 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
         let tx_ctx = generate_tx_ctx(rt, &cid).unwrap();
         let hash = tx_ctx.tx_id.hash.clone();
 
-        // TODO: Writer
-        let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse().unwrap();
         let mut rt = self.rt.lock();
-        rt.process_transaction(&cid, &action, &writer, tx_ctx)
+        rt.process_transaction(&cid, &action, &self.writer, tx_ctx)
             .unwrap();
 
         let fut = async move { Ok(hash) };
@@ -64,8 +63,12 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
 }
 
 pub async fn start_contract_server(db: impl Db + 'static) -> Result<()> {
+    let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
     let rt = Runtime::new(&db, NonZeroUsize::new(10).unwrap())?.into_shared();
-    let writer = ActionApplier { rt: rt.clone() };
+    let writer = ActionApplier {
+        rt: rt.clone(),
+        writer,
+    };
     let srv = ContractService::with_shared(db, rt, writer);
 
     // Create a router and attach the custom service to a route
