@@ -324,9 +324,15 @@ impl<S: Db> RtService<S> {
 
         // Build truncated path
         let mut trunc = String::new();
+        let mut cnt = 0;
         for piece in pieces {
             trunc.push('/');
             trunc.push_str(piece);
+            cnt += 1;
+        }
+        // NOTE: The action route only has one additional path parameter
+        if cnt > 1 {
+            return Ok(reject_404());
         }
         if trunc.is_empty() {
             trunc.push('/');
