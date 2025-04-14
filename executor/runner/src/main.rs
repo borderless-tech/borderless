@@ -1,13 +1,14 @@
 use std::{
     fs::read_to_string,
     num::NonZeroUsize,
+    ops::DerefMut,
     path::PathBuf,
     str::FromStr,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result};
-use borderless_kv_store::backend::lmdb::Lmdb;
+use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_runtime::{
     logger::{print_log_line, Logger},
     Runtime,
@@ -97,7 +98,10 @@ async fn main() -> Result<()> {
 }
 
 /// Generates a new dummy tx-ctx
-pub fn generate_tx_ctx(rt: &mut Runtime, cid: &ContractId) -> Result<TxCtx> {
+pub fn generate_tx_ctx(
+    mut rt: impl DerefMut<Target = Runtime<impl Db>>,
+    cid: &ContractId,
+) -> Result<TxCtx> {
     // We now have to provide additional context when executing the contract
     let n_actions = rt.len_actions(cid)?.unwrap_or_default();
     let tx_hash = Hash256::digest(&n_actions.to_be_bytes());
@@ -106,7 +110,7 @@ pub fn generate_tx_ctx(rt: &mut Runtime, cid: &ContractId) -> Result<TxCtx> {
         index: 0,
     };
     // Set block
-    rt.set_block(
+    (*rt).set_block(
         BlockIdentifier::new(0, n_actions, Hash256::empty()),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

@@ -1,5 +1,6 @@
 use std::num::NonZeroUsize;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result}; // TODO: Replace with real error, since this is a library
@@ -13,6 +14,7 @@ use borderless_sdk::{
 };
 use borderless_sdk::{BlockIdentifier, BorderlessId};
 use lru::LruCache;
+use parking_lot::Mutex;
 use vm::VmState;
 use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
 
@@ -22,6 +24,8 @@ mod vm;
 
 const CONTRACT_SUB_DB: &str = "contract-db";
 const WASM_CODE_SUB_DB: &str = "wasm-code-db";
+
+pub type SharedRuntime<S> = Arc<Mutex<Runtime<S>>>;
 
 pub struct Runtime<S = Lmdb>
 where
@@ -137,6 +141,10 @@ impl<S: Db> Runtime<S> {
             engine,
             contract_store,
         })
+    }
+
+    pub fn into_shared(self) -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(self))
     }
 
     // TODO

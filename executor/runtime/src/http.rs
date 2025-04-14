@@ -166,6 +166,7 @@ pub trait ActionWriter: Clone + Send + Sync {
 
     fn write_action(
         &self,
+        cid: ContractId,
         action: CallAction,
     ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send + 'static;
 }
@@ -179,6 +180,7 @@ impl ActionWriter for NoActionWriter {
 
     fn write_action(
         &self,
+        _cid: ContractId,
         _action: CallAction,
     ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send + 'static {
         async move { Ok(Hash256::zero()) }
@@ -212,12 +214,16 @@ where
     A: ActionWriter + 'static,
     S: Db + 'static,
 {
-    pub fn new(db: S, rt: Runtime<S>, writer: A) -> anyhow::Result<Self> {
-        Ok(Self {
+    pub fn new(db: S, rt: Runtime<S>, writer: A) -> Self {
+        Self {
             rt: Arc::new(Mutex::new(rt)),
             db,
             writer,
-        })
+        }
+    }
+
+    pub fn with_shared(db: S, rt: Arc<Mutex<Runtime<S>>>, writer: A) -> Self {
+        Self { rt, db, writer }
     }
 
     async fn process_rq(&self, req: Request) -> anyhow::Result<Response> {
@@ -397,7 +403,10 @@ where
                         }
                     }
                 };
-                let tx_hash = self.writer.write_action(action.clone()).await?;
+                let tx_hash = self
+                    .writer
+                    .write_action(contract_id, action.clone())
+                    .await?;
                 // Build action response
                 let resp = ActionResp {
                     success: true,
