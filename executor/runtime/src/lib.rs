@@ -246,13 +246,10 @@ impl<S: Db> Runtime<S> {
     // --- NOTE: Maybe we should create a separate runtime for the HTTP handling ?
 
     pub fn http_get_state(&mut self, cid: &ContractId, path: String) -> Result<(u16, Vec<u8>)> {
-        let start = Instant::now();
         let instance = self
             .contract_store
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
             .context("contract is not instantiated")?;
-        let elapsed = start.elapsed();
-        log::info!("loading instance took: {elapsed:?}");
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
         self.store
