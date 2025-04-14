@@ -28,15 +28,6 @@ use borderless_kv_store::*;
 
 use crate::{action_log::ActionLog, logger::Logger, CONTRACT_SUB_DB};
 
-// TODO: We can change the entire logic, of how data is commited !
-//
-// Since we now directly have the storage buffer, and don't have to hold the acid-txn,
-// we can get rid of the storage-abi functions for the acid txn,
-// and also save the action and introduction from the host-side.
-//
-// This also enables us to set the StorageKeys in get_storage_key to purely user-keys,
-// and leave the system-keys for the host side !!
-
 pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
     db: S,
@@ -318,7 +309,6 @@ pub fn read_register(
     register_id: u64,
     ptr: u64,
 ) -> Result<(), wasmtime::Error> {
-    let now = Instant::now();
     // Get data
     //
     // Can we avoid the cloning here ?
@@ -349,10 +339,6 @@ pub fn read_register(
     memory
         .write(&mut caller, ptr as usize, &data.borrow())
         .map_err(|e| wasmtime::Error::msg(format!("Failed to write to memory: {e}")))?;
-
-    let elapsed = now.elapsed();
-    debug!("read-register: {:?}", elapsed);
-
     Ok(())
 }
 
@@ -369,7 +355,6 @@ pub fn write_register(
     wasm_ptr: u64,
     wasm_ptr_len: u64,
 ) -> wasmtime::Result<()> {
-    let now = Instant::now();
     // Get memory
     let memory = get_memory(&mut caller)?;
 
@@ -382,9 +367,6 @@ pub fn write_register(
         .map_err(|e| wasmtime::Error::msg(format!("Failed to read from memory: {e}")))?;
     // Write register
     caller.data_mut().set_register(register_id, buffer);
-
-    let elapsed = now.elapsed();
-    debug!("write-register: {:?}", elapsed);
     Ok(())
 }
 
@@ -397,11 +379,9 @@ pub fn storage_write(
     value_ptr: u64,
     value_len: u64,
 ) -> wasmtime::Result<()> {
-    // TODO:
-    // if caller.data().active_contract.is_immutable() {
-    //     return Err(wasmtime::Error::msg("contract is immutable"));
-    // }
-    let now = Instant::now();
+    if caller.data().active_contract.is_immutable() {
+        return Ok(());
+    }
     // Get memory
     let memory = get_memory(&mut caller)?;
 
@@ -418,17 +398,7 @@ pub fn storage_write(
     let mut caller_data = &mut caller.data_mut();
     if let Some(buf) = &mut caller_data.db_acid_txn_buffer {
         buf.push(StorageOp::write(key, value));
-        // txn.write(&caller_data.db_ptr, &key, &value)?;
-    } else {
-        // TODO: If not, just ignore it, because it's a dry-run
-        // If not, create a new transaction and instantly commit the changes
-        // let mut txn = caller_data.db.begin_rw_txn()?;
-        // txn.write(&caller_data.db_ptr, &key, &value)?;
-        // txn.commit()?;
     }
-
-    let elapsed = now.elapsed();
-    debug!("storage-write: {:?}", elapsed);
     Ok(())
 }
 
@@ -438,8 +408,6 @@ pub fn storage_read(
     sub_key: u64,
     register_id: u64,
 ) -> wasmtime::Result<()> {
-    let now = Instant::now();
-
     // Build key
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
@@ -453,17 +421,11 @@ pub fn storage_read(
         // Write to register
         caller.data_mut().set_register(register_id, value);
     } else {
-        // return Err(wasmtime::Error::msg(
-        //     "value not found: base_key={base_key}, sub_key={sub_key}",
-        // ));
-        // TODO: I think this should not be an error, as the storage_read abi
+        // NOTE: I think this should not be an error, as the storage_read abi
         // tries to read the register, and if the register has no value, if will be handled there.
         // So I think the cleanest way is to clear the register and return Ok(())
         caller_data.clear_register(register_id);
     }
-
-    let elapsed = now.elapsed();
-    debug!("storage-read: {:?}", elapsed);
     Ok(())
 }
 
@@ -472,27 +434,21 @@ pub fn storage_remove(
     base_key: u64,
     sub_key: u64,
 ) -> wasmtime::Result<()> {
-    let now = Instant::now();
+    if caller.data().active_contract.is_immutable() {
+        return Ok(());
+    }
 
     // Build key
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
     let mut caller_data = &mut caller.data_mut();
-    // TODO
+
+    // Write changes to storage-buffer
     if let Some(buf) = &mut caller_data.db_acid_txn_buffer {
         // txn.delete(&caller_data.db_ptr, &key)?;
         buf.push(StorageOp::remove(key));
-    } else {
-        // TODO: If not, ignore it, because it's a dry-run
-        // If not, create a new transaction and instantly commit the changes
-        // let mut txn = caller_data.db.begin_rw_txn()?;
-        // txn.delete(&caller_data.db_ptr, &key)?;
-        // txn.commit()?;
     }
-
-    let elapsed = now.elapsed();
-    debug!("storage-remove: {:?}", elapsed);
     Ok(())
 }
 
@@ -501,8 +457,6 @@ pub fn storage_has_key(
     base_key: u64,
     sub_key: u64,
 ) -> wasmtime::Result<u64> {
-    let now = Instant::now();
-
     // Build key
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
@@ -512,17 +466,12 @@ pub fn storage_has_key(
     let txn = caller_data.db.begin_ro_txn()?;
     let result = txn.read(&caller_data.db_ptr, &key)?.is_some();
     txn.commit()?;
-
-    let elapsed = now.elapsed();
-    debug!("storage-has-key: {:?}", elapsed);
     Ok(result as u64)
 }
 
 pub fn storage_gen_sub_key() -> wasmtime::Result<u64> {
     let mut rng = rand::rng();
-    let value: u64 = rng.random();
-    // Add 1 unit to avoid generating a 0
-    Ok(value.saturating_add(1))
+    Ok(rng.random())
 }
 
 pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
