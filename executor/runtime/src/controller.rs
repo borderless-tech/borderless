@@ -44,9 +44,12 @@ impl<'a, S: Db> Controller<'a, S> {
 
     /// Returns `true` if the contract has been revoked
     pub fn contract_revoked(&self, cid: &ContractId) -> Result<bool> {
-        Ok(self
-            .read_value::<u64>(cid, BASE_KEY_METADATA, META_SUB_KEY_REVOKED_TS)?
-            .is_some())
+        Ok(self.contract_revoked_ts(cid)?.is_some())
+    }
+
+    /// Returns the timestamp, when the contract has been revoked.
+    pub fn contract_revoked_ts(&self, cid: &ContractId) -> Result<Option<u64>> {
+        Ok(self.read_value::<u64>(cid, BASE_KEY_METADATA, META_SUB_KEY_REVOKED_TS)?)
     }
 
     /// Returns the hash of the last-tx that was executed by the contract
@@ -90,6 +93,11 @@ impl<'a, S: Db> Controller<'a, S> {
         let desc = self.contract_desc(cid)?;
         let meta = self.contract_meta(cid)?;
         Ok(Some(ContractInfo { info, desc, meta }))
+    }
+
+    /// Returns the [`Revocation`] of the contract, if any.
+    pub fn contract_revocation(&self, cid: &ContractId) -> Result<Option<Revocation>> {
+        self.read_value(cid, BASE_KEY_METADATA, META_SUB_KEY_REVOCATION)
     }
 
     fn read_value<D: DeserializeOwned>(
@@ -233,11 +241,10 @@ pub(crate) fn write_revocation<S: Db>(
     timestamp: u64,
 ) -> Result<()> {
     let cid = revocation.contract_id;
-
     // Update metadata field
-    let mut meta: Metadata =
-        read_system_value::<S, _>(db_ptr, txn, &cid, BASE_KEY_METADATA, META_SUB_KEY_META)?
-            .expect("metadata must be present");
+    let meta: Option<Metadata> =
+        read_system_value::<S, _>(db_ptr, txn, &cid, BASE_KEY_METADATA, META_SUB_KEY_META)?;
+    let mut meta = meta.unwrap();
 
     meta.inactive_since = timestamp;
     meta.tx_ctx_revocation = Some(tx_ctx);

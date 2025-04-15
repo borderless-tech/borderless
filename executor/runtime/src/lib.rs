@@ -217,6 +217,7 @@ impl<S: Db> Runtime<S> {
         tx_ctx: TxCtx,
     ) -> Result<()> {
         let input = revocation.to_bytes()?;
+
         self.store
             .data_mut()
             .begin_mutable_exec(revocation.contract_id)?;

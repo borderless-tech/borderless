@@ -29,7 +29,7 @@ pub extern "C" fn process_introduction() {
 #[no_mangle]
 pub extern "C" fn process_revocation() {
     dev::tic();
-    let result = exec_run();
+    let result = exec_revocation();
     let elapsed = dev::toc();
     match result {
         Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
@@ -133,6 +133,11 @@ fn exec_introduction() -> Result<()> {
     write_field(storage_key_switch, 0, &state.switch);
     write_field(storage_key_counter, 0, &state.counter);
 
+    Ok(())
+}
+
+fn exec_revocation() -> Result<()> {
+    info!("Revoked contract without any further actions.");
     Ok(())
 }
 

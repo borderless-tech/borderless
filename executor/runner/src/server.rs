@@ -1,4 +1,4 @@
-use std::{convert::Infallible, num::NonZeroUsize};
+use std::num::NonZeroUsize;
 
 use anyhow::Result;
 use axum::{
@@ -40,7 +40,7 @@ struct ActionApplier<S: Db> {
 }
 
 impl<S: Db> ActionWriter for ActionApplier<S> {
-    type Error = Infallible;
+    type Error = borderless_runtime::Error;
 
     fn write_action(
         &self,
@@ -53,10 +53,12 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
         let hash = tx_ctx.tx_id.hash;
 
         let mut rt = self.rt.lock();
-        rt.process_transaction(&cid, action, &self.writer, tx_ctx)
-            .unwrap();
+        let result = match rt.process_transaction(&cid, action, &self.writer, tx_ctx) {
+            Ok(()) => Ok(hash),
+            Err(e) => Err(e),
+        };
 
-        let fut = async move { Ok(hash) };
+        let fut = async move { result };
         Box::pin(fut)
     }
 }
