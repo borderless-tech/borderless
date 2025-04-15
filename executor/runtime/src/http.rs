@@ -233,7 +233,7 @@ where
                     Ok(reject_404())
                 }
             }
-            "log" => {
+            "logs" => {
                 // Extract pagination
                 let pagination = Pagination::from_query(query).unwrap_or_default();
 
