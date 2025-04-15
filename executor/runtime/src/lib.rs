@@ -10,6 +10,7 @@ use borderless_sdk::__private::registers::*;
 use borderless_sdk::contract::{BlockCtx, Introduction, TxCtx};
 use borderless_sdk::{contract::CallAction, ContractId};
 use borderless_sdk::{BlockIdentifier, BorderlessId};
+use error::ErrorKind;
 use lru::LruCache;
 use parking_lot::Mutex;
 use vm::{Commit, VmState};
@@ -153,13 +154,13 @@ impl<S: Db> Runtime<S> {
         for func in functions {
             let exp = module
                 .get_export(func)
-                .ok_or_else(|| Error::MissingExport { func })?;
+                .ok_or_else(|| ErrorKind::MissingExport { func })?;
             if let ExternType::Func(func_type) = exp {
                 if !func_type.matches(&FuncType::new(&self.engine, [], [])) {
-                    return Err(Error::InvalidFuncType { func });
+                    return Err(ErrorKind::InvalidFuncType { func }.into());
                 }
             } else {
-                return Err(Error::InvalidExport { func });
+                return Err(ErrorKind::InvalidExport { func }.into());
             }
         }
         self.contract_store.insert_contract(contract_id, module)?;
@@ -244,7 +245,7 @@ impl<S: Db> Runtime<S> {
         let instance = self
             .contract_store
             .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
-            .ok_or_else(|| Error::MissingContract { cid })?;
+            .ok_or_else(|| ErrorKind::MissingContract { cid })?;
 
         // Prepare registers
         self.store.data_mut().set_register(REGISTER_INPUT, input);
@@ -274,7 +275,7 @@ impl<S: Db> Runtime<S> {
         let instance = self
             .contract_store
             .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
-            .ok_or_else(|| Error::MissingContract { cid: *cid })?;
+            .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
 
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
@@ -302,7 +303,7 @@ impl<S: Db> Runtime<S> {
         let instance = self
             .contract_store
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
-            .ok_or_else(|| Error::MissingContract { cid: *cid })?;
+            .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
 
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
@@ -317,14 +318,14 @@ impl<S: Db> Runtime<S> {
             .store
             .data()
             .get_register(REGISTER_OUTPUT_HTTP_STATUS)
-            .ok_or_else(|| Error::MissingRegisterValue("http-status"))?;
+            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
         let status = u16::from_be_bytes(status.try_into().unwrap());
 
         let result = self
             .store
             .data()
             .get_register(REGISTER_OUTPUT_HTTP_RESULT)
-            .ok_or_else(|| Error::MissingRegisterValue("http-result"))?;
+            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
 
         // Finish the execution
         let log = self.store.data_mut().finish_immutable_exec()?;
@@ -348,7 +349,7 @@ impl<S: Db> Runtime<S> {
         let instance = self
             .contract_store
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
-            .ok_or_else(|| Error::MissingContract { cid: *cid })?;
+            .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
 
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
@@ -367,14 +368,14 @@ impl<S: Db> Runtime<S> {
             .store
             .data()
             .get_register(REGISTER_OUTPUT_HTTP_STATUS)
-            .ok_or_else(|| Error::MissingRegisterValue("http-status"))?;
+            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
         let status = u16::from_be_bytes(status.try_into().unwrap());
 
         let result = self
             .store
             .data()
             .get_register(REGISTER_OUTPUT_HTTP_RESULT)
-            .ok_or_else(|| Error::MissingRegisterValue("http-result"))?;
+            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
 
         // Finish the execution
         let log = self.store.data_mut().finish_immutable_exec()?;
@@ -386,7 +387,7 @@ impl<S: Db> Runtime<S> {
             let action = CallAction::from_bytes(&result)?;
             Ok(Ok(action))
         } else {
-            let error = String::from_utf8(result).map_err(|_| Error::InvalidRegisterValue {
+            let error = String::from_utf8(result).map_err(|_| ErrorKind::InvalidRegisterValue {
                 register: "http-result",
                 expected_type: "string",
             })?;
@@ -461,7 +462,7 @@ impl<S: Db> CodeStore<S> {
         for (key, _value) in cursor.iter() {
             let cid = ContractId::from_bytes(
                 key.try_into()
-                    .map_err(|_| crate::Error::Msg("failed to parse contract-id from storage"))?,
+                    .map_err(|_| crate::Error::msg("failed to parse contract-id from storage"))?,
             );
             out.push(cid);
         }

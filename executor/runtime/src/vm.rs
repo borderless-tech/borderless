@@ -65,7 +65,7 @@ impl<S: Db> VmState<S> {
     /// Calling this function while the `VmState` already has an active contract results in an error.
     pub fn begin_mutable_exec(&mut self, contract_id: ContractId) -> Result<()> {
         if self.active_contract.is_some() {
-            return Err(Error::Msg(
+            return Err(Error::msg(
                 "Must finish contract execution before starting new one",
             ));
         }
@@ -89,10 +89,10 @@ impl<S: Db> VmState<S> {
         let cid = match self.active_contract {
             ActiveContract::Mutable(cid) => cid,
             ActiveContract::Immutable(_) => {
-                return Err(Error::Msg("Contract execution was marked as immutable"));
+                return Err(Error::msg("Contract execution was marked as immutable"));
             }
             ActiveContract::None => {
-                return Err(Error::Msg("Must start contract execution before commiting"));
+                return Err(Error::msg("Must start contract execution before commiting"));
             }
         };
         let now = Instant::now();
@@ -155,7 +155,7 @@ impl<S: Db> VmState<S> {
     /// Calling this function while the `VmState` already has an active contract results in an error.
     pub fn begin_immutable_exec(&mut self, cid: ContractId) -> Result<()> {
         if self.active_contract.is_some() {
-            return Err(Error::Msg("Cannot overwrite active contract"));
+            return Err(Error::msg("Cannot overwrite active contract"));
         }
         self.active_contract = ActiveContract::Immutable(cid);
         Ok(())
@@ -174,7 +174,7 @@ impl<S: Db> VmState<S> {
     /// Calling this function while the `VmState` has no active contract results in an error.
     pub fn finish_immutable_exec(&mut self) -> Result<Vec<LogLine>> {
         if self.active_contract.is_none() {
-            return Err(Error::Msg("Cannot clear non existing contract"));
+            return Err(Error::msg("Cannot clear non existing contract"));
         }
         self.active_contract = ActiveContract::None;
         self.db_acid_txn_buffer = None;
