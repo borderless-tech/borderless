@@ -221,11 +221,11 @@ where
             trunc.push('?');
             trunc.push_str(query);
         }
-
-        let mut rt = self.rt.lock();
+        let controller = Controller::new(&self.db);
         match route {
             "state" => {
                 // TODO: The contract should also parse query parameters !
+                let mut rt = self.rt.lock();
                 let (status, payload) = rt.http_get_state(&contract_id, trunc)?;
                 if status == 200 {
                     Ok(json_body(payload))
@@ -238,7 +238,7 @@ where
                 let pagination = Pagination::from_query(query).unwrap_or_default();
 
                 // Get logs
-                let log = Controller::new(&self.db)
+                let log = controller
                     .logs(contract_id)
                     .get_logs_paginated(pagination)?;
 
@@ -249,27 +249,27 @@ where
                 let pagination = Pagination::from_query(query).unwrap_or_default();
 
                 // Get actions
-                let paginated = Controller::new(&self.db)
+                let paginated = controller
                     .actions(contract_id)
                     .get_tx_action_paginated(pagination)?;
 
                 Ok(json_response(&paginated))
             }
             "info" => {
-                let info = Controller::new(&self.db).contract_info(&contract_id)?;
+                let info = controller.contract_info(&contract_id)?;
                 Ok(json_response(&info))
             }
             "desc" => {
-                let desc = Controller::new(&self.db).contract_desc(&contract_id)?;
+                let desc = controller.contract_desc(&contract_id)?;
                 Ok(json_response(&desc))
             }
             "meta" => {
-                let meta = Controller::new(&self.db).contract_meta(&contract_id)?;
+                let meta = controller.contract_meta(&contract_id)?;
                 Ok(json_response(&meta))
             }
             // Same as empty path
             "" => {
-                let full_info = Controller::new(&self.db).contract_full(&contract_id)?;
+                let full_info = controller.contract_full(&contract_id)?;
                 Ok(json_response(&full_info))
             }
             _ => Ok(reject_404()),
