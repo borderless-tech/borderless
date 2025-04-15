@@ -1,6 +1,5 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::Context;
 use borderless_kv_store::{Db, RawRead, Tx};
 use borderless_sdk::http::queries::Pagination;
 use borderless_sdk::http::{PaginatedElements, TxAction};
@@ -94,10 +93,10 @@ impl<'a, S: Db> ActionLog<'a, S> {
     ) -> Result<()> {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .context("timestamp < 1970")?
+            .expect("timestamp < 1970")
             .as_millis()
             .try_into()
-            .context("u64 should fit for 584942417 years")?;
+            .expect("u64 should fit for 584942417 years");
 
         let len_commited: u64 = {
             read_system_value::<S, _>(db_ptr, txn, &self.cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN)?

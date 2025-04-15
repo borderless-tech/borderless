@@ -6,7 +6,6 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::Context;
 use borderless_sdk::{
     __private::{
         from_postcard_bytes,
@@ -119,10 +118,10 @@ impl<S: Db> VmState<S> {
             } => {
                 introduction.meta.active_since = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
-                    .context("timestamp < 1970")?
+                    .expect("timestamp < 1970")
                     .as_millis()
                     .try_into()
-                    .context("u64 should fit for 584942417 years")?;
+                    .expect("u64 should fit for 584942417 years");
                 introduction.meta.tx_ctx = Some(tx_ctx);
                 write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
             }
@@ -248,12 +247,15 @@ pub fn tic(mut caller: Caller<'_, VmState<impl Db>>) {
 }
 
 pub fn toc(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
-    let timer = caller.data().last_timer.context("no timer present")?;
+    let timer = caller
+        .data()
+        .last_timer
+        .ok_or_else(|| wasmtime::Error::msg("no timer present"))?;
     let elapsed = timer.elapsed();
-    elapsed
+    Ok(elapsed
         .as_nanos()
         .try_into()
-        .context("your program should not run for 584.942 years")
+        .expect("your program should not run for 584.942 years"))
 }
 
 // TODO: Change this to "log"

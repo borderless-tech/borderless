@@ -10,8 +10,8 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn msg(msg: &'static str) -> Self {
-        ErrorKind::Msg(msg).into()
+    pub fn msg(msg: impl AsRef<str>) -> Self {
+        ErrorKind::Msg(msg.as_ref().to_string()).into()
     }
 }
 
@@ -97,5 +97,5 @@ pub(crate) enum ErrorKind {
     // --- VmState errors
     /// Generic error message - useful for communicating more complicated errors
     #[error("{0}")]
-    Msg(&'static str),
+    Msg(String),
 }

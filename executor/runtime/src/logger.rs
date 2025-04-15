@@ -1,6 +1,5 @@
 use std::cmp::min;
 
-use anyhow::Result;
 use borderless_kv_store::*;
 use borderless_sdk::{
     __private::storage_keys::{StorageKey, BASE_KEY_LOGS},
@@ -11,7 +10,7 @@ use borderless_sdk::{
 use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 
-use crate::CONTRACT_SUB_DB;
+use crate::{Result, CONTRACT_SUB_DB};
 
 /// Storage key, where the meta-information about the buffer is saved
 const SUB_KEY_META: u64 = u64::MAX;

@@ -1,4 +1,3 @@
-use anyhow::Result;
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_sdk::contract::CallAction;
 use borderless_sdk::hash::Hash256;
@@ -22,8 +21,7 @@ use std::{
 };
 pub use tower::Service;
 
-use crate::controller::Controller;
-use crate::Runtime;
+use crate::{controller::Controller, Runtime};
 
 pub type Request<T = Bytes> = http::Request<T>;
 pub type Response<T = Bytes> = http::Response<T>;
@@ -173,7 +171,7 @@ where
         }
     }
 
-    async fn process_rq(&self, req: Request) -> anyhow::Result<Response> {
+    async fn process_rq(&self, req: Request) -> crate::Result<Response> {
         match *req.method() {
             Method::GET => self.process_get_rq(req),
             Method::POST => self.process_post_rq(req).await,
@@ -181,7 +179,7 @@ where
         }
     }
 
-    fn process_get_rq(&self, req: Request) -> anyhow::Result<Response> {
+    fn process_get_rq(&self, req: Request) -> crate::Result<Response> {
         let path = req.uri().path();
         let query = req.uri().query();
 
@@ -278,7 +276,7 @@ where
         }
     }
 
-    async fn process_post_rq(&self, req: Request) -> anyhow::Result<Response> {
+    async fn process_post_rq(&self, req: Request) -> crate::Result<Response> {
         let path = req.uri().path();
 
         if path == "/" {
@@ -352,7 +350,9 @@ where
                 let tx_hash = self
                     .action_writer
                     .write_action(contract_id, action.clone())
-                    .await?;
+                    .await
+                    .map_err(|e| crate::Error::msg(format!("failed to write action: {e}")))?;
+
                 // Build action response
                 let resp = ActionResp {
                     success: true,

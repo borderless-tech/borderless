@@ -20,24 +20,29 @@ impl<'a, S: Db> Controller<'a, S> {
         Self { db }
     }
 
+    /// Returns the [`ActionLog`] of the contract
     pub fn actions(self, cid: ContractId) -> ActionLog<'a, S> {
         ActionLog::new(self.db, cid)
     }
 
+    /// Returns the [`Logger`] of the contract
     pub fn logs(self, cid: ContractId) -> Logger<'a, S> {
         Logger::new(self.db, cid)
     }
 
+    /// List of contract-participants
     pub fn contract_participants(&self, cid: &ContractId) -> Result<Option<Vec<BorderlessId>>> {
         self.read_value(cid, BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS)
     }
 
+    /// Returns `true` if the contract exists
     pub fn contract_exists(&self, cid: &ContractId) -> Result<bool> {
         Ok(self
             .read_value::<ContractId>(cid, BASE_KEY_METADATA, META_SUB_KEY_CONTRACT_ID)?
             .is_some())
     }
 
+    /// Returns the hash of the last-tx that was executed by the contract
     pub fn contract_last_tx_hash(&self, cid: &ContractId) -> Result<Option<Hash256>> {
         let actions = ActionLog::new(self.db, *cid);
         match actions.last()? {
@@ -46,6 +51,7 @@ impl<'a, S: Db> Controller<'a, S> {
         }
     }
 
+    /// Returns the [`Info`] section of the contract
     pub fn contract_info(&self, cid: &ContractId) -> Result<Option<Info>> {
         let participants = self.read_value(cid, BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS)?;
         let roles = self.read_value(cid, BASE_KEY_METADATA, META_SUB_KEY_ROLES)?;
@@ -61,15 +67,18 @@ impl<'a, S: Db> Controller<'a, S> {
         }
     }
 
-    pub fn contract_desc(&self, cid: &ContractId) -> anyhow::Result<Option<Description>> {
+    /// Returns the [`Description`] of the contract
+    pub fn contract_desc(&self, cid: &ContractId) -> Result<Option<Description>> {
         Ok(self.read_value(cid, BASE_KEY_METADATA, META_SUB_KEY_DESC)?)
     }
 
-    pub fn contract_meta(&self, cid: &ContractId) -> anyhow::Result<Option<Metadata>> {
+    /// Returns the [`Metadata`] of the contract
+    pub fn contract_meta(&self, cid: &ContractId) -> Result<Option<Metadata>> {
         Ok(self.read_value(cid, BASE_KEY_METADATA, META_SUB_KEY_META)?)
     }
 
-    pub fn contract_full(&self, cid: &ContractId) -> anyhow::Result<Option<ContractInfo>> {
+    /// Returns the full [`ContractInfo`], which bundles info, description and metadata.
+    pub fn contract_full(&self, cid: &ContractId) -> Result<Option<ContractInfo>> {
         let info = self.contract_info(cid)?;
         let desc = self.contract_desc(cid)?;
         let meta = self.contract_meta(cid)?;
