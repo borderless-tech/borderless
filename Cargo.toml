@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "contracts/abi-test",
+  "contracts/lazyvec-test",
   "executor/runner",
   "executor/runtime",
   "json-proof",
