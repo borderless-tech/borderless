@@ -27,6 +27,7 @@ use borderless_kv_store::*;
 
 use crate::{
     action_log::{ActionLog, ActionRecord, SUB_KEY_LOG_LEN},
+    controller::write_introduction,
     logger::Logger,
     Error, Result, CONTRACT_SUB_DB,
 };
@@ -533,6 +534,7 @@ impl StorageOp {
     }
 }
 
+// TODO: Remove
 /// Reads an action from the database
 pub fn read_action(db: &impl Db, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
     let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, idx as u64);
@@ -547,6 +549,7 @@ pub fn read_action(db: &impl Db, cid: &ContractId, idx: usize) -> Result<Option<
     Ok(value)
 }
 
+// TODO: Remove
 /// Returns the length of all actions
 pub fn len_actions(db: &impl Db, cid: &ContractId) -> Result<Option<u64>> {
     let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN);
@@ -558,118 +561,4 @@ pub fn len_actions(db: &impl Db, cid: &ContractId) -> Result<Option<u64>> {
         None
     };
     Ok(value)
-}
-
-// Helper function to write fields with system-keys
-pub(crate) fn write_system_value<S: Db, D: Serialize>(
-    db_ptr: &S::Handle,
-    txn: &mut <S as Db>::RwTx<'_>,
-    cid: &ContractId,
-    base_key: u64,
-    sub_key: u64,
-    data: &D,
-) -> Result<()> {
-    let key = StorageKey::system_key(cid, base_key, sub_key);
-    let bytes = postcard::to_allocvec(data)?;
-    txn.write(db_ptr, &key, &bytes)?;
-    Ok(())
-}
-
-// Helper function to write fields with system-keys
-pub(crate) fn read_system_value<S: Db, D: DeserializeOwned>(
-    db_ptr: &S::Handle,
-    txn: &<S as Db>::RwTx<'_>,
-    cid: &ContractId,
-    base_key: u64,
-    sub_key: u64,
-) -> Result<Option<D>> {
-    let key = StorageKey::system_key(cid, base_key, sub_key);
-    let bytes = txn.read(db_ptr, &key)?;
-    match bytes {
-        Some(val) => {
-            let out = postcard::from_bytes(val)?;
-            Ok(Some(out))
-        }
-        None => Ok(None),
-    }
-}
-
-fn write_introduction<S: Db>(
-    db_ptr: &S::Handle,
-    txn: &mut <S as Db>::RwTx<'_>,
-    introduction: &Introduction,
-) -> Result<()> {
-    use borderless_sdk::__private::storage_keys::*;
-    let cid = introduction.contract_id;
-
-    // Write contract-id
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_CONTRACT_ID,
-        &introduction.contract_id,
-    )?;
-
-    // Write participant list
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_PARTICIPANTS,
-        &introduction.participants,
-    )?;
-
-    // Write roles list
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_ROLES,
-        &introduction.roles,
-    )?;
-
-    // Write sink list
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_SINKS,
-        &introduction.sinks,
-    )?;
-
-    // Write description
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_DESC,
-        &introduction.desc,
-    )?;
-
-    // Write meta
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_META,
-        &introduction.meta,
-    )?;
-
-    // Write initial state
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_INIT_STATE,
-        &introduction.initial_state,
-    )?;
-    Ok(())
 }

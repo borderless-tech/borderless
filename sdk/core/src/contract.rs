@@ -368,14 +368,14 @@ pub struct Metadata {
     pub version: SemVer,
 
     #[serde(default)]
-    /// Time when the contract or process was created (seconds since unix epoch)
+    /// Time when the contract or process was created (milliseconds since unix epoch)
     pub active_since: u64,
 
     #[serde(default)]
     /// Transaction context of the contract-introduction transaction
     pub tx_ctx: Option<TxCtx>,
 
-    /// Time when the contract or process was revoked or archived (seconds since unix epoch)
+    /// Time when the contract or process was revoked or archived (milliseconds since unix epoch)
     pub inactive_since: Option<u32>,
 
     /// Parent of the contract or process (in case the contract was updated / replaced)

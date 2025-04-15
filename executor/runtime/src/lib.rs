@@ -19,6 +19,7 @@ use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Instance, Linker, M
 pub use error::{Error, Result};
 
 pub mod action_log;
+pub mod controller;
 pub mod error;
 pub mod http;
 pub mod logger;
