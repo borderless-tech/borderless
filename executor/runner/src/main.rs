@@ -15,7 +15,7 @@ use borderless_runtime::{
     Runtime,
 };
 use borderless_sdk::{
-    contract::{CallAction, Introduction, TxCtx},
+    contract::{CallAction, Introduction, Revocation, TxCtx},
     hash::Hash256,
     BlockIdentifier, ContractId, TxIdentifier,
 };
@@ -170,7 +170,18 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let log = Logger::new(&db, cid).get_last_log()?;
             log.into_iter().for_each(print_log_line);
         }
-        ContractAction::Revoke { revocation } => todo!(),
+        ContractAction::Revoke { revocation } => {
+            let data = read_to_string(revocation)?;
+            let revocation = Revocation::from_str(&data)?;
+            let tx_ctx = generate_tx_ctx(&mut rt, &cid)?;
+            assert_eq!(revocation.contract_id, cid);
+
+            info!("Revoke contract {cid}");
+            let start = Instant::now();
+            rt.process_revocation(revocation, &writer, tx_ctx.clone())?;
+            let elapsed = start.elapsed();
+            info!("Time elapsed: {elapsed:?}");
+        }
         ContractAction::ListActions => {
             let actions = Controller::new(&db).actions(cid);
             for record in actions.iter().flatten() {

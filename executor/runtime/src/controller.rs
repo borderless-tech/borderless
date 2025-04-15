@@ -1,6 +1,6 @@
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use borderless_sdk::{
-    contract::{Description, Info, Introduction, Metadata},
+    contract::{Description, Info, Introduction, Metadata, Revocation, TxCtx},
     BorderlessId, ContractId,
     __private::storage_keys::*,
     hash::Hash256,
@@ -45,7 +45,7 @@ impl<'a, S: Db> Controller<'a, S> {
     /// Returns `true` if the contract has been revoked
     pub fn contract_revoked(&self, cid: &ContractId) -> Result<bool> {
         Ok(self
-            .read_value::<u64>(cid, BASE_KEY_METADATA, META_SUB_KEY_REVOKED)?
+            .read_value::<u64>(cid, BASE_KEY_METADATA, META_SUB_KEY_REVOKED_TS)?
             .is_some())
     }
 
@@ -221,6 +221,50 @@ pub(crate) fn write_introduction<S: Db>(
         BASE_KEY_METADATA,
         META_SUB_KEY_INIT_STATE,
         &introduction.initial_state,
+    )?;
+    Ok(())
+}
+
+pub(crate) fn write_revocation<S: Db>(
+    db_ptr: &S::Handle,
+    txn: &mut <S as Db>::RwTx<'_>,
+    revocation: &Revocation,
+    tx_ctx: TxCtx,
+    timestamp: u64,
+) -> Result<()> {
+    let cid = revocation.contract_id;
+
+    // Update metadata field
+    let mut meta: Metadata =
+        read_system_value::<S, _>(db_ptr, txn, &cid, BASE_KEY_METADATA, META_SUB_KEY_META)?
+            .expect("metadata must be present");
+
+    meta.inactive_since = timestamp;
+    meta.tx_ctx_revocation = Some(tx_ctx);
+
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_META,
+        &meta,
+    )?;
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_REVOKED_TS,
+        &timestamp,
+    )?;
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_REVOCATION,
+        &revocation,
     )?;
     Ok(())
 }

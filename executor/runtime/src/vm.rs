@@ -11,7 +11,7 @@ use borderless_sdk::{
         from_postcard_bytes,
         storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
     },
-    contract::{CallAction, Introduction, Metadata, TxCtx},
+    contract::{CallAction, Introduction, Metadata, Revocation, TxCtx},
     log::LogLine,
     ContractId,
 };
@@ -26,7 +26,9 @@ use borderless_kv_store::*;
 
 use crate::{
     action_log::{ActionLog, ActionRecord, SUB_KEY_LOG_LEN},
-    controller::{write_introduction, Controller},
+    controller::{
+        read_system_value, write_introduction, write_revocation, write_system_value, Controller,
+    },
     error::ErrorKind,
     logger::Logger,
     Error, Result, CONTRACT_SUB_DB,
@@ -110,6 +112,14 @@ impl<S: Db> VmState<S> {
                 StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
             }
         }
+        // Current timestamp ( milliseconds since epoch )
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("timestamp < 1970")
+            .as_millis()
+            .try_into()
+            .expect("u64 should fit for 584942417 years");
+
         // Commit external item (introduction, action or revocation)
         match commit {
             Commit::Action { action, tx_ctx } => {
@@ -120,16 +130,15 @@ impl<S: Db> VmState<S> {
                 mut introduction,
                 tx_ctx,
             } => {
-                introduction.meta.active_since = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("timestamp < 1970")
-                    .as_millis()
-                    .try_into()
-                    .expect("u64 should fit for 584942417 years");
-                introduction.meta.tx_ctx = Some(tx_ctx);
+                assert_eq!(introduction.contract_id, cid);
+                introduction.meta.active_since = timestamp;
+                introduction.meta.tx_ctx_introduction = Some(tx_ctx);
                 write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
             }
-            Commit::Revocation(_) => todo!(),
+            Commit::Revocation { revocation, tx_ctx } => {
+                assert_eq!(revocation.contract_id, cid);
+                write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, tx_ctx, timestamp)?;
+            }
         }
 
         // Flush log
@@ -483,7 +492,10 @@ pub enum Commit {
         introduction: Introduction,
         tx_ctx: TxCtx,
     },
-    Revocation(()),
+    Revocation {
+        revocation: Revocation,
+        tx_ctx: TxCtx,
+    },
 }
 
 /// Represents the different states of an active contract

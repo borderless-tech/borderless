@@ -373,10 +373,15 @@ pub struct Metadata {
 
     #[serde(default)]
     /// Transaction context of the contract-introduction transaction
-    pub tx_ctx: Option<TxCtx>,
+    pub tx_ctx_introduction: Option<TxCtx>,
 
     /// Time when the contract or process was revoked or archived (milliseconds since unix epoch)
-    pub inactive_since: Option<u32>,
+    #[serde(default)]
+    pub inactive_since: u64,
+
+    #[serde(default)]
+    /// Transaction context of the contract-revocation transaction
+    pub tx_ctx_revocation: Option<TxCtx>,
 
     /// Parent of the contract or process (in case the contract was updated / replaced)
     pub parent: Option<Uuid>,
@@ -437,6 +442,41 @@ impl Introduction {
 }
 
 impl FromStr for Introduction {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_json::from_str(s)
+    }
+}
+
+/// Contract revocation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Revocation {
+    /// Contract-ID
+    pub contract_id: ContractId,
+
+    /// Reason for the revocation
+    pub reason: String,
+}
+
+impl Revocation {
+    /// Encode the revocation to json bytes
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(&self)
+    }
+
+    /// Decode the revocation from json bytes
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+
+    /// Pretty-Print the revocation as json
+    pub fn pretty_print(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(&self)
+    }
+}
+
+impl FromStr for Revocation {
     type Err = serde_json::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {

@@ -7,7 +7,7 @@ use action_log::ActionRecord;
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use borderless_sdk::__private::registers::*;
-use borderless_sdk::contract::{BlockCtx, Introduction, TxCtx};
+use borderless_sdk::contract::{BlockCtx, Introduction, Revocation, TxCtx};
 use borderless_sdk::{contract::CallAction, ContractId};
 use borderless_sdk::{BlockIdentifier, BorderlessId};
 use error::ErrorKind;
@@ -212,11 +212,25 @@ impl<S: Db> Runtime<S> {
 
     pub fn process_revocation(
         &mut self,
-        revocation: bool,
-        _writer: &BorderlessId,
-        _tx_ctx: TxCtx,
+        revocation: Revocation,
+        writer: &BorderlessId,
+        tx_ctx: TxCtx,
     ) -> Result<()> {
-        todo!()
+        let input = revocation.to_bytes()?;
+        self.store
+            .data_mut()
+            .begin_mutable_exec(revocation.contract_id)?;
+        self.process_chain_tx(
+            "process_revocation",
+            revocation.contract_id,
+            input,
+            *writer,
+            &tx_ctx,
+        )?;
+        self.store
+            .data_mut()
+            .finish_mutable_exec(Commit::Revocation { revocation, tx_ctx })?;
+        Ok(())
     }
 
     /// Abstraction over all possible chain transactions

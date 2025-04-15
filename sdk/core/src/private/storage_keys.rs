@@ -128,7 +128,12 @@ pub const META_SUB_KEY_INIT_STATE: u64 = 6;
 ///
 /// Useful to simply query, if the contract is revoked or not.
 /// The timestamp is identical with the timestamp in the `Metadata` field.
-pub const META_SUB_KEY_REVOKED: u64 = 7;
+pub const META_SUB_KEY_REVOKED_TS: u64 = 7;
+
+/// Sub-Key to store the revocation of the contract.
+///
+/// Expected data-model: `Revocation`
+pub const META_SUB_KEY_REVOCATION: u64 = 8;
 
 /// Reserved Sub-Key - max. possible value.
 pub const META_SUB_KEY_RESERVED: u64 = u64::MAX & !(1 << 63);
