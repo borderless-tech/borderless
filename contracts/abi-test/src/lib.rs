@@ -1,8 +1,6 @@
 use std::fmt::Display;
 
-use borderless_sdk::__private::action_log::ActionLog;
 use borderless_sdk::__private::http::to_payload;
-use borderless_sdk::__private::write_metadata_client;
 use borderless_sdk::contract::Introduction;
 use borderless_sdk::{error, info, new_error, Context, Result};
 
@@ -42,7 +40,18 @@ pub extern "C" fn process_revocation() {
 #[no_mangle]
 pub extern "C" fn http_get_state() {
     dev::tic();
-    let result = exec_http_rq();
+    let result = exec_get_state();
+    let elapsed = dev::toc();
+    match result {
+        Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
+        Err(e) => error!("execution failed: {e:?}"),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn http_post_action() {
+    dev::tic();
+    let result = exec_post_action();
     let elapsed = dev::toc();
     match result {
         Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
@@ -52,8 +61,7 @@ pub extern "C" fn http_get_state() {
 
 use borderless_sdk::__private::{
     dev, read_field, read_register, read_string_from_register, registers::*,
-    storage_begin_acid_txn, storage_commit_acid_txn, storage_keys::make_user_key, write_field,
-    write_register, write_string_to_register,
+    storage_keys::make_user_key, write_field, write_register, write_string_to_register,
 };
 use borderless_sdk::{contract::CallAction, serialize::from_value};
 
@@ -65,11 +73,6 @@ fn exec_run() -> Result<()> {
     info!("read {} bytes", input.len());
 
     let action = CallAction::from_bytes(&input)?;
-
-    let mut action_log = ActionLog::open();
-    let tx_ctx = borderless_sdk::contract::env::tx_ctx();
-    action_log.push(input, tx_ctx);
-
     let s = action.pretty_print()?;
     info!("{s}");
 
@@ -100,11 +103,8 @@ fn exec_run() -> Result<()> {
     }
 
     // Commit state
-    storage_begin_acid_txn();
     write_field(storage_key_switch, 0, &state.switch);
     write_field(storage_key_counter, 0, &state.counter);
-    action_log.commit();
-    storage_commit_acid_txn();
     info!("Commited flipper: {state}");
 
     Ok(())
@@ -126,30 +126,12 @@ fn exec_introduction() -> Result<()> {
         state.switch, state.counter
     );
 
-    // TODO: Implement 'real' storage handling here,
-    // and reserve the keyspace for the contract
-    //
-    // - [x] add introduction data
-    // - [-] prepare action buffer
-    // ...
-    // + define additional data, that the contract requires and how it is stored / passed into it
     let storage_key_switch = make_user_key(xxh3_64("FLIPPER::switch".as_bytes()));
     let storage_key_counter = make_user_key(xxh3_64("FLIPPER::counter".as_bytes()));
-
-    let action_log = ActionLog::open();
-
-    storage_begin_acid_txn();
-    // Write introduction values
-    write_metadata_client(&introduction);
 
     // Write state
     write_field(storage_key_switch, 0, &state.switch);
     write_field(storage_key_counter, 0, &state.counter);
-    // Clear actions vector
-    // (TODO: In production we might not want to do this, but instead fail, if the contract already has actions)
-    //  -> I think this can / should be done from the outside
-    action_log.clear();
-    storage_commit_acid_txn();
 
     Ok(())
 }
@@ -170,9 +152,9 @@ fn test_env() {
     info!("TxCtx: {}", env::tx_ctx());
 }
 
-fn exec_http_rq() -> Result<()> {
+fn exec_get_state() -> Result<()> {
     let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
-    let (status, payload) = generate_response(path)?;
+    let (status, payload) = get_state_response(path)?;
 
     write_register(REGISTER_OUTPUT_HTTP_STATUS, status.to_be_bytes());
     write_string_to_register(REGISTER_OUTPUT_HTTP_RESULT, payload);
@@ -180,7 +162,7 @@ fn exec_http_rq() -> Result<()> {
     Ok(())
 }
 
-fn generate_response(path: String) -> Result<(u16, String)> {
+fn get_state_response(path: String) -> Result<(u16, String)> {
     let path = path.strip_prefix('/').unwrap_or(&path);
 
     let storage_key_switch = make_user_key(xxh3_64("FLIPPER::switch".as_bytes()));
@@ -221,6 +203,80 @@ fn generate_response(path: String) -> Result<(u16, String)> {
     Ok((status, payload.unwrap_or_default()))
 }
 
+fn exec_post_action() -> Result<()> {
+    let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
+    let payload = read_register(REGISTER_INPUT_HTTP_PAYLOAD).context("missing http-payload")?;
+    match post_action_response(path, payload) {
+        Ok(action) => {
+            write_register(REGISTER_OUTPUT_HTTP_STATUS, 200u16.to_be_bytes());
+            write_register(REGISTER_OUTPUT_HTTP_RESULT, action.to_bytes()?);
+        }
+        Err(e) => {
+            write_register(REGISTER_OUTPUT_HTTP_STATUS, 400u16.to_be_bytes());
+            write_string_to_register(REGISTER_OUTPUT_HTTP_RESULT, e.to_string());
+        }
+    };
+
+    Ok(())
+}
+
+// TODO: Ok, this will be more complicated, if we handle all possible cases..
+//
+// /action               -> accept CallAction object
+// /action/{method_name} -> accept params for function
+// /action/{method_id}   -> accept params for function
+//
+// We can also implement a GET method for the actions, which will return a list of all possible actions and their schemas.
+// TODO: Add own error type here, so we can convert to the correct status code
+fn post_action_response(path: String, payload: Vec<u8>) -> Result<CallAction> {
+    let path = path.replace("-", "_"); // Convert from kebab-case to snake_case
+    let path = path.strip_prefix('/').unwrap_or(&path); // stip leading "/"
+
+    let content = String::from_utf8(payload.clone()).unwrap_or_default();
+    info!("{content}");
+
+    // TODO: Check access of writer
+    match path {
+        "" => {
+            let action = CallAction::from_bytes(&payload).context("failed to parse action")?;
+
+            let method = action.method_name().unwrap();
+
+            match method {
+                "flip_switch" => {
+                    let _args: FlipSwitchArgs = from_value(action.params.clone())?;
+                }
+                "set_switch" => {
+                    let _args: SetSwitchArgs = from_value(action.params.clone())?;
+                }
+                "print_env" => {
+                    // Empty args
+                    let _args: FlipSwitchArgs = from_value(action.params.clone())?;
+                }
+                other => return Err(new_error!("unknown method: {other}")),
+            }
+            // At this point, the action is validated and can be returned
+            Ok(action)
+        }
+        "flip_switch" => {
+            let args: FlipSwitchArgs = borderless_sdk::serialize::from_slice(&payload)?;
+            let value = borderless_sdk::serialize::to_value(&args)?;
+            Ok(CallAction::by_method("flip_switch", value))
+        }
+        "set_switch" => {
+            let args: SetSwitchArgs = borderless_sdk::serialize::from_slice(&payload)?;
+            let value = borderless_sdk::serialize::to_value(&args)?;
+            Ok(CallAction::by_method("set_switch", value))
+        }
+        "print_env" => {
+            let args: FlipSwitchArgs = borderless_sdk::serialize::from_slice(&payload)?;
+            let value = borderless_sdk::serialize::to_value(&args)?;
+            Ok(CallAction::by_method("print_env", value))
+        }
+        other => return Err(new_error!("unknown method: {other}")),
+    }
+}
+
 // NOTE: Let's dig into this, what the sdk macro should derive
 //
 
@@ -249,7 +305,10 @@ impl Flipper {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct SetSwitchArgs {
     switch: bool,
 }
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct FlipSwitchArgs {}

@@ -59,6 +59,12 @@ where
     // Different Approach:
     let value = serde_json::to_value(value)?;
 
+    // Instantly return the value
+    if path.is_empty() {
+        return Ok(Some(value.to_string()));
+    }
+
+    // Search sub-fields based on path
     let mut current = &value;
     for seg in path
         .split('/')

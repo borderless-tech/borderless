@@ -124,22 +124,6 @@ pub fn storage_gen_sub_key() -> u64 {
     unsafe { abi::storage_gen_sub_key() }
 }
 
-pub fn storage_begin_acid_txn() {
-    unsafe {
-        if abi::storage_begin_acid_txn() != 0 {
-            abort()
-        }
-    }
-}
-
-pub fn storage_commit_acid_txn() {
-    unsafe {
-        if abi::storage_commit_acid_txn() != 0 {
-            abort()
-        }
-    }
-}
-
 /// Reads a value from the storage via the register.
 ///
 /// Returns `None` if no value could be found at the given storage keys.

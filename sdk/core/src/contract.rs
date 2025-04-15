@@ -1,5 +1,6 @@
 use std::{fmt::Display, str::FromStr};
 
+use borderless_hash::Hash256;
 use borderless_id_types::{AgentId, BlockIdentifier, TxIdentifier, Uuid};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -99,7 +100,7 @@ pub mod env {
 #[serde(untagged)]
 pub enum MethodOrId {
     ByName { method: String },
-    ById { method_id: u32 },
+    ById { method_id: u32 }, // < TODO Use first bit for blinding here, to distinguish user and system actions ?
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -369,10 +370,13 @@ pub struct Metadata {
     /// SemVer compatible version string
     pub version: SemVer,
 
-    // TODO: Does this field make sense in the introduction ?
     #[serde(default)]
     /// Time when the contract or process was created (seconds since unix epoch)
     pub active_since: u64,
+
+    #[serde(default)]
+    /// Transaction context of the contract-introduction transaction
+    pub tx_ctx: Option<TxCtx>,
 
     /// Time when the contract or process was revoked or archived (seconds since unix epoch)
     pub inactive_since: Option<u32>,
@@ -453,6 +457,16 @@ pub struct TxCtx {
 }
 
 impl TxCtx {
+    /// Creates a dummy `TxCtx` without meaning.
+    ///
+    /// Useful for testing.
+    pub fn dummy() -> Self {
+        Self {
+            tx_id: TxIdentifier::new(999, 999, Hash256::empty()),
+            index: 0,
+        }
+    }
+
     /// Use postcard to encode the `TxCtx`
     pub fn to_bytes(&self) -> Result<Vec<u8>, postcard::Error> {
         postcard::to_allocvec(&self)

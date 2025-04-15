@@ -1,7 +1,9 @@
+use std::num::NonZeroUsize;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{Context, Result}; // TODO: Replace with real error, since this is a library
+use anyhow::{anyhow, Context, Result}; // TODO: Replace with real error, since this is a library
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use borderless_sdk::__private::registers::*;
@@ -11,15 +13,20 @@ use borderless_sdk::{
     ContractId,
 };
 use borderless_sdk::{BlockIdentifier, BorderlessId};
-use vm::VmState;
-use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store};
+use lru::LruCache;
+use parking_lot::Mutex;
+use vm::{Commit, VmState};
+use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Instance, Linker, Module, Store};
 
+pub mod action_log;
 pub mod http;
 pub mod logger;
 mod vm;
 
 const CONTRACT_SUB_DB: &str = "contract-db";
 const WASM_CODE_SUB_DB: &str = "wasm-code-db";
+
+pub type SharedRuntime<S> = Arc<Mutex<Runtime<S>>>;
 
 pub struct Runtime<S = Lmdb>
 where
@@ -32,12 +39,12 @@ where
 }
 
 impl<S: Db> Runtime<S> {
-    pub fn new(storage: &S) -> Result<Self> {
+    pub fn new(storage: &S, cache_size: NonZeroUsize) -> Result<Self> {
         let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
         let start = Instant::now();
         let state = VmState::new(storage.clone(), db_ptr);
 
-        let contract_store = CodeStore::new(storage.clone())?;
+        let contract_store = CodeStore::new(storage.clone(), cache_size)?;
 
         let mut config = Config::new();
         config.cranelift_opt_level(wasmtime::OptLevel::Speed);
@@ -102,21 +109,10 @@ impl<S: Db> Runtime<S> {
             },
         )?;
 
-        linker.func_wrap(
-            "env",
-            "storage_begin_acid_txn",
-            |caller: Caller<'_, VmState<S>>| vm::storage_begin_acid_txn(caller),
-        )?;
-        linker.func_wrap(
-            "env",
-            "storage_commit_acid_txn",
-            |caller: Caller<'_, VmState<S>>| vm::storage_commit_acid_txn(caller),
-        )?;
-
         // NOTE: Those functions introduce side-effects;
         // they should only be used by us or during development of a contract
         linker.func_wrap("env", "storage_gen_sub_key", vm::storage_gen_sub_key)?;
-        linker.func_wrap("env", "timestamp", vm::timestamp)?;
+        linker.func_wrap("env", "timestamp", vm::timestamp)?; // < TODO can this be removed ?
         linker.func_wrap("env", "tic", |caller: Caller<'_, VmState<S>>| {
             vm::tic(caller)
         })?;
@@ -137,6 +133,10 @@ impl<S: Db> Runtime<S> {
         })
     }
 
+    pub fn into_shared(self) -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(self))
+    }
+
     // TODO
     pub fn instantiate_contract(
         &mut self,
@@ -144,6 +144,27 @@ impl<S: Db> Runtime<S> {
         path: impl AsRef<Path>,
     ) -> Result<()> {
         let module = Module::from_file(&self.engine, path)?;
+        let functions = [
+            "process_transaction",
+            "process_introduction",
+            "process_revocation",
+            "http_get_state",
+            "http_post_action",
+        ];
+        for func in functions {
+            let exp = module
+                .get_export(func)
+                .context(format!("missing required export: '{func}'"))?;
+            if let ExternType::Func(func_type) = exp {
+                if !func_type.matches(&FuncType::new(&self.engine, [], [])) {
+                    return Err(anyhow!("function '{func}' has invalid type"));
+                }
+            } else {
+                return Err(anyhow!(
+                    "invalid export type for '{func}' - expected function"
+                ));
+            }
+        }
         self.contract_store.insert_contract(contract_id, module)?;
         Ok(())
     }
@@ -165,28 +186,44 @@ impl<S: Db> Runtime<S> {
     pub fn process_transaction(
         &mut self,
         cid: &ContractId,
-        action: &CallAction,
+        action: CallAction,
         writer: &BorderlessId,
         tx_ctx: TxCtx,
     ) -> Result<()> {
         let input = action.to_bytes()?;
-        self.process_chain_tx("process_transaction", *cid, input, *writer, tx_ctx)
+
+        self.store.data_mut().begin_mutable_exec(*cid)?;
+        self.process_chain_tx("process_transaction", *cid, input, *writer, &tx_ctx)?;
+        self.store
+            .data_mut()
+            .finish_mutable_exec(Commit::Action { action, tx_ctx })?;
+        Ok(())
     }
 
     pub fn process_introduction(
         &mut self,
-        introduction: &Introduction,
+        introduction: Introduction,
         writer: &BorderlessId,
         tx_ctx: TxCtx,
     ) -> Result<()> {
         let input = introduction.to_bytes()?;
+        self.store
+            .data_mut()
+            .begin_mutable_exec(introduction.contract_id)?;
         self.process_chain_tx(
             "process_introduction",
             introduction.contract_id,
             input,
             *writer,
-            tx_ctx,
-        )
+            &tx_ctx,
+        )?;
+        self.store
+            .data_mut()
+            .finish_mutable_exec(Commit::Introduction {
+                introduction,
+                tx_ctx,
+            })?;
+        Ok(())
     }
 
     pub fn process_revocation(
@@ -205,14 +242,12 @@ impl<S: Db> Runtime<S> {
         cid: ContractId,
         input: Vec<u8>,
         writer: BorderlessId,
-        tx_ctx: TxCtx,
+        tx_ctx: &TxCtx,
     ) -> Result<()> {
         let instance = self
             .contract_store
             .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
             .context("contract is not instantiated")?;
-
-        self.store.data_mut().begin_mutable_exec(cid)?;
 
         // Prepare registers
         self.store.data_mut().set_register(REGISTER_INPUT, input);
@@ -226,18 +261,42 @@ impl<S: Db> Runtime<S> {
         // Call the actual function on the wasm side
         let func = instance.get_typed_func::<(), ()>(&mut self.store, contract_method)?;
         func.call(&mut self.store, ())?;
-
-        // Finish the execution
-        self.store.data_mut().finish_mutable_exec()?;
         Ok(())
     }
 
-    pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
-        self.store.data().read_action(cid, idx)
-    }
+    /// Executes an action without commiting the state
+    pub fn perform_dry_run(
+        &mut self,
+        cid: &ContractId,
+        action: &CallAction,
+        writer: &BorderlessId,
+    ) -> Result<()> {
+        let input = action.to_bytes()?;
+        let tx_ctx = TxCtx::dummy();
 
-    pub fn len_actions(&self, cid: &ContractId) -> Result<Option<u64>> {
-        self.store.data().len_actions(cid)
+        let instance = self
+            .contract_store
+            .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
+            .context("contract is not instantiated")?;
+
+        self.store.data_mut().begin_immutable_exec(*cid)?;
+
+        // Prepare registers
+        self.store.data_mut().set_register(REGISTER_INPUT, input);
+        self.store
+            .data_mut()
+            .set_register(REGISTER_TX_CTX, tx_ctx.to_bytes()?);
+        self.store
+            .data_mut()
+            .set_register(REGISTER_WRITER, writer.into_bytes().into());
+
+        // Call the actual function on the wasm side
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_transaction")?;
+        func.call(&mut self.store, ())?;
+
+        // Finish the execution
+        self.store.data_mut().finish_immutable_exec()?;
+        Ok(())
     }
 
     // --- NOTE: Maybe we should create a separate runtime for the HTTP handling ?
@@ -270,18 +329,75 @@ impl<S: Db> Runtime<S> {
             .context("missing http-result")?;
 
         // Finish the execution
-        self.store.data_mut().finish_immutable_exec()?;
-
+        let log = self.store.data_mut().finish_immutable_exec()?;
+        for l in log {
+            logger::print_log_line(l);
+        }
         Ok((status, result))
     }
 
+    /// Uses a POST request to parse and generate a [`CallAction`] object.
+    ///
+    /// The return type is a nested result. The outer result type should convert to a server error,
+    /// as it represents errors in the runtime itself.
+    /// The inner error type comes from the wasm code and contains the error status and message.
     pub fn http_post_action(
         &mut self,
-        _cid: &ContractId,
-        _path: String,
-        _payload: Vec<u8>,
-    ) -> Result<(u16, Vec<u8>)> {
-        todo!()
+        cid: &ContractId,
+        path: String,
+        payload: Vec<u8>,
+    ) -> Result<std::result::Result<CallAction, (u16, String)>> {
+        let instance = self
+            .contract_store
+            .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
+            .context("contract is not instantiated")?;
+        self.store.data_mut().begin_immutable_exec(*cid)?;
+
+        self.store
+            .data_mut()
+            .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());
+
+        self.store
+            .data_mut()
+            .set_register(REGISTER_INPUT_HTTP_PAYLOAD, payload);
+
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "http_post_action")?;
+        func.call(&mut self.store, ())?;
+
+        let status = self
+            .store
+            .data()
+            .get_register(REGISTER_OUTPUT_HTTP_STATUS)
+            .context("missing http-status")?;
+        let status = u16::from_be_bytes(status.try_into().unwrap());
+
+        let result = self
+            .store
+            .data()
+            .get_register(REGISTER_OUTPUT_HTTP_RESULT)
+            .context("missing http-result")?;
+
+        // Finish the execution
+        let log = self.store.data_mut().finish_immutable_exec()?;
+        for l in log {
+            logger::print_log_line(l);
+        }
+
+        if status == 200 {
+            let action = CallAction::from_bytes(&result)?;
+            Ok(Ok(action))
+        } else {
+            let error = String::from_utf8(result)?;
+            Ok(Err((status, error)))
+        }
+    }
+
+    pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
+        self.store.data().read_action(cid, idx)
+    }
+
+    pub fn len_actions(&self, cid: &ContractId) -> Result<Option<u64>> {
+        self.store.data().len_actions(cid)
     }
 
     pub fn available_contracts(&self) -> Result<Vec<ContractId>> {
@@ -293,12 +409,14 @@ impl<S: Db> Runtime<S> {
 struct CodeStore<S: Db> {
     db: S,
     db_ptr: S::Handle,
+    cache: LruCache<ContractId, Instance, ahash::RandomState>,
 }
 
 impl<S: Db> CodeStore<S> {
-    pub fn new(db: S) -> Result<Self> {
+    pub fn new(db: S, cache_size: NonZeroUsize) -> Result<Self> {
         let db_ptr = db.create_sub_db(WASM_CODE_SUB_DB)?;
-        Ok(Self { db, db_ptr })
+        let cache = LruCache::with_hasher(cache_size, ahash::RandomState::default());
+        Ok(Self { db, db_ptr, cache })
     }
 
     pub fn insert_contract(&self, cid: ContractId, module: Module) -> Result<()> {
@@ -310,12 +428,15 @@ impl<S: Db> CodeStore<S> {
     }
 
     pub fn get_contract(
-        &self,
+        &mut self,
         cid: &ContractId,
         engine: &Engine,
         store: &mut Store<VmState<S>>,
         linker: &mut Linker<VmState<S>>,
     ) -> Result<Option<Instance>> {
+        if let Some(instance) = self.cache.get(cid) {
+            return Ok(Some(instance.clone()));
+        }
         let txn = self.db.begin_ro_txn()?;
         let module_bytes = txn.read(&self.db_ptr, cid)?;
         let module = match module_bytes {
@@ -324,6 +445,7 @@ impl<S: Db> CodeStore<S> {
         };
         txn.commit()?;
         let instance = linker.instantiate(store, &module)?;
+        self.cache.push(*cid, instance.clone());
         Ok(Some(instance))
     }
 

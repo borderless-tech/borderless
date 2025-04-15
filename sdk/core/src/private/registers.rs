@@ -29,10 +29,8 @@ pub const REGISTER_BLOCK_CTX: u64 = 4;
 /// Register to feed http requests into the contract
 pub const REGISTER_INPUT_HTTP_PATH: u64 = 1024;
 
-pub const REGISTER_OUTPUT_HTTP_STATUS: u64 = 1025;
+pub const REGISTER_INPUT_HTTP_PAYLOAD: u64 = 1025;
 
-pub const REGISTER_OUTPUT_HTTP_RESULT: u64 = 1026;
+pub const REGISTER_OUTPUT_HTTP_STATUS: u64 = 2048;
 
-// -- Deprecated ?
-pub const REGISTER_INPUT_HTTP: u64 = 122122;
-pub const REGISTER_OUTPUT_HTTP: u64 = 122123;
+pub const REGISTER_OUTPUT_HTTP_RESULT: u64 = 2049;

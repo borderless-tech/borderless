@@ -1,12 +1,14 @@
 use std::{
     fs::read_to_string,
+    num::NonZeroUsize,
+    ops::DerefMut,
     path::PathBuf,
     str::FromStr,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result};
-use borderless_kv_store::backend::lmdb::Lmdb;
+use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_runtime::{
     logger::{print_log_line, Logger},
     Runtime,
@@ -96,7 +98,10 @@ async fn main() -> Result<()> {
 }
 
 /// Generates a new dummy tx-ctx
-pub fn generate_tx_ctx(rt: &mut Runtime, cid: &ContractId) -> Result<TxCtx> {
+pub fn generate_tx_ctx(
+    mut rt: impl DerefMut<Target = Runtime<impl Db>>,
+    cid: &ContractId,
+) -> Result<TxCtx> {
     // We now have to provide additional context when executing the contract
     let n_actions = rt.len_actions(cid)?.unwrap_or_default();
     let tx_hash = Hash256::digest(&n_actions.to_be_bytes());
@@ -105,7 +110,7 @@ pub fn generate_tx_ctx(rt: &mut Runtime, cid: &ContractId) -> Result<TxCtx> {
         index: 0,
     };
     // Set block
-    rt.set_block(
+    (*rt).set_block(
         BlockIdentifier::new(0, n_actions, Hash256::empty()),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -117,7 +122,7 @@ pub fn generate_tx_ctx(rt: &mut Runtime, cid: &ContractId) -> Result<TxCtx> {
 
 async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
     // Create runtime
-    let mut rt = Runtime::new(&db)?;
+    let mut rt = Runtime::new(&db, NonZeroUsize::new(10).unwrap())?;
 
     let cid: ContractId = if let Some(cid) = command.contract_id {
         cid
@@ -140,7 +145,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let tx_ctx = generate_tx_ctx(&mut rt, &cid)?;
             info!("Introduce contract {cid}");
             let start = Instant::now();
-            rt.process_introduction(&introduction, &writer, tx_ctx)?;
+            rt.process_introduction(introduction, &writer, tx_ctx)?;
             let elapsed = start.elapsed();
             info!("Outer time elapsed: {elapsed:?}");
             info!("--- Contract-Log:");
@@ -155,7 +160,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
 
             info!("Run contract {cid}");
             let start = Instant::now();
-            rt.process_transaction(&cid, &action, &writer, tx_ctx.clone())?;
+            rt.process_transaction(&cid, action, &writer, tx_ctx.clone())?;
             let elapsed = start.elapsed();
             info!("Time elapsed: {elapsed:?}");
 

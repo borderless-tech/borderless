@@ -8,13 +8,16 @@ use std::{
 
 use anyhow::Context;
 use borderless_sdk::{
-    __private::action_log::SUB_KEY_LOG_LEN,
-    __private::from_postcard_bytes,
-    __private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
-    contract::{ActionRecord, CallAction},
+    __private::{
+        action_log::SUB_KEY_LOG_LEN,
+        from_postcard_bytes,
+        storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
+    },
+    contract::{ActionRecord, CallAction, Introduction, Metadata, TxCtx},
     log::LogLine,
     ContractId,
 };
+use serde::{de::DeserializeOwned, Serialize};
 use wasmtime::{Caller, Extern, Memory};
 
 use log::{debug, error, info, trace, warn};
@@ -23,16 +26,7 @@ use rand::{random, Rng};
 
 use borderless_kv_store::*;
 
-use crate::{logger::Logger, CONTRACT_SUB_DB};
-
-// TODO: We can change the entire logic, of how data is commited !
-//
-// Since we now directly have the storage buffer, and don't have to hold the acid-txn,
-// we can get rid of the storage-abi functions for the acid txn,
-// and also save the action and introduction from the host-side.
-//
-// This also enables us to set the StorageKeys in get_storage_key to purely user-keys,
-// and leave the system-keys for the host side !!
+use crate::{action_log::ActionLog, logger::Logger, CONTRACT_SUB_DB};
 
 pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
@@ -74,6 +68,7 @@ impl<S: Db> VmState<S> {
         }
         self.active_contract = ActiveContract::Mutable(contract_id);
         self.log_buffer.clear();
+        self.db_acid_txn_buffer = Some(Vec::new());
         Ok(())
     }
 
@@ -87,13 +82,9 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
-    pub fn finish_mutable_exec(&mut self) -> anyhow::Result<()> {
-        match self.active_contract {
-            ActiveContract::Mutable(cid) => {
-                // TODO: The flushing takes 10 ms due to lmdb being lmdb..
-                let logger = Logger::new(&self.db, cid);
-                logger.flush_lines(&self.log_buffer)?;
-            }
+    pub fn finish_mutable_exec(&mut self, commit: Commit) -> anyhow::Result<()> {
+        let cid = match self.active_contract {
+            ActiveContract::Mutable(cid) => cid,
             ActiveContract::Immutable(_) => {
                 return Err(anyhow::Error::msg(
                     "Contract execution was marked as immutable",
@@ -104,9 +95,54 @@ impl<S: Db> VmState<S> {
                     "Must start contract execution before commiting",
                 ));
             }
+        };
+        let now = Instant::now();
+
+        // Commit storage buffer
+        let buf = std::mem::replace(&mut self.db_acid_txn_buffer, None).unwrap_or_default();
+        let mut txn = self.db.begin_rw_txn()?;
+        for op in buf.into_iter() {
+            match op {
+                StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
+                StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
+            }
         }
+        // Commit external item (introduction, action or revocation)
+        match commit {
+            Commit::Action { action, tx_ctx } => {
+                let action_log = ActionLog::new(&self.db, cid);
+                action_log.commit(&self.db_ptr, &mut txn, &action, tx_ctx)?;
+            }
+            Commit::Introduction {
+                mut introduction,
+                tx_ctx,
+            } => {
+                introduction.meta.active_since = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .context("timestamp < 1970")?
+                    .as_millis()
+                    .try_into()
+                    .context("u64 should fit for 584942417 years")?;
+                introduction.meta.tx_ctx = Some(tx_ctx);
+                write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
+            }
+            Commit::Revocation(_) => todo!(),
+        }
+
+        // Flush log
+        let logger = Logger::new(&self.db, cid);
+        logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
+
+        // Commit txn
+        txn.commit();
+
+        let elapsed = now.elapsed();
+        debug!("commit-acid-txn: {elapsed:?}");
+
+        // Reset everything
         self.active_contract = ActiveContract::None;
         self.log_buffer.clear();
+
         Ok(())
     }
 
@@ -139,20 +175,21 @@ impl<S: Db> VmState<S> {
     /// Calling this function while the `VmState` has no active contract results in an error.
     pub fn finish_immutable_exec(&mut self) -> anyhow::Result<Vec<LogLine>> {
         if self.active_contract.is_none() {
-            return Err(anyhow::Error::msg("Cannot clear non existing"));
+            return Err(anyhow::Error::msg("Cannot clear non existing contract"));
         }
         self.active_contract = ActiveContract::None;
+        self.db_acid_txn_buffer = None;
         let log_output = std::mem::replace(&mut self.log_buffer, Vec::new());
         Ok(log_output)
     }
 
     /// Generates the storage key based on the currently active contract.
     ///
-    /// Note: Does not do any further checking, if the key is in user or system space!
+    /// Note: This function only generates user-keys, as values with system-keys must be commited by the host.
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
         self.active_contract
             .as_opt()
-            .map(|cid| StorageKey::new(&cid, base_key, sub_key))
+            .map(|cid| StorageKey::user_key(&cid, base_key, sub_key))
             .ok_or_else(|| wasmtime::Error::msg("no contract has been activated"))
     }
 
@@ -171,85 +208,18 @@ impl<S: Db> VmState<S> {
         self.registers.remove(&register_id);
     }
 
-    /// Begins a new acid transaction
-    fn begin_acid_txn(&mut self) -> wasmtime::Result<u64> {
-        // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-        debug_assert!(
-            self.active_contract.is_some(),
-            "transactions should only be created when there is an active contract"
-        );
-        if self.db_acid_txn_buffer.is_some() {
-            return Ok(1);
-        }
-        // let txn = self.db.begin_rw_txn()?;
-        self.db_acid_txn_buffer = Some(Vec::new());
-        Ok(0)
-    }
-
-    /// Commits an acid transaction
-    fn commit_acid_txn(&mut self) -> wasmtime::Result<u64> {
-        // NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-        debug_assert!(
-            self.active_contract.is_some(),
-            "transactions should only be created when there is an active contract"
-        );
-        let now = Instant::now();
-        let buf = std::mem::replace(&mut self.db_acid_txn_buffer, None).unwrap_or_default();
-        let mut txn = self.db.begin_rw_txn()?;
-        for op in buf.into_iter() {
-            match op {
-                StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
-                StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
-            }
-        }
-        txn.commit();
-        let elapsed = now.elapsed();
-        debug!("commit-acid-txn: {elapsed:?}");
-        // TODO
-        // match self.db_acid_txn_buffer.take() {
-        //     Some(txn) => {
-        //         txn.commit()?; // TODO: This guy is taking 10x the time of the entire module execution
-        //                        // (maybe in production we don't block the wasm module here ?)
-        //         let elapsed = now.elapsed();
-        //         debug!("commit-acid-txn: {elapsed:?}");
-        //     }
-        //     None => {
-        //         return Ok(1);
-        //     }
-        // }
-        Ok(0)
-    }
-
-    // TODO: Don't use this, use the free-floating function instead
     /// Tries to read the action with the given index for the currently active contract
     pub fn read_action(
         &self,
         cid: &ContractId,
         idx: usize,
     ) -> anyhow::Result<Option<ActionRecord>> {
-        let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, idx as u64);
-
-        let txn = self.db.begin_ro_txn()?;
-        let value = if let Some(bytes) = txn.read(&self.db_ptr, &storage_key)? {
-            Some(from_postcard_bytes(bytes)?)
-        } else {
-            None
-        };
-        txn.commit()?;
-        Ok(value)
+        read_action(&self.db, cid, idx)
     }
 
-    // TODO: Don't use this, use the free-floating function instead
     /// Returns the length of all actions
     pub fn len_actions(&self, cid: &ContractId) -> anyhow::Result<Option<u64>> {
-        let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN);
-        let txn = self.db.begin_ro_txn()?;
-        let value = if let Some(bytes) = txn.read(&self.db_ptr, &storage_key)? {
-            Some(from_postcard_bytes(bytes)?)
-        } else {
-            None
-        };
-        Ok(value)
+        len_actions(&self.db, cid)
     }
 }
 
@@ -339,7 +309,6 @@ pub fn read_register(
     register_id: u64,
     ptr: u64,
 ) -> Result<(), wasmtime::Error> {
-    let now = Instant::now();
     // Get data
     //
     // Can we avoid the cloning here ?
@@ -370,10 +339,6 @@ pub fn read_register(
     memory
         .write(&mut caller, ptr as usize, &data.borrow())
         .map_err(|e| wasmtime::Error::msg(format!("Failed to write to memory: {e}")))?;
-
-    let elapsed = now.elapsed();
-    debug!("read-register: {:?}", elapsed);
-
     Ok(())
 }
 
@@ -390,7 +355,6 @@ pub fn write_register(
     wasm_ptr: u64,
     wasm_ptr_len: u64,
 ) -> wasmtime::Result<()> {
-    let now = Instant::now();
     // Get memory
     let memory = get_memory(&mut caller)?;
 
@@ -403,9 +367,6 @@ pub fn write_register(
         .map_err(|e| wasmtime::Error::msg(format!("Failed to read from memory: {e}")))?;
     // Write register
     caller.data_mut().set_register(register_id, buffer);
-
-    let elapsed = now.elapsed();
-    debug!("write-register: {:?}", elapsed);
     Ok(())
 }
 
@@ -419,9 +380,8 @@ pub fn storage_write(
     value_len: u64,
 ) -> wasmtime::Result<()> {
     if caller.data().active_contract.is_immutable() {
-        return Err(wasmtime::Error::msg("contract is immutable"));
+        return Ok(());
     }
-    let now = Instant::now();
     // Get memory
     let memory = get_memory(&mut caller)?;
 
@@ -438,16 +398,7 @@ pub fn storage_write(
     let mut caller_data = &mut caller.data_mut();
     if let Some(buf) = &mut caller_data.db_acid_txn_buffer {
         buf.push(StorageOp::write(key, value));
-        // txn.write(&caller_data.db_ptr, &key, &value)?;
-    } else {
-        // If not, create a new transaction and instantly commit the changes
-        let mut txn = caller_data.db.begin_rw_txn()?;
-        txn.write(&caller_data.db_ptr, &key, &value)?;
-        txn.commit()?;
     }
-
-    let elapsed = now.elapsed();
-    debug!("storage-write: {:?}", elapsed);
     Ok(())
 }
 
@@ -457,8 +408,6 @@ pub fn storage_read(
     sub_key: u64,
     register_id: u64,
 ) -> wasmtime::Result<()> {
-    let now = Instant::now();
-
     // Build key
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
@@ -472,17 +421,11 @@ pub fn storage_read(
         // Write to register
         caller.data_mut().set_register(register_id, value);
     } else {
-        // return Err(wasmtime::Error::msg(
-        //     "value not found: base_key={base_key}, sub_key={sub_key}",
-        // ));
-        // TODO: I think this should not be an error, as the storage_read abi
+        // NOTE: I think this should not be an error, as the storage_read abi
         // tries to read the register, and if the register has no value, if will be handled there.
         // So I think the cleanest way is to clear the register and return Ok(())
         caller_data.clear_register(register_id);
     }
-
-    let elapsed = now.elapsed();
-    debug!("storage-read: {:?}", elapsed);
     Ok(())
 }
 
@@ -491,26 +434,21 @@ pub fn storage_remove(
     base_key: u64,
     sub_key: u64,
 ) -> wasmtime::Result<()> {
-    let now = Instant::now();
+    if caller.data().active_contract.is_immutable() {
+        return Ok(());
+    }
 
     // Build key
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
     let mut caller_data = &mut caller.data_mut();
-    // TODO
+
+    // Write changes to storage-buffer
     if let Some(buf) = &mut caller_data.db_acid_txn_buffer {
         // txn.delete(&caller_data.db_ptr, &key)?;
         buf.push(StorageOp::remove(key));
-    } else {
-        // If not, create a new transaction and instantly commit the changes
-        let mut txn = caller_data.db.begin_rw_txn()?;
-        txn.delete(&caller_data.db_ptr, &key)?;
-        txn.commit()?;
     }
-
-    let elapsed = now.elapsed();
-    debug!("storage-remove: {:?}", elapsed);
     Ok(())
 }
 
@@ -519,8 +457,6 @@ pub fn storage_has_key(
     base_key: u64,
     sub_key: u64,
 ) -> wasmtime::Result<u64> {
-    let now = Instant::now();
-
     // Build key
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
@@ -530,17 +466,12 @@ pub fn storage_has_key(
     let txn = caller_data.db.begin_ro_txn()?;
     let result = txn.read(&caller_data.db_ptr, &key)?.is_some();
     txn.commit()?;
-
-    let elapsed = now.elapsed();
-    debug!("storage-has-key: {:?}", elapsed);
     Ok(result as u64)
 }
 
 pub fn storage_gen_sub_key() -> wasmtime::Result<u64> {
     let mut rng = rand::rng();
-    let value: u64 = rng.random();
-    // Add 1 unit to avoid generating a 0
-    Ok(value.saturating_add(1))
+    Ok(rng.random())
 }
 
 pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
@@ -549,20 +480,17 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
     Ok(value)
 }
 
-// NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-pub fn storage_begin_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
-    if caller.data().active_contract.is_immutable() {
-        return Err(wasmtime::Error::msg("contract is immutable"));
-    }
-    caller.data_mut().begin_acid_txn()
-}
-
-// NOTE: If there are two acid transactions, this is a caller error, and not a runtime error.
-pub fn storage_commit_acid_txn(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
-    if caller.data().active_contract.is_immutable() {
-        return Err(wasmtime::Error::msg("contract is immutable"));
-    }
-    caller.data_mut().commit_acid_txn()
+/// External data that must be commited in the contract
+pub enum Commit {
+    Action {
+        action: CallAction,
+        tx_ctx: TxCtx,
+    },
+    Introduction {
+        introduction: Introduction,
+        tx_ctx: TxCtx,
+    },
+    Revocation(()),
 }
 
 /// Represents the different states of an active contract
@@ -608,6 +536,10 @@ impl ActiveContract {
     }
 }
 
+/// Enum that represents a storage operation
+///
+/// All storage operations are commited to the key-value-store
+/// once the contract finished its execution.
 enum StorageOp {
     Write { key: StorageKey, value: Vec<u8> },
     Remove { key: StorageKey },
@@ -625,7 +557,7 @@ impl StorageOp {
 
 /// Reads an action from the database
 pub fn read_action(
-    db: impl Db,
+    db: &impl Db,
     cid: &ContractId,
     idx: usize,
 ) -> anyhow::Result<Option<ActionRecord>> {
@@ -652,4 +584,118 @@ pub fn len_actions(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<u64>
         None
     };
     Ok(value)
+}
+
+// Helper function to write fields with system-keys
+pub(crate) fn write_system_value<S: Db, D: Serialize>(
+    db_ptr: &S::Handle,
+    txn: &mut <S as Db>::RwTx<'_>,
+    cid: &ContractId,
+    base_key: u64,
+    sub_key: u64,
+    data: &D,
+) -> anyhow::Result<()> {
+    let key = StorageKey::system_key(&cid, base_key, sub_key);
+    let bytes = postcard::to_allocvec(data)?;
+    txn.write(db_ptr, &key, &bytes)?;
+    Ok(())
+}
+
+// Helper function to write fields with system-keys
+pub(crate) fn read_system_value<S: Db, D: DeserializeOwned>(
+    db_ptr: &S::Handle,
+    txn: &<S as Db>::RwTx<'_>,
+    cid: &ContractId,
+    base_key: u64,
+    sub_key: u64,
+) -> anyhow::Result<Option<D>> {
+    let key = StorageKey::system_key(&cid, base_key, sub_key);
+    let bytes = txn.read(db_ptr, &key)?;
+    match bytes {
+        Some(val) => {
+            let out = postcard::from_bytes(val)?;
+            Ok(Some(out))
+        }
+        None => Ok(None),
+    }
+}
+
+fn write_introduction<S: Db>(
+    db_ptr: &S::Handle,
+    txn: &mut <S as Db>::RwTx<'_>,
+    introduction: &Introduction,
+) -> anyhow::Result<()> {
+    use borderless_sdk::__private::storage_keys::*;
+    let cid = introduction.contract_id;
+
+    // Write contract-id
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_CONTRACT_ID,
+        &introduction.contract_id,
+    )?;
+
+    // Write participant list
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_PARTICIPANTS,
+        &introduction.participants,
+    )?;
+
+    // Write roles list
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_ROLES,
+        &introduction.roles,
+    )?;
+
+    // Write sink list
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_SINKS,
+        &introduction.sinks,
+    )?;
+
+    // Write description
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_DESC,
+        &introduction.desc,
+    )?;
+
+    // Write meta
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_META,
+        &introduction.meta,
+    )?;
+
+    // Write initial state
+    write_system_value::<S, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_INIT_STATE,
+        &introduction.initial_state,
+    )?;
+    Ok(())
 }
