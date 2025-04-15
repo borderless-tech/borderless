@@ -1,7 +1,7 @@
 use super::proxy::Proxy;
 use serde::{Deserialize, Serialize};
 
-use super::lazyvec::LazyVec;
+use super::LazyVec;
 
 /// Immutable B+Tree Iterator
 pub struct LazyVecIt<'a, V> {

@@ -2,8 +2,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::cache::CacheOp::{Remove, Update};
-use super::lazyvec::ROOT_KEY;
 use super::node::Node;
+use super::ROOT_KEY;
 use nohash_hasher::IntMap;
 use serde::{Deserialize, Serialize};
 
