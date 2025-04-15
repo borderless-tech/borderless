@@ -1,4 +1,4 @@
-use borderless_sdk::{error, info, new_error, Context, Result};
+use borderless_sdk::{error, info, new_error, warn, Context, Result};
 
 #[no_mangle]
 pub extern "C" fn process_transaction() {
@@ -90,13 +90,16 @@ fn exec_introduction() -> Result<()> {
     info!("{s}");
 
     let storage_key = make_user_key(1000);
-    if LazyVec::<Product>::open(storage_key).exists() {
-        return Err(new_error!(
-            "LazyVec with provided storage key already exists"
-        ));
+
+    let mut lazy_vec: LazyVec<Product> = LazyVec::open(storage_key);
+    if lazy_vec.exists() {
+        warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
+        lazy_vec.clear();
+        lazy_vec.commit(storage_key);
+    } else {
+        info!("Create new LazyVec");
+        let lazy_vec: LazyVec<Product> = LazyVec::new(storage_key);
+        lazy_vec.commit(storage_key);
     }
-    // Create and store new LazyVec
-    let lazy_vec: LazyVec<Product> = LazyVec::new(storage_key);
-    lazy_vec.commit(storage_key);
     Ok(())
 }
