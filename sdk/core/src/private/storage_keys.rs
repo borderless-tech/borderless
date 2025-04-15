@@ -93,22 +93,42 @@ pub const BASE_KEY_RESERVED: u64 = u64::MAX & !(1 << 63); // max. possible syste
 pub const META_SUB_KEY_CONTRACT_ID: u64 = 0;
 
 /// Sub-Key to store the list of participants
+///
+/// Expected data-model: `Vec<BorderlessId>`
 pub const META_SUB_KEY_PARTICIPANTS: u64 = 1;
 
 /// Sub-Key to store the list of roles
+///
+/// Expected data-model: `Vec<Role>`
 pub const META_SUB_KEY_ROLES: u64 = 2;
 
 /// Sub-Key to store the list of available sinks
+///
+/// Expected data-model: `Vec<Sink>`
 pub const META_SUB_KEY_SINKS: u64 = 3;
 
 /// Sub-Key to store the contract description
+///
+/// Expected data-model: `Description`
 pub const META_SUB_KEY_DESC: u64 = 4;
 
 /// Sub-Key to store the contract metadata
+///
+/// Expected data-model: `Metadata`
 pub const META_SUB_KEY_META: u64 = 5;
 
 /// Sub-Key to store the initial state of the contract
+///
+/// Expected data-model: `serde_json::Value`
 pub const META_SUB_KEY_INIT_STATE: u64 = 6;
+
+/// Sub-Key to store the timestamp, when the contract was revoked.
+///
+/// Expected data-model: `u64`
+///
+/// Useful to simply query, if the contract is revoked or not.
+/// The timestamp is identical with the timestamp in the `Metadata` field.
+pub const META_SUB_KEY_REVOKED: u64 = 7;
 
 /// Reserved Sub-Key - max. possible value.
 pub const META_SUB_KEY_RESERVED: u64 = u64::MAX & !(1 << 63);

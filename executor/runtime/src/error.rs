@@ -82,6 +82,9 @@ pub(crate) enum ErrorKind {
     #[error("contract is not instantiated cid={cid}")]
     MissingContract { cid: ContractId },
 
+    #[error("contract is revoked and cannot process transactions cid={cid}")]
+    RevokedContract { cid: ContractId },
+
     /// Missing required value in register
     // --- Register errors
     #[error("missing required value '{0}' in register")]

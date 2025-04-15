@@ -26,7 +26,8 @@ use borderless_kv_store::*;
 
 use crate::{
     action_log::{ActionLog, ActionRecord, SUB_KEY_LOG_LEN},
-    controller::write_introduction,
+    controller::{write_introduction, Controller},
+    error::ErrorKind,
     logger::Logger,
     Error, Result, CONTRACT_SUB_DB,
 };
@@ -63,13 +64,16 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` already has an active contract results in an error.
-    pub fn begin_mutable_exec(&mut self, contract_id: ContractId) -> Result<()> {
+    pub fn begin_mutable_exec(&mut self, cid: ContractId) -> Result<()> {
         if self.active_contract.is_some() {
             return Err(Error::msg(
                 "Must finish contract execution before starting new one",
             ));
         }
-        self.active_contract = ActiveContract::Mutable(contract_id);
+        if Controller::new(&self.db).contract_revoked(&cid)? {
+            return Err(ErrorKind::RevokedContract { cid }.into());
+        }
+        self.active_contract = ActiveContract::Mutable(cid);
         self.log_buffer.clear();
         self.db_acid_txn_buffer = Some(Vec::new());
         Ok(())

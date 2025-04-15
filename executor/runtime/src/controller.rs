@@ -42,6 +42,13 @@ impl<'a, S: Db> Controller<'a, S> {
             .is_some())
     }
 
+    /// Returns `true` if the contract has been revoked
+    pub fn contract_revoked(&self, cid: &ContractId) -> Result<bool> {
+        Ok(self
+            .read_value::<u64>(cid, BASE_KEY_METADATA, META_SUB_KEY_REVOKED)?
+            .is_some())
+    }
+
     /// Returns the hash of the last-tx that was executed by the contract
     pub fn contract_last_tx_hash(&self, cid: &ContractId) -> Result<Option<Hash256>> {
         let actions = ActionLog::new(self.db, *cid);

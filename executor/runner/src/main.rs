@@ -10,6 +10,7 @@ use std::{
 use anyhow::{Context, Result};
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_runtime::{
+    controller::Controller,
     logger::{print_log_line, Logger},
     Runtime,
 };
@@ -171,12 +172,11 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         }
         ContractAction::Revoke { revocation } => todo!(),
         ContractAction::ListActions => {
-            let mut idx = 0;
-            while let Some(record) = rt.read_action(&cid, idx)? {
+            let actions = Controller::new(&db).actions(cid);
+            for record in actions.iter().flatten() {
                 let action = CallAction::from_bytes(&record.value)?;
                 println!("{}, commited: {}", record.tx_ctx, record.commited);
                 println!("{}", action.pretty_print()?);
-                idx += 1;
             }
         }
         ContractAction::Logs => {
