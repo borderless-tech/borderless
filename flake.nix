@@ -31,8 +31,8 @@
             cargo-audit
             cargo-tarpaulin
             cargo-flamegraph
-            wasm-pack
             flatbuffers
+            wabt
           ];
 
           # Certain Rust tools won't work without this
