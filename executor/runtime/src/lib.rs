@@ -25,7 +25,10 @@ pub mod http;
 pub mod logger;
 mod vm;
 
+/// Sub-Database for all contract related data
 const CONTRACT_SUB_DB: &str = "contract-db";
+
+/// Sub-Database, where the wasm code is stored
 const WASM_CODE_SUB_DB: &str = "wasm-code-db";
 
 pub type SharedRuntime<S> = Arc<Mutex<Runtime<S>>>;
