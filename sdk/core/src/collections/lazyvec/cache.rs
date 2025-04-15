@@ -8,8 +8,7 @@ use nohash_hasher::IntMap;
 use serde::{Deserialize, Serialize};
 
 use crate::__private::{
-    read_field, storage_begin_acid_txn, storage_commit_acid_txn, storage_gen_sub_key,
-    storage_has_key, storage_remove, write_field,
+    read_field, storage_gen_sub_key, storage_has_key, storage_remove, write_field,
 };
 
 enum CacheOp {
@@ -109,7 +108,6 @@ where
     }
 
     pub(crate) fn commit(&mut self) {
-        storage_begin_acid_txn();
         // Sync the in-memory mirror with the DB state
         for (key, op) in &self.operations {
             match op {
@@ -121,7 +119,6 @@ where
                 Remove => storage_remove(self.base_key, *key),
             }
         }
-        storage_commit_acid_txn();
         // Clears and deallocates the used resources
         self.operations = IntMap::default();
     }
