@@ -4,7 +4,7 @@ use borderless_id_types::TxIdentifier;
 use queries::Pagination;
 use serde::Serialize;
 
-use crate::contract::{ActionRecord, CallAction, Description, Info, Metadata};
+use crate::contract::{CallAction, Description, Info, Metadata};
 
 /// Default return type for all routes that return lists.
 ///
@@ -45,21 +45,6 @@ pub struct ContractInfo {
     pub info: Option<Info>,
     pub desc: Option<Description>,
     pub meta: Option<Metadata>,
-}
-
-impl TryFrom<ActionRecord> for TxAction {
-    type Error = serde_json::Error;
-
-    fn try_from(record: ActionRecord) -> Result<Self, Self::Error> {
-        // Hm, I thought we could get around the additional parsing step here..
-        // I still haven't given up ! TODO maybe construct the raw json value here, and see if this is faster.
-        let action = serde_json::from_slice(&record.value)?;
-        Ok(Self {
-            tx_id: record.tx_ctx.tx_id,
-            action,
-            commited: record.commited,
-        })
-    }
 }
 
 pub mod queries {

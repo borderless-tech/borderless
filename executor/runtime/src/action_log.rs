@@ -2,6 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use borderless_kv_store::Db;
+use borderless_sdk::http::TxAction;
 use borderless_sdk::ContractId;
 use serde::{Deserialize, Serialize};
 
@@ -58,6 +59,21 @@ pub struct ActionRecord {
 
     /// Timestamp (as milliseconds since unix-epoch), when the action was commited.
     pub commited: u64,
+}
+
+impl TryFrom<ActionRecord> for TxAction {
+    type Error = serde_json::Error;
+
+    fn try_from(record: ActionRecord) -> Result<Self, Self::Error> {
+        // Hm, I thought we could get around the additional parsing step here..
+        // I still haven't given up ! TODO maybe construct the raw json value here, and see if this is faster.
+        let action = serde_json::from_slice(&record.value)?;
+        Ok(Self {
+            tx_id: record.tx_ctx.tx_id,
+            action,
+            commited: record.commited,
+        })
+    }
 }
 
 impl<'a, S: Db> ActionLog<'a, S> {

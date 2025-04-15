@@ -9,11 +9,10 @@ use std::{
 use anyhow::Context;
 use borderless_sdk::{
     __private::{
-        action_log::SUB_KEY_LOG_LEN,
         from_postcard_bytes,
         storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
     },
-    contract::{ActionRecord, CallAction, Introduction, Metadata, TxCtx},
+    contract::{CallAction, Introduction, Metadata, TxCtx},
     log::LogLine,
     ContractId,
 };
@@ -26,7 +25,11 @@ use rand::{random, Rng};
 
 use borderless_kv_store::*;
 
-use crate::{action_log::ActionLog, logger::Logger, CONTRACT_SUB_DB};
+use crate::{
+    action_log::{ActionLog, ActionRecord, SUB_KEY_LOG_LEN},
+    logger::Logger,
+    Error, Result, CONTRACT_SUB_DB,
+};
 
 pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
@@ -60,10 +63,10 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` already has an active contract results in an error.
-    pub fn begin_mutable_exec(&mut self, contract_id: ContractId) -> anyhow::Result<()> {
+    pub fn begin_mutable_exec(&mut self, contract_id: ContractId) -> Result<()> {
         if self.active_contract.is_some() {
-            return Err(anyhow::Error::msg(
-                "Must finish contract execution before starting new",
+            return Err(Error::Msg(
+                "Must finish contract execution before starting new one",
             ));
         }
         self.active_contract = ActiveContract::Mutable(contract_id);
@@ -82,18 +85,14 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
-    pub fn finish_mutable_exec(&mut self, commit: Commit) -> anyhow::Result<()> {
+    pub fn finish_mutable_exec(&mut self, commit: Commit) -> Result<()> {
         let cid = match self.active_contract {
             ActiveContract::Mutable(cid) => cid,
             ActiveContract::Immutable(_) => {
-                return Err(anyhow::Error::msg(
-                    "Contract execution was marked as immutable",
-                ));
+                return Err(Error::Msg("Contract execution was marked as immutable"));
             }
             ActiveContract::None => {
-                return Err(anyhow::Error::msg(
-                    "Must start contract execution before commiting",
-                ));
+                return Err(Error::Msg("Must start contract execution before commiting"));
             }
         };
         let now = Instant::now();
@@ -154,9 +153,9 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` already has an active contract results in an error.
-    pub fn begin_immutable_exec(&mut self, cid: ContractId) -> anyhow::Result<()> {
+    pub fn begin_immutable_exec(&mut self, cid: ContractId) -> Result<()> {
         if self.active_contract.is_some() {
-            return Err(anyhow::Error::msg("Cannot overwrite active contract"));
+            return Err(Error::Msg("Cannot overwrite active contract"));
         }
         self.active_contract = ActiveContract::Immutable(cid);
         Ok(())
@@ -173,9 +172,9 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
-    pub fn finish_immutable_exec(&mut self) -> anyhow::Result<Vec<LogLine>> {
+    pub fn finish_immutable_exec(&mut self) -> Result<Vec<LogLine>> {
         if self.active_contract.is_none() {
-            return Err(anyhow::Error::msg("Cannot clear non existing contract"));
+            return Err(Error::Msg("Cannot clear non existing contract"));
         }
         self.active_contract = ActiveContract::None;
         self.db_acid_txn_buffer = None;
@@ -209,16 +208,12 @@ impl<S: Db> VmState<S> {
     }
 
     /// Tries to read the action with the given index for the currently active contract
-    pub fn read_action(
-        &self,
-        cid: &ContractId,
-        idx: usize,
-    ) -> anyhow::Result<Option<ActionRecord>> {
+    pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
         read_action(&self.db, cid, idx)
     }
 
     /// Returns the length of all actions
-    pub fn len_actions(&self, cid: &ContractId) -> anyhow::Result<Option<u64>> {
+    pub fn len_actions(&self, cid: &ContractId) -> Result<Option<u64>> {
         len_actions(&self.db, cid)
     }
 }
@@ -260,15 +255,6 @@ pub fn toc(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
         .context("your program should not run for 584.942 years")
 }
 
-pub fn timestamp() -> wasmtime::Result<u64> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("timestamp < 1970")?
-        .as_millis()
-        .try_into()
-        .context("u64 should fit for 584942417 years")
-}
-
 // TODO: Change this to "log"
 pub fn print(
     mut caller: Caller<'_, VmState<impl Db>>,
@@ -308,7 +294,7 @@ pub fn read_register(
     mut caller: Caller<'_, VmState<impl Db>>,
     register_id: u64,
     ptr: u64,
-) -> Result<(), wasmtime::Error> {
+) -> wasmtime::Result<()> {
     // Get data
     //
     // Can we avoid the cloning here ?
@@ -556,11 +542,7 @@ impl StorageOp {
 }
 
 /// Reads an action from the database
-pub fn read_action(
-    db: &impl Db,
-    cid: &ContractId,
-    idx: usize,
-) -> anyhow::Result<Option<ActionRecord>> {
+pub fn read_action(db: &impl Db, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
     let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, idx as u64);
     let db_ptr = db.open_sub_db(CONTRACT_SUB_DB)?;
     let txn = db.begin_ro_txn()?;
@@ -574,7 +556,7 @@ pub fn read_action(
 }
 
 /// Returns the length of all actions
-pub fn len_actions(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<u64>> {
+pub fn len_actions(db: &impl Db, cid: &ContractId) -> Result<Option<u64>> {
     let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN);
     let db_ptr = db.open_sub_db(CONTRACT_SUB_DB)?;
     let txn = db.begin_ro_txn()?;
@@ -594,7 +576,7 @@ pub(crate) fn write_system_value<S: Db, D: Serialize>(
     base_key: u64,
     sub_key: u64,
     data: &D,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let key = StorageKey::system_key(&cid, base_key, sub_key);
     let bytes = postcard::to_allocvec(data)?;
     txn.write(db_ptr, &key, &bytes)?;
@@ -608,7 +590,7 @@ pub(crate) fn read_system_value<S: Db, D: DeserializeOwned>(
     cid: &ContractId,
     base_key: u64,
     sub_key: u64,
-) -> anyhow::Result<Option<D>> {
+) -> Result<Option<D>> {
     let key = StorageKey::system_key(&cid, base_key, sub_key);
     let bytes = txn.read(db_ptr, &key)?;
     match bytes {
@@ -624,7 +606,7 @@ fn write_introduction<S: Db>(
     db_ptr: &S::Handle,
     txn: &mut <S as Db>::RwTx<'_>,
     introduction: &Introduction,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     use borderless_sdk::__private::storage_keys::*;
     let cid = introduction.contract_id;
 

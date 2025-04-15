@@ -7,9 +7,6 @@ use serde_json::Value;
 
 use crate::{BorderlessId, ContractId, RoleId};
 
-// Re-Export ActionRecord here
-pub use crate::__private::action_log::ActionRecord;
-
 /// Contract Environment
 pub mod env {
     use borderless_id_types::{BlockIdentifier, TxIdentifier};

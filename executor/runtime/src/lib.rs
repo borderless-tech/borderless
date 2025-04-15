@@ -3,22 +3,22 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{anyhow, Context, Result}; // TODO: Replace with real error, since this is a library
+use action_log::ActionRecord;
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use borderless_sdk::__private::registers::*;
 use borderless_sdk::contract::{BlockCtx, Introduction, TxCtx};
-use borderless_sdk::{
-    contract::{ActionRecord, CallAction},
-    ContractId,
-};
+use borderless_sdk::{contract::CallAction, ContractId};
 use borderless_sdk::{BlockIdentifier, BorderlessId};
 use lru::LruCache;
 use parking_lot::Mutex;
 use vm::{Commit, VmState};
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Instance, Linker, Module, Store};
 
+pub use error::{Error, Result};
+
 pub mod action_log;
+pub mod error;
 pub mod http;
 pub mod logger;
 mod vm;
@@ -112,7 +112,6 @@ impl<S: Db> Runtime<S> {
         // NOTE: Those functions introduce side-effects;
         // they should only be used by us or during development of a contract
         linker.func_wrap("env", "storage_gen_sub_key", vm::storage_gen_sub_key)?;
-        linker.func_wrap("env", "timestamp", vm::timestamp)?; // < TODO can this be removed ?
         linker.func_wrap("env", "tic", |caller: Caller<'_, VmState<S>>| {
             vm::tic(caller)
         })?;
@@ -154,15 +153,13 @@ impl<S: Db> Runtime<S> {
         for func in functions {
             let exp = module
                 .get_export(func)
-                .context(format!("missing required export: '{func}'"))?;
+                .ok_or_else(|| Error::MissingExport { func })?;
             if let ExternType::Func(func_type) = exp {
                 if !func_type.matches(&FuncType::new(&self.engine, [], [])) {
-                    return Err(anyhow!("function '{func}' has invalid type"));
+                    return Err(Error::InvalidFuncType { func });
                 }
             } else {
-                return Err(anyhow!(
-                    "invalid export type for '{func}' - expected function"
-                ));
+                return Err(Error::InvalidExport { func });
             }
         }
         self.contract_store.insert_contract(contract_id, module)?;
@@ -247,7 +244,7 @@ impl<S: Db> Runtime<S> {
         let instance = self
             .contract_store
             .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
-            .context("contract is not instantiated")?;
+            .ok_or_else(|| Error::MissingContract { cid })?;
 
         // Prepare registers
         self.store.data_mut().set_register(REGISTER_INPUT, input);
@@ -277,7 +274,7 @@ impl<S: Db> Runtime<S> {
         let instance = self
             .contract_store
             .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
-            .context("contract is not instantiated")?;
+            .ok_or_else(|| Error::MissingContract { cid: *cid })?;
 
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
@@ -305,7 +302,8 @@ impl<S: Db> Runtime<S> {
         let instance = self
             .contract_store
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
-            .context("contract is not instantiated")?;
+            .ok_or_else(|| Error::MissingContract { cid: *cid })?;
+
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
         self.store
@@ -319,14 +317,14 @@ impl<S: Db> Runtime<S> {
             .store
             .data()
             .get_register(REGISTER_OUTPUT_HTTP_STATUS)
-            .context("missing http-status")?;
+            .ok_or_else(|| Error::MissingRegisterValue("http-status"))?;
         let status = u16::from_be_bytes(status.try_into().unwrap());
 
         let result = self
             .store
             .data()
             .get_register(REGISTER_OUTPUT_HTTP_RESULT)
-            .context("missing http-result")?;
+            .ok_or_else(|| Error::MissingRegisterValue("http-result"))?;
 
         // Finish the execution
         let log = self.store.data_mut().finish_immutable_exec()?;
@@ -350,7 +348,8 @@ impl<S: Db> Runtime<S> {
         let instance = self
             .contract_store
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
-            .context("contract is not instantiated")?;
+            .ok_or_else(|| Error::MissingContract { cid: *cid })?;
+
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
         self.store
@@ -368,14 +367,14 @@ impl<S: Db> Runtime<S> {
             .store
             .data()
             .get_register(REGISTER_OUTPUT_HTTP_STATUS)
-            .context("missing http-status")?;
+            .ok_or_else(|| Error::MissingRegisterValue("http-status"))?;
         let status = u16::from_be_bytes(status.try_into().unwrap());
 
         let result = self
             .store
             .data()
             .get_register(REGISTER_OUTPUT_HTTP_RESULT)
-            .context("missing http-result")?;
+            .ok_or_else(|| Error::MissingRegisterValue("http-result"))?;
 
         // Finish the execution
         let log = self.store.data_mut().finish_immutable_exec()?;
@@ -387,7 +386,10 @@ impl<S: Db> Runtime<S> {
             let action = CallAction::from_bytes(&result)?;
             Ok(Ok(action))
         } else {
-            let error = String::from_utf8(result)?;
+            let error = String::from_utf8(result).map_err(|_| Error::InvalidRegisterValue {
+                register: "http-result",
+                expected_type: "string",
+            })?;
             Ok(Err((status, error)))
         }
     }
@@ -457,7 +459,10 @@ impl<S: Db> CodeStore<S> {
         let mut cursor = txn.ro_cursor(&self.db_ptr)?;
         // TODO: if we store contracts and agents in the same db, we have to change the logic here
         for (key, _value) in cursor.iter() {
-            let cid = ContractId::from_bytes(key.try_into()?);
+            let cid = ContractId::from_bytes(
+                key.try_into()
+                    .map_err(|_| crate::Error::Msg("failed to parse contract-id from storage"))?,
+            );
             out.push(cid);
         }
         drop(cursor);

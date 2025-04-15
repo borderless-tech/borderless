@@ -1,6 +1,4 @@
 // We have to set the path explicitly, because the module is named "__private", while the directory is named "private"
-#[path = "private/action_log.rs"]
-pub mod action_log;
 #[path = "private/http.rs"]
 pub mod http;
 #[path = "private/registers.rs"]
@@ -9,6 +7,10 @@ pub mod registers;
 pub mod storage_keys;
 #[path = "private/storage_traits.rs"]
 pub mod storage_traits;
+
+// DEPRECATED
+// #[path = "private/action_log.rs"]
+// pub mod action_log;
 
 use borderless_abi as abi;
 
