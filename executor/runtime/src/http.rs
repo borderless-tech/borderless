@@ -170,7 +170,7 @@ pub trait ActionWriter: Clone + Send + Sync {
         &self,
         cid: ContractId,
         action: CallAction,
-    ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send + 'static;
+    ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send;
 }
 
 /// A dummy implementation of an action-writer, that does nothing with the action.
@@ -180,12 +180,12 @@ pub struct NoActionWriter;
 impl ActionWriter for NoActionWriter {
     type Error = Infallible;
 
-    fn write_action(
+    async fn write_action(
         &self,
         _cid: ContractId,
         _action: CallAction,
-    ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send + 'static {
-        async move { Ok(Hash256::zero()) }
+    ) -> Result<Hash256, Self::Error> {
+        Ok(Hash256::zero())
     }
 }
 
@@ -299,9 +299,9 @@ where
                 // TODO: The contract should also parse query parameters !
                 let (status, payload) = rt.http_get_state(&contract_id, trunc)?;
                 if status == 200 {
-                    return Ok(json_body(payload));
+                    Ok(json_body(payload))
                 } else {
-                    return Ok(reject_404());
+                    Ok(reject_404())
                 }
             }
             "log" => {
@@ -312,7 +312,7 @@ where
 
                 // Get logs
                 let log = logger.get_logs_paginated(pagination)?;
-                return Ok(json_response(&log));
+                Ok(json_response(&log))
             }
             "txs" => {
                 // Extract pagination
@@ -337,26 +337,26 @@ where
                     total_elements: n_actions,
                     pagination,
                 };
-                return Ok(json_response(&paginated));
+                Ok(json_response(&paginated))
             }
             "info" => {
                 let info = read_contract_info(&self.db, &contract_id)?;
-                return Ok(json_response(&info));
+                Ok(json_response(&info))
             }
             "desc" => {
                 let desc = read_contract_desc(&self.db, &contract_id)?;
-                return Ok(json_response(&desc));
+                Ok(json_response(&desc))
             }
             "meta" => {
                 let meta = read_contract_meta(&self.db, &contract_id)?;
-                return Ok(json_response(&meta));
+                Ok(json_response(&meta))
             }
             // Same as empty path
             "" => {
                 let full_info = read_contract_full(&self.db, &contract_id)?;
-                return Ok(json_response(&full_info));
+                Ok(json_response(&full_info))
             }
-            _ => return Ok(reject_404()),
+            _ => Ok(reject_404()),
         }
     }
 

@@ -273,7 +273,7 @@ fn post_action_response(path: String, payload: Vec<u8>) -> Result<CallAction> {
             let value = borderless_sdk::serialize::to_value(&args)?;
             Ok(CallAction::by_method("print_env", value))
         }
-        other => return Err(new_error!("unknown method: {other}")),
+        other => Err(new_error!("unknown method: {other}")),
     }
 }
 

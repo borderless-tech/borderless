@@ -46,12 +46,11 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
         &self,
         cid: ContractId,
         action: borderless_sdk::contract::CallAction,
-    ) -> impl std::future::Future<Output = Result<borderless_sdk::hash::Hash256, Self::Error>>
-           + Send
-           + 'static {
+    ) -> impl std::future::Future<Output = Result<borderless_sdk::hash::Hash256, Self::Error>> + Send
+    {
         let rt = self.rt.lock();
         let tx_ctx = generate_tx_ctx(rt, &cid).unwrap();
-        let hash = tx_ctx.tx_id.hash.clone();
+        let hash = tx_ctx.tx_id.hash;
 
         let mut rt = self.rt.lock();
         rt.process_transaction(&cid, action, &self.writer, tx_ctx)

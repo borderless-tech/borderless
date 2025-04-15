@@ -98,7 +98,7 @@ impl<S: Db> VmState<S> {
         let now = Instant::now();
 
         // Commit storage buffer
-        let buf = std::mem::replace(&mut self.db_acid_txn_buffer, None).unwrap_or_default();
+        let buf = std::mem::take(&mut self.db_acid_txn_buffer).unwrap_or_default();
         let mut txn = self.db.begin_rw_txn()?;
         for op in buf.into_iter() {
             match op {
@@ -178,7 +178,7 @@ impl<S: Db> VmState<S> {
         }
         self.active_contract = ActiveContract::None;
         self.db_acid_txn_buffer = None;
-        let log_output = std::mem::replace(&mut self.log_buffer, Vec::new());
+        let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
 
@@ -188,7 +188,7 @@ impl<S: Db> VmState<S> {
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
         self.active_contract
             .as_opt()
-            .map(|cid| StorageKey::user_key(&cid, base_key, sub_key))
+            .map(|cid| StorageKey::user_key(cid, base_key, sub_key))
             .ok_or_else(|| wasmtime::Error::msg("no contract has been activated"))
     }
 
@@ -499,11 +499,7 @@ impl ActiveContract {
     }
 
     pub fn is_none(&self) -> bool {
-        if let ActiveContract::None = &self {
-            true
-        } else {
-            false
-        }
+        matches!(self, ActiveContract::None)
     }
 
     pub fn as_opt(&self) -> Option<&ContractId> {
@@ -514,11 +510,7 @@ impl ActiveContract {
     }
 
     pub fn is_immutable(&self) -> bool {
-        if let ActiveContract::Immutable(_) = &self {
-            true
-        } else {
-            false
-        }
+        matches!(self, ActiveContract::Immutable(_))
     }
 }
 
@@ -577,7 +569,7 @@ pub(crate) fn write_system_value<S: Db, D: Serialize>(
     sub_key: u64,
     data: &D,
 ) -> Result<()> {
-    let key = StorageKey::system_key(&cid, base_key, sub_key);
+    let key = StorageKey::system_key(cid, base_key, sub_key);
     let bytes = postcard::to_allocvec(data)?;
     txn.write(db_ptr, &key, &bytes)?;
     Ok(())
@@ -591,7 +583,7 @@ pub(crate) fn read_system_value<S: Db, D: DeserializeOwned>(
     base_key: u64,
     sub_key: u64,
 ) -> Result<Option<D>> {
-    let key = StorageKey::system_key(&cid, base_key, sub_key);
+    let key = StorageKey::system_key(cid, base_key, sub_key);
     let bytes = txn.read(db_ptr, &key)?;
     match bytes {
         Some(val) => {

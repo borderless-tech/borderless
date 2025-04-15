@@ -123,8 +123,8 @@ pub mod queries {
         pub fn pagination(&self) -> Option<Pagination> {
             let page_item = self.items.get("page")?;
             let per_page_item = self.items.get("per_page")?;
-            let page = usize::from_str(&page_item).ok()?;
-            let per_page = usize::from_str(&per_page_item).ok()?;
+            let page = usize::from_str(page_item).ok()?;
+            let per_page = usize::from_str(per_page_item).ok()?;
             Some(Pagination { page, per_page })
         }
 
@@ -233,6 +233,9 @@ pub mod queries {
                     break;
                 }
             }
+            // NOTE: We want the per_page or page to be set to the value that Pagionation::default() assigns.
+            // Using clippys suggestion would overwrite the value with the default for the type (which is 0).
+            #[allow(clippy::field_reassign_with_default)]
             match (page_str, per_page_str) {
                 (Some(page_str), Some(per_page_str)) => {
                     let page_num: &str = page_str.split('=').nth(1)?;

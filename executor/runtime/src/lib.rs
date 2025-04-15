@@ -274,7 +274,7 @@ impl<S: Db> Runtime<S> {
 
         let instance = self
             .contract_store
-            .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
+            .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
             .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
 
         self.store.data_mut().begin_immutable_exec(*cid)?;
@@ -438,7 +438,7 @@ impl<S: Db> CodeStore<S> {
         linker: &mut Linker<VmState<S>>,
     ) -> Result<Option<Instance>> {
         if let Some(instance) = self.cache.get(cid) {
-            return Ok(Some(instance.clone()));
+            return Ok(Some(*instance));
         }
         let txn = self.db.begin_ro_txn()?;
         let module_bytes = txn.read(&self.db_ptr, cid)?;
@@ -448,7 +448,7 @@ impl<S: Db> CodeStore<S> {
         };
         txn.commit()?;
         let instance = linker.instantiate(store, &module)?;
-        self.cache.push(*cid, instance.clone());
+        self.cache.push(*cid, instance);
         Ok(Some(instance))
     }
 
