@@ -4,6 +4,8 @@ mod node;
 mod proxy;
 
 // use super::iterator::LazyVecItMut;
+use crate::__private::storage_traits;
+use crate::__private::storage_traits::private::Sealed;
 use cache::Cache;
 use iterator::LazyVecIt;
 use node::Node;
@@ -56,6 +58,24 @@ where
     }
 }
 
+impl<V> Sealed for LazyVec<V> where
+    V: Clone + Debug + PartialEq + Serialize + for<'de> Deserialize<'de>
+{
+}
+
+impl<V> storage_traits::Storeable for LazyVec<V>
+where
+    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
+{
+    fn decode(base_key: u64) -> Self {
+        LazyVec::open(base_key, 16) // TODO Handle order correctly here
+    }
+
+    fn commit(self, _base_key: u64) {
+        self.cache.commit();
+    }
+}
+
 // // TODO
 // impl<V> Index<usize> for LazyVec<V>
 // where
@@ -81,10 +101,6 @@ impl<V> LazyVec<V>
 where
     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
 {
-    pub fn commit(&mut self) {
-        self.cache.commit()
-    }
-
     fn get_node_rank(&self, key: u64) -> usize {
         self.cache.read(key).borrow().rank()
     }

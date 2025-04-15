@@ -107,7 +107,7 @@ where
         self.init();
     }
 
-    pub(crate) fn commit(&mut self) {
+    pub(crate) fn commit(self) {
         // Sync the in-memory mirror with the DB state
         for (key, op) in &self.operations {
             match op {
@@ -119,7 +119,7 @@ where
                 Remove => storage_remove(self.base_key, *key),
             }
         }
-        // Clears and deallocates the used resources
-        self.operations = IntMap::default();
+        // Clears and deallocates the used resources    // TODO Make sure we really want to move self
+        //self.operations = IntMap::default();
     }
 }
