@@ -17,10 +17,10 @@ use std::marker::PhantomData;
 // use std::ops::{Index, IndexMut};
 
 pub(crate) const ROOT_KEY: u64 = 0;
+pub(crate) const ORDER: usize = 16;
 
 pub struct LazyVec<V> {
     cache: Cache<V>,
-    order: usize,
 }
 
 impl<V: Serialize> Debug for LazyVec<V>
@@ -68,7 +68,7 @@ where
     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
 {
     fn decode(base_key: u64) -> Self {
-        LazyVec::open(base_key, 16) // TODO Handle order correctly here
+        LazyVec::open(base_key)
     }
 
     fn commit(self, _base_key: u64) {
@@ -118,17 +118,15 @@ where
         }
     }
 
-    pub fn new(base_key: u64, order: usize) -> Self {
+    pub fn new(base_key: u64) -> Self {
         Self {
-            cache: Cache::new(base_key, order, true),
-            order,
+            cache: Cache::new(base_key, true),
         }
     }
 
-    pub fn open(base_key: u64, order: usize) -> Self {
+    pub fn open(base_key: u64) -> Self {
         Self {
-            cache: Cache::new(base_key, order, false),
-            order,
+            cache: Cache::new(base_key, false),
         }
     }
 
@@ -295,8 +293,8 @@ where
 
         if node.is_leaf() {
             // Create new leaf node when the order constraint is exceeded
-            if node.values.len() >= self.order {
-                let new_leaf = Node::generate_leaf(self.order, vec![value], node.next);
+            if node.values.len() >= ORDER {
+                let new_leaf = Node::generate_leaf(ORDER, vec![value], node.next);
                 // Store newly created leaf into the DB
                 let new_key = self.new_key();
                 self.cache.write(new_key, new_leaf);
@@ -312,8 +310,8 @@ where
             match self.push_internal(value, last_child) {
                 Some(key) => {
                     // Create new internal node when the order constraint is exceeded
-                    if node.keys.len() >= self.order {
-                        let new_int = Node::generate_internal(self.order, node.level, key);
+                    if node.keys.len() >= ORDER {
+                        let new_int = Node::generate_internal(ORDER, node.level, key);
                         // Store newly created internal node into the DB
                         let new_key = self.new_key();
                         self.cache.write(new_key, new_int);
@@ -381,9 +379,8 @@ where
             node.values.insert(index, element);
 
             // Split leaf when threshold is hit
-            if node.values.len() >= self.order * 2 {
-                let new_leaf =
-                    Node::generate_leaf(self.order, node.values.split_off(self.order), node.next);
+            if node.values.len() >= ORDER * 2 {
+                let new_leaf = Node::generate_leaf(ORDER, node.values.split_off(ORDER), node.next);
                 // Store newly created leaf into the DB
                 let new_key = self.new_key();
                 self.cache.write(new_key, new_leaf);
@@ -417,14 +414,14 @@ where
                 // Internal node to leaf handle
 
                 // Update key of recently split leaf
-                node.keys[tgt_index] = self.order;
+                node.keys[tgt_index] = ORDER;
                 // Insert new leaf
                 let pos = tgt_index.saturating_add(1);
-                node.keys.insert(pos, self.order);
+                node.keys.insert(pos, ORDER);
                 node.children.insert(pos, leaf);
 
                 // Triggers propagation mechanism
-                if node.keys.len() > self.order {
+                if node.keys.len() > ORDER {
                     node.keys.pop();
                     result = node.children.pop();
                 }
@@ -523,7 +520,7 @@ where
                 let last_child = self.cache.read(last_key);
                 let last_child = last_child.borrow();
 
-                if last_child.next.is_none() && node.keys.len() <= self.order {
+                if last_child.next.is_none() && node.keys.len() <= ORDER {
                     None
                 } else {
                     node.keys.pop();
@@ -543,7 +540,7 @@ where
                 // Ensures the tree remains balanced during insertions
                 if current.is_some() {
                     // if the current internal node is underpopulated
-                    if node.keys.len() < self.order {
+                    if node.keys.len() < ORDER {
                         let leaf_key = current.take().unwrap();
                         let subtree = self.create_subtree(node.level().saturating_sub(1), leaf_key);
                         node.keys.push(self.get_node_rank(subtree));

@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use super::cache::CacheOp::{Remove, Update};
 use super::node::Node;
-use super::ROOT_KEY;
+use super::{ORDER, ROOT_KEY};
 use nohash_hasher::IntMap;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +18,6 @@ enum CacheOp {
 
 pub struct Cache<V> {
     base_key: u64,
-    order: usize,
     map: RefCell<IntMap<u64, Rc<RefCell<Node<V>>>>>,
     operations: IntMap<u64, CacheOp>,
 }
@@ -27,10 +26,9 @@ impl<V> Cache<V>
 where
     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
 {
-    pub(crate) fn new(base_key: u64, order: usize, init: bool) -> Self {
+    pub(crate) fn new(base_key: u64, init: bool) -> Self {
         let mut cache = Cache {
             base_key,
-            order,
             map: RefCell::default(),
             operations: IntMap::default(),
         };
@@ -46,7 +44,7 @@ where
 
     pub(crate) fn init(&mut self) {
         // Create an empty root node, and insert it into the in-memory mirror
-        self.write(ROOT_KEY, Node::<V>::empty_leaf(self.order));
+        self.write(ROOT_KEY, Node::<V>::empty_leaf(ORDER));
     }
 
     pub(crate) fn reset(&mut self) {

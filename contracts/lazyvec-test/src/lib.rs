@@ -65,9 +65,8 @@ fn exec_run() -> Result<()> {
         .method_name()
         .context("missing required method-name")?;
 
-    let order = 16;
     let storage_key = make_user_key(1000);
-    let lazy_vec: LazyVec<Product> = LazyVec::open(storage_key, order);
+    let lazy_vec: LazyVec<Product> = LazyVec::open(storage_key);
 
     match method {
         "add_product" => {}
@@ -91,14 +90,13 @@ fn exec_introduction() -> Result<()> {
     info!("{s}");
 
     let storage_key = make_user_key(1000);
-    let order = 16;
-    if LazyVec::<Product>::open(storage_key, order).exists() {
+    if LazyVec::<Product>::open(storage_key).exists() {
         return Err(new_error!(
             "LazyVec with provided storage key already exists"
         ));
     }
     // Create and store new LazyVec
-    let lazy_vec: LazyVec<Product> = LazyVec::new(storage_key, order);
+    let lazy_vec: LazyVec<Product> = LazyVec::new(storage_key);
     lazy_vec.commit(storage_key);
     Ok(())
 }
