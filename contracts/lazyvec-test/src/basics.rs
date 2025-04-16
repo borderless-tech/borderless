@@ -3,16 +3,7 @@ use borderless::__private::dev::rand;
 use borderless::__private::storage_keys::make_user_key;
 use borderless::__private::storage_traits::Storeable;
 use borderless::collections::lazyvec::LazyVec;
-use borderless::{info, warn, Context, Result};
-
-#[macro_export]
-macro_rules! ensure {
-    ($cond:expr, $($arg:tt)*) => {
-        if !$cond {
-            return Err($crate::new_error!($($arg)*));
-        }
-    };
-}
+use borderless::{ensure, info, warn, Context, Result};
 
 pub(crate) const TEST_INTEGRITY_BASE_KEY: u64 = 20000;
 const N: usize = 5000;
