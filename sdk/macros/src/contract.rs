@@ -182,7 +182,7 @@ struct ActionFn {
 
 impl ActionFn {
     fn gen_type_tokens(&self) -> TokenStream2 {
-        let ident = format_ident!("{}", self.ident.to_string().to_case(Case::Pascal));
+        let ident = format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal));
         if self.args.is_empty() {
             quote! {
                 #[derive(serde::Serialize, serde::Deserialize)]
@@ -204,7 +204,7 @@ impl ActionFn {
 
     // References 'action' and 'state' in generated tokens
     fn gen_call_tokens(&self, state_ident: &Ident) -> TokenStream2 {
-        let args_ident = format_ident!("{}", self.ident.to_string().to_case(Case::Pascal));
+        let args_ident = format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal));
         let fn_ident = &self.ident;
         let mut_state = if self.mut_self {
             quote! { &mut state }
