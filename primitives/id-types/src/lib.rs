@@ -148,7 +148,7 @@ macro_rules! impl_u32id {
 
         impl std::fmt::Display for $type {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}", self.0)
+                write!(f, "{:08x}", self.0)
             }
         }
     };
@@ -599,5 +599,19 @@ mod tests {
             assert_ne!(base_id, back_to_uuid);
             assert_ne!(base_id.as_u128(), back_to_u128);
         }
+    }
+
+    #[test]
+    fn action_id_display() {
+        assert_eq!(ActionId::from_const(0).to_string(), "00000000");
+        assert_eq!(ActionId::from_const(256).to_string(), "00000100");
+        assert_eq!(ActionId::from_const(u32::MAX).to_string(), "ffffffff");
+    }
+
+    #[test]
+    fn role_id_display() {
+        assert_eq!(RoleId::from_const(0).to_string(), "00000000");
+        assert_eq!(RoleId::from_const(256).to_string(), "00000100");
+        assert_eq!(RoleId::from_const(u32::MAX).to_string(), "ffffffff");
     }
 }
