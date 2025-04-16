@@ -6,6 +6,10 @@ mod contract;
 mod state;
 mod utils;
 
+// TODO's:
+// - [ ] Check existence of serde crate
+// - [ ] Check re-naming of borderless crate
+
 #[proc_macro_attribute]
 pub fn contract(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     let module = parse_macro_input!(input as ItemMod);
