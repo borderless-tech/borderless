@@ -43,14 +43,6 @@ use borderless_sdk::__private::storage_traits::Storeable;
 use borderless_sdk::__private::{dev, read_register, registers::*, storage_keys::make_user_key};
 use borderless_sdk::collections::lazyvec::LazyVec;
 use borderless_sdk::contract::CallAction;
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct Product {
-    name: String,
-    price: u64,
-    available: bool,
-}
 
 fn exec_run() -> Result<()> {
     // Read action
@@ -66,10 +58,12 @@ fn exec_run() -> Result<()> {
         .context("missing required method-name")?;
 
     let storage_key = make_user_key(1000);
-    let lazy_vec: LazyVec<Product> = LazyVec::open(storage_key);
+    let lazy_vec: LazyVec<product::Product> = LazyVec::open(storage_key);
 
     match method {
-        "add_product" => {}
+        "test_product" => {
+            test_product()?;
+        }
         other => return Err(new_error!("Unknown method: {other}")),
     }
 
@@ -79,7 +73,11 @@ fn exec_run() -> Result<()> {
     Ok(())
 }
 
+use crate::product::test_product;
 use borderless_sdk::contract::Introduction;
+
+mod product;
+
 fn exec_introduction() -> Result<()> {
     // Read action
     let input = read_register(REGISTER_INPUT).context("missing input register")?;
@@ -91,14 +89,14 @@ fn exec_introduction() -> Result<()> {
 
     let storage_key = make_user_key(1000);
 
-    let mut lazy_vec: LazyVec<Product> = LazyVec::open(storage_key);
+    let mut lazy_vec: LazyVec<product::Product> = LazyVec::open(storage_key);
     if lazy_vec.exists() {
         warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
         lazy_vec.clear();
         lazy_vec.commit(storage_key);
     } else {
         info!("Create new LazyVec");
-        let lazy_vec: LazyVec<Product> = LazyVec::new(storage_key);
+        let lazy_vec: LazyVec<product::Product> = LazyVec::new(storage_key);
         lazy_vec.commit(storage_key);
     }
     Ok(())
