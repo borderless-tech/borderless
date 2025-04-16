@@ -6,7 +6,7 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-use borderless_sdk::{
+use borderless::{
     __private::{
         from_postcard_bytes,
         storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},

@@ -14,7 +14,7 @@ use borderless_runtime::{
     logger::{print_log_line, Logger},
     Runtime,
 };
-use borderless_sdk::{
+use borderless::{
     contract::{CallAction, Introduction, Revocation, TxCtx},
     hash::Hash256,
     BlockIdentifier, ContractId, TxIdentifier,

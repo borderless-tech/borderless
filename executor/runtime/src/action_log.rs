@@ -1,15 +1,15 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use borderless_kv_store::{Db, RawRead, Tx};
-use borderless_sdk::http::queries::Pagination;
-use borderless_sdk::http::{PaginatedElements, TxAction};
-use borderless_sdk::ContractId;
+use borderless::http::queries::Pagination;
+use borderless::http::{PaginatedElements, TxAction};
+use borderless::ContractId;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use borderless_sdk::contract::{CallAction, TxCtx};
+use borderless::contract::{CallAction, TxCtx};
 
-use borderless_sdk::__private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG};
+use borderless::__private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG};
 
 use crate::controller::{read_system_value, write_system_value};
 use crate::{Result, CONTRACT_SUB_DB};

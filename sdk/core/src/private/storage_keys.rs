@@ -23,8 +23,8 @@
 //! ## Example
 //!
 //! ```rust
-//! # use borderless_sdk::__private::storage_keys::*;
-//! # use borderless_sdk::ContractId;
+//! # use borderless::__private::storage_keys::*;
+//! # use borderless::ContractId;
 //! # let cid = "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse().unwrap();
 //! let base = 42;
 //! let sub = 99;
@@ -41,8 +41,8 @@
 //! ## Example
 //!
 //! ```rust
-//! # use borderless_sdk::__private::storage_keys::*;
-//! # use borderless_sdk::ContractId;
+//! # use borderless::__private::storage_keys::*;
+//! # use borderless::ContractId;
 //! # let cid = "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse().unwrap();
 //! // This is definetely a system-key
 //! let key = BASE_KEY_METADATA;

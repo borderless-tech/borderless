@@ -10,16 +10,18 @@ members = [
   "kv-store",
   "primitives/hash",
   "primitives/id-types"
-]
+, "contracts/flipper"]
 resolver = "2"
 
 [workspace.dependencies]
 # Export own crates
+borderless = { path = "sdk/core" }
 borderless-abi = { path = "sdk/abi" }
 borderless-sdk-macros = { path = "sdk/macros" }
-borderless-sdk = { path = "sdk/core" }
 borderless-id-types = { path = "primitives/id-types" }
 borderless-hash = { path = "primitives/hash" }
+borderless-kv-store = { path = "kv-store" }
+borderless-runtime = { path = "executor/runtime" }
 
 # External dependencies
 anyhow = "1.0"

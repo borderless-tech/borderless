@@ -1,11 +1,11 @@
-use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
-use borderless_sdk::{
+use borderless::{
     contract::{Description, Info, Introduction, Metadata, Revocation, TxCtx},
     BorderlessId, ContractId,
     __private::storage_keys::*,
     hash::Hash256,
     http::ContractInfo,
 };
+use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{action_log::ActionLog, logger::Logger, Result, CONTRACT_SUB_DB};
@@ -158,7 +158,7 @@ pub(crate) fn write_introduction<S: Db>(
     txn: &mut <S as Db>::RwTx<'_>,
     introduction: &Introduction,
 ) -> Result<()> {
-    use borderless_sdk::__private::storage_keys::*;
+    use borderless::__private::storage_keys::*;
     let cid = introduction.contract_id;
 
     // Write contract-id

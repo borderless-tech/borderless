@@ -7,12 +7,12 @@ use axum::{
     http::{Request, Response},
     Router,
 };
+use borderless::{BorderlessId, ContractId};
 use borderless_kv_store::Db;
 use borderless_runtime::{
     http::{ActionWriter, ContractService, Service},
     Runtime, SharedRuntime,
 };
-use borderless_sdk::{BorderlessId, ContractId};
 use log::info;
 
 use crate::generate_tx_ctx;
@@ -45,8 +45,8 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
     fn write_action(
         &self,
         cid: ContractId,
-        action: borderless_sdk::contract::CallAction,
-    ) -> impl std::future::Future<Output = Result<borderless_sdk::hash::Hash256, Self::Error>> + Send
+        action: borderless::contract::CallAction,
+    ) -> impl std::future::Future<Output = Result<borderless::hash::Hash256, Self::Error>> + Send
     {
         let rt = self.rt.lock();
         let tx_ctx = generate_tx_ctx(rt, &cid).unwrap();

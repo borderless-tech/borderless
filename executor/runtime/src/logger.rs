@@ -1,12 +1,12 @@
 use std::cmp::min;
 
-use borderless_kv_store::*;
-use borderless_sdk::{
+use borderless::{
     __private::storage_keys::{StorageKey, BASE_KEY_LOGS},
     http::{queries::Pagination, PaginatedElements},
     log::{LogLevel, LogLine},
     ContractId,
 };
+use borderless_kv_store::*;
 use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 

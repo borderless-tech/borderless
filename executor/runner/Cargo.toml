@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
-borderless-sdk = { path = "../../sdk/core", features = ["generate_ids"] }
-borderless-runtime = { path = "../runtime" }
-borderless-kv-store = { path = "../../kv-store" }
+borderless.workspace = true
+borderless-runtime.workspace = true
+borderless-kv-store.workspace = true
 clap = { version = "4.5.32", features = ["derive"] }
 colog = "1.3.0"
 log.workspace = true

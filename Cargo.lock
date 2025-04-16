@@ -6,7 +6,7 @@ version = 3
 name = "abi-test-contract"
 version = "0.1.0"
 dependencies = [
- "borderless-sdk",
+ "borderless",
  "serde",
  "xxhash-rust",
 ]
@@ -256,6 +256,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "borderless"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "borderless-abi",
+ "borderless-hash",
+ "borderless-id-types",
+ "borderless-sdk-macros",
+ "postcard",
+ "rand 0.9.0",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+]
+
+[[package]]
 name = "borderless-abi"
 version = "0.1.0"
 
@@ -300,8 +316,8 @@ name = "borderless-runtime"
 version = "0.1.0"
 dependencies = [
  "ahash 0.8.11",
+ "borderless",
  "borderless-kv-store",
- "borderless-sdk",
  "bytes",
  "http",
  "log",
@@ -317,21 +333,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tower",
  "wasmtime",
-]
-
-[[package]]
-name = "borderless-sdk"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "borderless-abi",
- "borderless-hash",
- "borderless-id-types",
- "postcard",
- "rand 0.9.0",
- "serde",
- "serde_bytes",
- "serde_json",
 ]
 
 [[package]]
@@ -790,6 +791,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57e61227926ef5b237af48bee74394cc4a5a221ebd10c5147a98e612f207851d"
 dependencies = [
  "log",
+]
+
+[[package]]
+name = "flipper"
+version = "0.1.0"
+dependencies = [
+ "borderless",
+ "serde",
 ]
 
 [[package]]
@@ -1775,9 +1784,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "borderless",
  "borderless-kv-store",
  "borderless-runtime",
- "borderless-sdk",
  "clap",
  "colog",
  "log",

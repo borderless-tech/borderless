@@ -1,4 +1,4 @@
-use borderless_sdk::ContractId;
+use borderless::ContractId;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
