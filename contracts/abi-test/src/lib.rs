@@ -171,6 +171,7 @@ fn exec_get_state() -> Result<()> {
     Ok(())
 }
 
+// NOTE: This is something that's purely based on the state
 fn get_state_response(path: String) -> Result<(u16, String)> {
     let path = path.strip_prefix('/').unwrap_or(&path);
 
@@ -229,6 +230,8 @@ fn exec_post_action() -> Result<()> {
     Ok(())
 }
 
+// NOTE: This is something that's purely based on the actions
+//
 // TODO: Ok, this will be more complicated, if we handle all possible cases..
 //
 // /action               -> accept CallAction object

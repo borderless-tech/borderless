@@ -3,7 +3,7 @@ pub mod flipper {
     use borderless::*;
 
     // This is our state
-    #[state]
+    #[derive(State)]
     pub struct Flipper {
         switch: bool,
         counter: u32,

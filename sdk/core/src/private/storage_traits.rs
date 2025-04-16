@@ -53,7 +53,7 @@ impl<T: Serialize + DeserializeOwned> Storeable for T {
         }
     }
 
-    fn parse_value(value: Value, base_key: u64) -> Result<Self> {
+    fn parse_value(value: Value, _base_key: u64) -> Result<Self> {
         Ok(from_value(value)?)
     }
 

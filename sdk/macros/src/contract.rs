@@ -8,16 +8,55 @@ pub fn parse_module_content(
     mod_items: &Vec<Item>,
     _mod_ident: &Ident,
 ) -> Result<TokenStream2> {
+    let read_input = quote! {
+        let input = read_register(REGISTER_INPUT).context("missing input register")?;
+    };
+
+    let read_state = quote! {
+        // Read state ( TODO )
+        // let storage_key_switch = make_user_key(xxh3_64("FLIPPER::switch".as_bytes()));
+        // let storage_key_counter = make_user_key(xxh3_64("FLIPPER::counter".as_bytes()));
+        // let switch = read_field(storage_key_switch, 0).context("missing field switch")?;
+        // let counter = read_field(storage_key_counter, 0).context("missing field counter")?;
+        // let mut state = Flipper { switch, counter };
+    };
+
+    let match_method = quote! {};
+
+    let commit_state = quote! {};
+
     let wasm_impl = quote! {
         pub fn exec_txn() -> Result<()> {
+            #read_input
+
+            let action = CallAction::from_bytes(&input)?;
+            let s = action.pretty_print()?;
+            info!("{s}");
+
+            let method = action
+                .method_name()
+                .context("missing required method-name")?;
+
+            #read_state
+            #match_method
+            #commit_state
             Ok(())
         }
 
         pub fn exec_introduction() -> Result<()> {
+            #read_input
+            let introduction = Introduction::from_bytes(&input)?;
+            let s = introduction.pretty_print()?;
+            info!("{s}");
+            // TODO: Parse state from introduction
+            #commit_state
             Ok(())
         }
 
         pub fn exec_revocation() -> Result<()> {
+            #read_input
+            let r = Revocation::from_bytes(&input)?;
+            info!("Revoked contract. Reason: {}", r.reason);
             Ok(())
         }
 
@@ -33,7 +72,12 @@ pub fn parse_module_content(
     Ok(quote! {
         #[automatically_derived]
         pub(super) mod __derived {
-            use ::borderless::Result;
+            use ::borderless::*;
+            use ::borderless::__private::{
+                read_field, read_register, read_string_from_register, registers::*,
+                storage_keys::make_user_key, write_field, write_register, write_string_to_register,
+            };
+            use ::borderless::contract::*;
             #wasm_impl
         }
     })
