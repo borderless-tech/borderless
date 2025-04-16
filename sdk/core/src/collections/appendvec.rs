@@ -84,6 +84,13 @@ impl<T: Serialize + DeserializeOwned> storage_traits::Storeable for AppendVec<T>
         Self::new(base_key)
     }
 
+    fn parse_value(value: serde_json::Value, base_key: u64) -> crate::Result<Self> {
+        let cache: Vec<T> = serde_json::from_value(value)?;
+        let mut out = Self::new(base_key);
+        out.cache = cache;
+        Ok(out)
+    }
+
     fn commit(self, base_key: u64) {
         assert_eq!(
             self.base_key, base_key,

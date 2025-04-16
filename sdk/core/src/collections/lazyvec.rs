@@ -84,6 +84,15 @@ where
         LazyVec::open(base_key)
     }
 
+    fn parse_value(value: serde_json::Value, base_key: u64) -> anyhow::Result<Self> {
+        let values: Vec<V> = serde_json::from_value(value)?;
+        let mut out = Self::open(base_key);
+        for v in values {
+            out.push(v);
+        }
+        Ok(out)
+    }
+
     fn commit(self, _base_key: u64) {
         self.cache.commit();
     }
