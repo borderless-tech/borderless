@@ -1,0 +1,17 @@
+{
+  "contract_id": "cc8ca79c-3bbb-89d2-bb28-29636c170388",
+  "participants": [],
+  "initial_state": {},
+  "roles": [],
+  "sinks": [],
+  "desc": {
+    "display_name": "lazyvec",
+    "summary": "a WASM contract for testing the LazyVec data structure",
+    "legal": null
+  },
+  "meta": {
+    "application": "lazyvec",
+    "app_module": "test",
+    "version": "0.1.0"
+  }
+}

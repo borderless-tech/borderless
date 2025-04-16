@@ -3,8 +3,8 @@
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
-    error,
     __private::{abort, read_field, write_field},
+    error,
 };
 
 /// Trait used by the macro for storing and commiting values.

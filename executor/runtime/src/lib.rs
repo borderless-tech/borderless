@@ -177,6 +177,7 @@ impl<S: Db> Runtime<S> {
     ) -> Result<()> {
         let input = action.to_bytes()?;
 
+        // TODO: Decorate process_chain_tx and abort execution in VmState
         self.store.data_mut().begin_mutable_exec(*cid)?;
         self.process_chain_tx("process_transaction", *cid, input, *writer, &tx_ctx)?;
         self.store

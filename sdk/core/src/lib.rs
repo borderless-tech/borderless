@@ -3,7 +3,7 @@ pub mod contract;
 pub mod log;
 pub mod storage;
 
-pub use anyhow::{anyhow as new_error, Context, Error, Result};
+pub use anyhow::{anyhow as new_error, ensure, Context, Error, Result};
 
 pub mod serialize {
     pub use serde_json::from_slice;
