@@ -1,14 +1,41 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use proc_macro::TokenStream;
+use syn::parse_macro_input;
+
+#[proc_macro_attribute]
+pub fn contract(_attrs: TokenStream, input: TokenStream) -> TokenStream {
+    // let input = parse_macro_input!(input);
+    // let output = state::impl_contract_state(input);
+
+    // match output {
+    //     syn::Result::Ok(token_stream) => token_stream,
+    //     syn::Result::Err(err) => err.to_compile_error(),
+    // }
+    // .into()
+    input
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[proc_macro_attribute]
+pub fn state(_attrs: TokenStream, input: TokenStream) -> TokenStream {
+    // let input = parse_macro_input!(input);
+    // let output = state::impl_contract_state(input);
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+    // match output {
+    //     syn::Result::Ok(token_stream) => token_stream,
+    //     syn::Result::Err(err) => err.to_compile_error(),
+    // }
+    // .into()
+    input
+}
+
+#[proc_macro_attribute]
+pub fn action(_attrs: TokenStream, input: TokenStream) -> TokenStream {
+    // let input = parse_macro_input!(input);
+    // let output = state::impl_contract_state(input);
+
+    // match output {
+    //     syn::Result::Ok(token_stream) => token_stream,
+    //     syn::Result::Err(err) => err.to_compile_error(),
+    // }
+    // .into()
+    input
 }
