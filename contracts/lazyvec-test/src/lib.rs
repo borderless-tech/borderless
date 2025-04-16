@@ -1,7 +1,7 @@
 mod basics;
 mod product;
 
-use borderless_sdk::{error, info, new_error, warn, Context, Result};
+use borderless::{error, info, new_error, warn, Context, Result};
 
 #[no_mangle]
 pub extern "C" fn process_transaction() {
@@ -42,10 +42,10 @@ pub extern "C" fn http_get_state() {}
 #[no_mangle]
 pub extern "C" fn http_post_action() {}
 
-use borderless_sdk::__private::storage_traits::Storeable;
-use borderless_sdk::__private::{dev, read_register, registers::*, storage_keys::make_user_key};
-use borderless_sdk::collections::lazyvec::LazyVec;
-use borderless_sdk::contract::CallAction;
+use borderless::__private::storage_traits::Storeable;
+use borderless::__private::{dev, read_register, registers::*, storage_keys::make_user_key};
+use borderless::collections::lazyvec::LazyVec;
+use borderless::contract::CallAction;
 
 fn exec_run() -> Result<()> {
     // Read action
@@ -74,7 +74,7 @@ fn exec_run() -> Result<()> {
 
 use crate::basics::{test_integrity, TEST_INTEGRITY_BASE_KEY};
 use crate::product::{test_product, TEST_PRODUCT_BASE_KEY};
-use borderless_sdk::contract::Introduction;
+use borderless::contract::Introduction;
 
 fn exec_introduction() -> Result<()> {
     // Read action

@@ -1,16 +1,8 @@
-use anyhow::Result;
-use borderless_kv_store::RawRead;
+use borderless::contract::CallAction;
+use borderless::hash::Hash256;
+use borderless::BorderlessId;
+use borderless::{http::queries::Pagination, ContractId};
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
-use borderless_sdk::BorderlessId;
-use borderless_sdk::__private::{from_postcard_bytes, storage_keys::*};
-use borderless_sdk::contract::CallAction;
-use borderless_sdk::hash::Hash256;
-use borderless_sdk::http::ContractInfo;
-use borderless_sdk::{
-    contract::{Description, Info, Metadata},
-    http::{queries::Pagination, PaginatedElements, TxAction},
-    ContractId,
-};
 use bytes::Bytes;
 use http::method::Method;
 use http::request::Parts;
@@ -18,7 +10,7 @@ use http::{header::CONTENT_TYPE, HeaderValue, StatusCode};
 use log::info;
 use mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8};
 use parking_lot::Mutex;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::Serialize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -29,9 +21,7 @@ use std::{
 };
 pub use tower::Service;
 
-use crate::vm::read_action;
-use crate::CONTRACT_SUB_DB;
-use crate::{logger::Logger, vm::len_actions, Runtime};
+use crate::{controller::Controller, Runtime};
 
 pub type Request<T = Bytes> = http::Request<T>;
 pub type Response<T = Bytes> = http::Response<T>;
@@ -102,67 +92,6 @@ pub fn into_server_error<E: ToString>(error: E) -> Response {
     resp
 }
 
-fn read_key<S, D>(db: &S, key: StorageKey) -> anyhow::Result<Option<D>>
-where
-    S: Db,
-    D: DeserializeOwned,
-{
-    let db_ptr = db.open_sub_db(CONTRACT_SUB_DB)?;
-    let txn = db.begin_ro_txn()?;
-    let bytes = match txn.read(&db_ptr, &key)? {
-        Some(bytes) => bytes,
-        None => return Ok(None),
-    };
-    let value = from_postcard_bytes(bytes)?;
-    Ok(Some(value))
-}
-
-fn read_contract_info(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<Info>> {
-    let participants = read_key(
-        db,
-        StorageKey::system_key(cid, BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS),
-    )?;
-    let roles = read_key(
-        db,
-        StorageKey::system_key(cid, BASE_KEY_METADATA, META_SUB_KEY_ROLES),
-    )?;
-    let sinks = read_key(
-        db,
-        StorageKey::system_key(cid, BASE_KEY_METADATA, META_SUB_KEY_SINKS),
-    )?;
-    match (participants, roles, sinks) {
-        (Some(participants), Some(roles), Some(sinks)) => Ok(Some(Info {
-            contract_id: *cid,
-            participants,
-            roles,
-            sinks,
-        })),
-        _ => Ok(None),
-    }
-}
-
-fn read_contract_desc(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<Description>> {
-    read_key(
-        db,
-        StorageKey::system_key(cid, BASE_KEY_METADATA, META_SUB_KEY_DESC),
-    )
-}
-
-fn read_contract_meta(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<Metadata>> {
-    read_key(
-        db,
-        StorageKey::system_key(cid, BASE_KEY_METADATA, META_SUB_KEY_META),
-    )
-}
-
-// TODO: Query params
-fn read_contract_full(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<ContractInfo>> {
-    let info = read_contract_info(db, cid)?;
-    let desc = read_contract_desc(db, cid)?;
-    let meta = read_contract_meta(db, cid)?;
-    Ok(Some(ContractInfo { info, desc, meta }))
-}
-
 pub trait ActionWriter: Clone + Send + Sync {
     type Error: std::error::Error + Send + Sync;
 
@@ -170,7 +99,7 @@ pub trait ActionWriter: Clone + Send + Sync {
         &self,
         cid: ContractId,
         action: CallAction,
-    ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send + 'static;
+    ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send;
 }
 
 /// A dummy implementation of an action-writer, that does nothing with the action.
@@ -180,12 +109,12 @@ pub struct NoActionWriter;
 impl ActionWriter for NoActionWriter {
     type Error = Infallible;
 
-    fn write_action(
+    async fn write_action(
         &self,
         _cid: ContractId,
         _action: CallAction,
-    ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send + 'static {
-        async move { Ok(Hash256::zero()) }
+    ) -> Result<Hash256, Self::Error> {
+        Ok(Hash256::zero())
     }
 }
 
@@ -242,7 +171,7 @@ where
         }
     }
 
-    async fn process_rq(&self, req: Request) -> anyhow::Result<Response> {
+    async fn process_rq(&self, req: Request) -> crate::Result<Response> {
         match *req.method() {
             Method::GET => self.process_get_rq(req),
             Method::POST => self.process_post_rq(req).await,
@@ -250,7 +179,7 @@ where
         }
     }
 
-    fn process_get_rq(&self, req: Request) -> anyhow::Result<Response> {
+    fn process_get_rq(&self, req: Request) -> crate::Result<Response> {
         let path = req.uri().path();
         let query = req.uri().query();
 
@@ -274,7 +203,7 @@ where
             Some(r) => r,
             None => {
                 // Get full contract info
-                let full_info = read_contract_full(&self.db, &contract_id)?;
+                let full_info = Controller::new(&self.db).contract_full(&contract_id)?;
                 return Ok(json_response(&full_info));
             }
         };
@@ -292,75 +221,62 @@ where
             trunc.push('?');
             trunc.push_str(query);
         }
-
-        let mut rt = self.rt.lock();
+        let controller = Controller::new(&self.db);
         match route {
             "state" => {
                 // TODO: The contract should also parse query parameters !
+                let mut rt = self.rt.lock();
                 let (status, payload) = rt.http_get_state(&contract_id, trunc)?;
                 if status == 200 {
-                    return Ok(json_body(payload));
+                    Ok(json_body(payload))
                 } else {
-                    return Ok(reject_404());
+                    Ok(reject_404())
                 }
             }
-            "log" => {
-                let logger = Logger::new(&self.db, contract_id);
-
+            "logs" => {
                 // Extract pagination
                 let pagination = Pagination::from_query(query).unwrap_or_default();
 
                 // Get logs
-                let log = logger.get_logs_paginated(pagination)?;
-                return Ok(json_response(&log));
+                let log = controller
+                    .logs(contract_id)
+                    .get_logs_paginated(pagination)?;
+
+                Ok(json_response(&log))
             }
             "txs" => {
                 // Extract pagination
                 let pagination = Pagination::from_query(query).unwrap_or_default();
 
                 // Get actions
-                let n_actions = len_actions(&self.db, &contract_id)?.unwrap_or_default() as usize;
+                let paginated = controller
+                    .actions(contract_id)
+                    .get_tx_action_paginated(pagination)?;
 
-                let mut elements = Vec::new();
-                for idx in pagination.to_range() {
-                    // TODO: We can utilize the action log here !
-                    match read_action(&self.db, &contract_id, idx)? {
-                        Some(record) => {
-                            let action = TxAction::try_from(record)?;
-                            elements.push(action);
-                        }
-                        None => break,
-                    }
-                }
-                let paginated = PaginatedElements {
-                    elements,
-                    total_elements: n_actions,
-                    pagination,
-                };
-                return Ok(json_response(&paginated));
+                Ok(json_response(&paginated))
             }
             "info" => {
-                let info = read_contract_info(&self.db, &contract_id)?;
-                return Ok(json_response(&info));
+                let info = controller.contract_info(&contract_id)?;
+                Ok(json_response(&info))
             }
             "desc" => {
-                let desc = read_contract_desc(&self.db, &contract_id)?;
-                return Ok(json_response(&desc));
+                let desc = controller.contract_desc(&contract_id)?;
+                Ok(json_response(&desc))
             }
             "meta" => {
-                let meta = read_contract_meta(&self.db, &contract_id)?;
-                return Ok(json_response(&meta));
+                let meta = controller.contract_meta(&contract_id)?;
+                Ok(json_response(&meta))
             }
             // Same as empty path
             "" => {
-                let full_info = read_contract_full(&self.db, &contract_id)?;
-                return Ok(json_response(&full_info));
+                let full_info = controller.contract_full(&contract_id)?;
+                Ok(json_response(&full_info))
             }
-            _ => return Ok(reject_404()),
+            _ => Ok(reject_404()),
         }
     }
 
-    async fn process_post_rq(&self, req: Request) -> anyhow::Result<Response> {
+    async fn process_post_rq(&self, req: Request) -> crate::Result<Response> {
         let path = req.uri().path();
 
         if path == "/" {
@@ -434,7 +350,9 @@ where
                 let tx_hash = self
                     .action_writer
                     .write_action(contract_id, action.clone())
-                    .await?;
+                    .await
+                    .map_err(|e| crate::Error::msg(format!("failed to write action: {e}")))?;
+
                 // Build action response
                 let resp = ActionResp {
                     success: true,

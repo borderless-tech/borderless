@@ -679,8 +679,8 @@ mod tests {
 
     #[test]
     fn display() {
-        assert_eq!(Hash256::empty().to_string(), "0xa7ffc6f8");
-        assert_eq!(Hash256::zero().to_string(), "0x00000000");
+        assert_eq!(Hash256::empty().to_string(), "a7ffc6f8");
+        assert_eq!(Hash256::zero().to_string(), "00000000");
         let hash = Hash256::empty();
         let full_string: String = hash.into();
         assert_ne!(

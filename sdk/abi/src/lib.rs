@@ -23,7 +23,6 @@ extern "C" {
 
     // --- Dangerous API (introduces side-effects)
     pub fn storage_gen_sub_key() -> u64;
-    pub fn timestamp() -> u64; // milliseconds since epoch
 
     // Profiling
     pub fn tic(); // matlab style

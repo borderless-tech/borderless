@@ -2,5 +2,13 @@
 name = "borderless-sdk-macros"
 version = "0.1.0"
 edition = "2021"
+description = "Core implementation of all macros related to contracts or software-agents."
+
+[lib]
+proc-macro = true
 
 [dependencies]
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+xxhash-rust = { version = "0.8", features = ["const_xxh3", "xxh64"] }

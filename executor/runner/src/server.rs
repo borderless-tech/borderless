@@ -1,4 +1,4 @@
-use std::{convert::Infallible, num::NonZeroUsize};
+use std::num::NonZeroUsize;
 
 use anyhow::Result;
 use axum::{
@@ -7,12 +7,12 @@ use axum::{
     http::{Request, Response},
     Router,
 };
+use borderless::{BorderlessId, ContractId};
 use borderless_kv_store::Db;
 use borderless_runtime::{
     http::{ActionWriter, ContractService, Service},
     Runtime, SharedRuntime,
 };
-use borderless_sdk::{BorderlessId, ContractId};
 use log::info;
 
 use crate::generate_tx_ctx;
@@ -40,24 +40,25 @@ struct ActionApplier<S: Db> {
 }
 
 impl<S: Db> ActionWriter for ActionApplier<S> {
-    type Error = Infallible;
+    type Error = borderless_runtime::Error;
 
     fn write_action(
         &self,
         cid: ContractId,
-        action: borderless_sdk::contract::CallAction,
-    ) -> impl std::future::Future<Output = Result<borderless_sdk::hash::Hash256, Self::Error>>
-           + Send
-           + 'static {
+        action: borderless::contract::CallAction,
+    ) -> impl std::future::Future<Output = Result<borderless::hash::Hash256, Self::Error>> + Send
+    {
         let rt = self.rt.lock();
         let tx_ctx = generate_tx_ctx(rt, &cid).unwrap();
-        let hash = tx_ctx.tx_id.hash.clone();
+        let hash = tx_ctx.tx_id.hash;
 
         let mut rt = self.rt.lock();
-        rt.process_transaction(&cid, action, &self.writer, tx_ctx)
-            .unwrap();
+        let result = match rt.process_transaction(&cid, action, &self.writer, tx_ctx) {
+            Ok(()) => Ok(hash),
+            Err(e) => Err(e),
+        };
 
-        let fut = async move { Ok(hash) };
+        let fut = async move { result };
         Box::pin(fut)
     }
 }

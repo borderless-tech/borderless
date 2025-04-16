@@ -3,27 +3,32 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{anyhow, Context, Result}; // TODO: Replace with real error, since this is a library
+use action_log::ActionRecord;
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
-use borderless_sdk::__private::registers::*;
-use borderless_sdk::contract::{BlockCtx, Introduction, TxCtx};
-use borderless_sdk::{
-    contract::{ActionRecord, CallAction},
-    ContractId,
-};
-use borderless_sdk::{BlockIdentifier, BorderlessId};
+use borderless::__private::registers::*;
+use borderless::contract::{BlockCtx, Introduction, Revocation, TxCtx};
+use borderless::{contract::CallAction, ContractId};
+use borderless::{BlockIdentifier, BorderlessId};
+use error::ErrorKind;
 use lru::LruCache;
 use parking_lot::Mutex;
 use vm::{Commit, VmState};
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Instance, Linker, Module, Store};
 
+pub use error::{Error, Result};
+
 pub mod action_log;
+pub mod controller;
+pub mod error;
 pub mod http;
 pub mod logger;
 mod vm;
 
+/// Sub-Database for all contract related data
 const CONTRACT_SUB_DB: &str = "contract-db";
+
+/// Sub-Database, where the wasm code is stored
 const WASM_CODE_SUB_DB: &str = "wasm-code-db";
 
 pub type SharedRuntime<S> = Arc<Mutex<Runtime<S>>>;
@@ -112,7 +117,6 @@ impl<S: Db> Runtime<S> {
         // NOTE: Those functions introduce side-effects;
         // they should only be used by us or during development of a contract
         linker.func_wrap("env", "storage_gen_sub_key", vm::storage_gen_sub_key)?;
-        linker.func_wrap("env", "timestamp", vm::timestamp)?; // < TODO can this be removed ?
         linker.func_wrap("env", "tic", |caller: Caller<'_, VmState<S>>| {
             vm::tic(caller)
         })?;
@@ -144,27 +148,7 @@ impl<S: Db> Runtime<S> {
         path: impl AsRef<Path>,
     ) -> Result<()> {
         let module = Module::from_file(&self.engine, path)?;
-        let functions = [
-            "process_transaction",
-            "process_introduction",
-            "process_revocation",
-            "http_get_state",
-            "http_post_action",
-        ];
-        for func in functions {
-            let exp = module
-                .get_export(func)
-                .context(format!("missing required export: '{func}'"))?;
-            if let ExternType::Func(func_type) = exp {
-                if !func_type.matches(&FuncType::new(&self.engine, [], [])) {
-                    return Err(anyhow!("function '{func}' has invalid type"));
-                }
-            } else {
-                return Err(anyhow!(
-                    "invalid export type for '{func}' - expected function"
-                ));
-            }
-        }
+        check_module(&self.engine, &module)?;
         self.contract_store.insert_contract(contract_id, module)?;
         Ok(())
     }
@@ -183,6 +167,7 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
+    // TODO: Handle transaction output !
     pub fn process_transaction(
         &mut self,
         cid: &ContractId,
@@ -229,11 +214,26 @@ impl<S: Db> Runtime<S> {
 
     pub fn process_revocation(
         &mut self,
-        revocation: bool,
-        _writer: &BorderlessId,
-        _tx_ctx: TxCtx,
+        revocation: Revocation,
+        writer: &BorderlessId,
+        tx_ctx: TxCtx,
     ) -> Result<()> {
-        todo!()
+        let input = revocation.to_bytes()?;
+
+        self.store
+            .data_mut()
+            .begin_mutable_exec(revocation.contract_id)?;
+        self.process_chain_tx(
+            "process_revocation",
+            revocation.contract_id,
+            input,
+            *writer,
+            &tx_ctx,
+        )?;
+        self.store
+            .data_mut()
+            .finish_mutable_exec(Commit::Revocation { revocation, tx_ctx })?;
+        Ok(())
     }
 
     /// Abstraction over all possible chain transactions
@@ -248,7 +248,7 @@ impl<S: Db> Runtime<S> {
         let instance = self
             .contract_store
             .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
-            .context("contract is not instantiated")?;
+            .ok_or_else(|| ErrorKind::MissingContract { cid })?;
 
         // Prepare registers
         self.store.data_mut().set_register(REGISTER_INPUT, input);
@@ -277,8 +277,8 @@ impl<S: Db> Runtime<S> {
 
         let instance = self
             .contract_store
-            .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
-            .context("contract is not instantiated")?;
+            .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
+            .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
 
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
@@ -306,7 +306,8 @@ impl<S: Db> Runtime<S> {
         let instance = self
             .contract_store
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
-            .context("contract is not instantiated")?;
+            .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
+
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
         self.store
@@ -320,14 +321,14 @@ impl<S: Db> Runtime<S> {
             .store
             .data()
             .get_register(REGISTER_OUTPUT_HTTP_STATUS)
-            .context("missing http-status")?;
+            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
         let status = u16::from_be_bytes(status.try_into().unwrap());
 
         let result = self
             .store
             .data()
             .get_register(REGISTER_OUTPUT_HTTP_RESULT)
-            .context("missing http-result")?;
+            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
 
         // Finish the execution
         let log = self.store.data_mut().finish_immutable_exec()?;
@@ -351,7 +352,8 @@ impl<S: Db> Runtime<S> {
         let instance = self
             .contract_store
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
-            .context("contract is not instantiated")?;
+            .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
+
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
         self.store
@@ -369,14 +371,14 @@ impl<S: Db> Runtime<S> {
             .store
             .data()
             .get_register(REGISTER_OUTPUT_HTTP_STATUS)
-            .context("missing http-status")?;
+            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
         let status = u16::from_be_bytes(status.try_into().unwrap());
 
         let result = self
             .store
             .data()
             .get_register(REGISTER_OUTPUT_HTTP_RESULT)
-            .context("missing http-result")?;
+            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
 
         // Finish the execution
         let log = self.store.data_mut().finish_immutable_exec()?;
@@ -388,7 +390,10 @@ impl<S: Db> Runtime<S> {
             let action = CallAction::from_bytes(&result)?;
             Ok(Ok(action))
         } else {
-            let error = String::from_utf8(result)?;
+            let error = String::from_utf8(result).map_err(|_| ErrorKind::InvalidRegisterValue {
+                register: "http-result",
+                expected_type: "string",
+            })?;
             Ok(Err((status, error)))
         }
     }
@@ -436,7 +441,7 @@ impl<S: Db> CodeStore<S> {
         linker: &mut Linker<VmState<S>>,
     ) -> Result<Option<Instance>> {
         if let Some(instance) = self.cache.get(cid) {
-            return Ok(Some(instance.clone()));
+            return Ok(Some(*instance));
         }
         let txn = self.db.begin_ro_txn()?;
         let module_bytes = txn.read(&self.db_ptr, cid)?;
@@ -446,7 +451,7 @@ impl<S: Db> CodeStore<S> {
         };
         txn.commit()?;
         let instance = linker.instantiate(store, &module)?;
-        self.cache.push(*cid, instance.clone());
+        self.cache.push(*cid, instance);
         Ok(Some(instance))
     }
 
@@ -458,11 +463,100 @@ impl<S: Db> CodeStore<S> {
         let mut cursor = txn.ro_cursor(&self.db_ptr)?;
         // TODO: if we store contracts and agents in the same db, we have to change the logic here
         for (key, _value) in cursor.iter() {
-            let cid = ContractId::from_bytes(key.try_into()?);
+            let cid = ContractId::from_bytes(
+                key.try_into()
+                    .map_err(|_| crate::Error::msg("failed to parse contract-id from storage"))?,
+            );
             out.push(cid);
         }
         drop(cursor);
         txn.commit()?;
         Ok(out)
+    }
+}
+
+fn check_module(engine: &Engine, module: &Module) -> Result<()> {
+    let functions = [
+        "process_transaction",
+        "process_introduction",
+        "process_revocation",
+        "http_get_state",
+        "http_post_action",
+    ];
+    for func in functions {
+        let exp = module
+            .get_export(func)
+            .ok_or_else(|| ErrorKind::MissingExport { func })?;
+        if let ExternType::Func(func_type) = exp {
+            if !func_type.matches(&FuncType::new(engine, [], [])) {
+                return Err(ErrorKind::InvalidFuncType { func }.into());
+            }
+        } else {
+            return Err(ErrorKind::InvalidExport { func }.into());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ALL_EXPORTS: &str = r#"
+(module
+  ;; Declare the function `placeholder`
+  (func $placeholder)
+
+  ;; Export the functions so they can be called from outside the module
+  (export "process_transaction" (func $placeholder))
+  (export "process_introduction" (func $placeholder))
+  (export "process_revocation" (func $placeholder))
+  (export "http_get_state" (func $placeholder))
+  (export "http_post_action" (func $placeholder))
+)
+"#;
+    fn remove_line_with_pattern(original: &str, pattern: &str) -> String {
+        // Create a new Vec to hold the processed lines
+        let mut new_lines = Vec::new();
+
+        for line in original.lines() {
+            // Check if the line contains the pattern
+            if !line.contains(pattern) {
+                // Otherwise, push the original line
+                new_lines.push(line);
+            }
+        }
+
+        // Collect the lines back into a single string
+        new_lines.join("\n")
+    }
+
+    #[test]
+    fn missing_exports() {
+        let mut config = Config::new();
+        config.cranelift_opt_level(wasmtime::OptLevel::Speed);
+        config.async_support(false);
+        let engine = Engine::new(&config).unwrap();
+
+        // These are the functions, that must not be missing
+        let functions = [
+            "process_transaction",
+            "process_introduction",
+            "process_revocation",
+            "http_get_state",
+            "http_post_action",
+        ];
+        for func in functions {
+            let wat_missing = remove_line_with_pattern(ALL_EXPORTS, func);
+            let module = Module::new(&engine, &wat_missing);
+            assert!(module.is_ok());
+            let err = check_module(&engine, &module.unwrap());
+            assert!(err.is_err());
+        }
+        let module = Module::new(&engine, &ALL_EXPORTS);
+        assert!(module.is_ok());
+
+        let err = check_module(&engine, &module.unwrap());
+        assert!(err.is_ok());
     }
 }

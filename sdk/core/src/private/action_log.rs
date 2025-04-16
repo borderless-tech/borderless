@@ -1,4 +1,3 @@
-use borderless_abi::timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::{contract::TxCtx, debug};
@@ -102,7 +101,7 @@ impl ActionLog {
         let full_len = self.len_commited + 1;
         let sub_key = self.len_commited;
         let mut value = self.buffer.unwrap();
-        value.commited = unsafe { timestamp() };
+        // value.commited = unsafe { timestamp() };
         write_field(BASE_KEY_ACTION_LOG, sub_key, &value);
         write_field(BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN, &full_len);
         debug!("Commited action to log. len={full_len}");

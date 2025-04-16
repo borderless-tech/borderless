@@ -6,14 +6,12 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::Context;
-use borderless_sdk::{
+use borderless::{
     __private::{
-        action_log::SUB_KEY_LOG_LEN,
         from_postcard_bytes,
         storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
     },
-    contract::{ActionRecord, CallAction, Introduction, Metadata, TxCtx},
+    contract::{CallAction, Introduction, Metadata, Revocation, TxCtx},
     log::LogLine,
     ContractId,
 };
@@ -26,7 +24,15 @@ use rand::{random, Rng};
 
 use borderless_kv_store::*;
 
-use crate::{action_log::ActionLog, logger::Logger, CONTRACT_SUB_DB};
+use crate::{
+    action_log::{ActionLog, ActionRecord, SUB_KEY_LOG_LEN},
+    controller::{
+        read_system_value, write_introduction, write_revocation, write_system_value, Controller,
+    },
+    error::ErrorKind,
+    logger::Logger,
+    Error, Result, CONTRACT_SUB_DB,
+};
 
 pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
@@ -60,13 +66,16 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` already has an active contract results in an error.
-    pub fn begin_mutable_exec(&mut self, contract_id: ContractId) -> anyhow::Result<()> {
+    pub fn begin_mutable_exec(&mut self, cid: ContractId) -> Result<()> {
         if self.active_contract.is_some() {
-            return Err(anyhow::Error::msg(
-                "Must finish contract execution before starting new",
+            return Err(Error::msg(
+                "Must finish contract execution before starting new one",
             ));
         }
-        self.active_contract = ActiveContract::Mutable(contract_id);
+        if Controller::new(&self.db).contract_revoked(&cid)? {
+            return Err(ErrorKind::RevokedContract { cid }.into());
+        }
+        self.active_contract = ActiveContract::Mutable(cid);
         self.log_buffer.clear();
         self.db_acid_txn_buffer = Some(Vec::new());
         Ok(())
@@ -82,24 +91,20 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
-    pub fn finish_mutable_exec(&mut self, commit: Commit) -> anyhow::Result<()> {
+    pub fn finish_mutable_exec(&mut self, commit: Commit) -> Result<()> {
         let cid = match self.active_contract {
             ActiveContract::Mutable(cid) => cid,
             ActiveContract::Immutable(_) => {
-                return Err(anyhow::Error::msg(
-                    "Contract execution was marked as immutable",
-                ));
+                return Err(Error::msg("Contract execution was marked as immutable"));
             }
             ActiveContract::None => {
-                return Err(anyhow::Error::msg(
-                    "Must start contract execution before commiting",
-                ));
+                return Err(Error::msg("Must start contract execution before commiting"));
             }
         };
         let now = Instant::now();
 
         // Commit storage buffer
-        let buf = std::mem::replace(&mut self.db_acid_txn_buffer, None).unwrap_or_default();
+        let buf = std::mem::take(&mut self.db_acid_txn_buffer).unwrap_or_default();
         let mut txn = self.db.begin_rw_txn()?;
         for op in buf.into_iter() {
             match op {
@@ -107,6 +112,14 @@ impl<S: Db> VmState<S> {
                 StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
             }
         }
+        // Current timestamp ( milliseconds since epoch )
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("timestamp < 1970")
+            .as_millis()
+            .try_into()
+            .expect("u64 should fit for 584942417 years");
+
         // Commit external item (introduction, action or revocation)
         match commit {
             Commit::Action { action, tx_ctx } => {
@@ -117,16 +130,15 @@ impl<S: Db> VmState<S> {
                 mut introduction,
                 tx_ctx,
             } => {
-                introduction.meta.active_since = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .context("timestamp < 1970")?
-                    .as_millis()
-                    .try_into()
-                    .context("u64 should fit for 584942417 years")?;
-                introduction.meta.tx_ctx = Some(tx_ctx);
+                assert_eq!(introduction.contract_id, cid);
+                introduction.meta.active_since = timestamp;
+                introduction.meta.tx_ctx_introduction = Some(tx_ctx);
                 write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
             }
-            Commit::Revocation(_) => todo!(),
+            Commit::Revocation { revocation, tx_ctx } => {
+                assert_eq!(revocation.contract_id, cid);
+                write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, tx_ctx, timestamp)?;
+            }
         }
 
         // Flush log
@@ -154,9 +166,9 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` already has an active contract results in an error.
-    pub fn begin_immutable_exec(&mut self, cid: ContractId) -> anyhow::Result<()> {
+    pub fn begin_immutable_exec(&mut self, cid: ContractId) -> Result<()> {
         if self.active_contract.is_some() {
-            return Err(anyhow::Error::msg("Cannot overwrite active contract"));
+            return Err(Error::msg("Cannot overwrite active contract"));
         }
         self.active_contract = ActiveContract::Immutable(cid);
         Ok(())
@@ -173,13 +185,13 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
-    pub fn finish_immutable_exec(&mut self) -> anyhow::Result<Vec<LogLine>> {
+    pub fn finish_immutable_exec(&mut self) -> Result<Vec<LogLine>> {
         if self.active_contract.is_none() {
-            return Err(anyhow::Error::msg("Cannot clear non existing contract"));
+            return Err(Error::msg("Cannot clear non existing contract"));
         }
         self.active_contract = ActiveContract::None;
         self.db_acid_txn_buffer = None;
-        let log_output = std::mem::replace(&mut self.log_buffer, Vec::new());
+        let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
 
@@ -189,7 +201,7 @@ impl<S: Db> VmState<S> {
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
         self.active_contract
             .as_opt()
-            .map(|cid| StorageKey::user_key(&cid, base_key, sub_key))
+            .map(|cid| StorageKey::user_key(cid, base_key, sub_key))
             .ok_or_else(|| wasmtime::Error::msg("no contract has been activated"))
     }
 
@@ -209,16 +221,12 @@ impl<S: Db> VmState<S> {
     }
 
     /// Tries to read the action with the given index for the currently active contract
-    pub fn read_action(
-        &self,
-        cid: &ContractId,
-        idx: usize,
-    ) -> anyhow::Result<Option<ActionRecord>> {
+    pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
         read_action(&self.db, cid, idx)
     }
 
     /// Returns the length of all actions
-    pub fn len_actions(&self, cid: &ContractId) -> anyhow::Result<Option<u64>> {
+    pub fn len_actions(&self, cid: &ContractId) -> Result<Option<u64>> {
         len_actions(&self.db, cid)
     }
 }
@@ -252,21 +260,15 @@ pub fn tic(mut caller: Caller<'_, VmState<impl Db>>) {
 }
 
 pub fn toc(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
-    let timer = caller.data().last_timer.context("no timer present")?;
+    let timer = caller
+        .data()
+        .last_timer
+        .ok_or_else(|| wasmtime::Error::msg("no timer present"))?;
     let elapsed = timer.elapsed();
-    elapsed
+    Ok(elapsed
         .as_nanos()
         .try_into()
-        .context("your program should not run for 584.942 years")
-}
-
-pub fn timestamp() -> wasmtime::Result<u64> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("timestamp < 1970")?
-        .as_millis()
-        .try_into()
-        .context("u64 should fit for 584942417 years")
+        .expect("your program should not run for 584.942 years"))
 }
 
 // TODO: Change this to "log"
@@ -308,7 +310,7 @@ pub fn read_register(
     mut caller: Caller<'_, VmState<impl Db>>,
     register_id: u64,
     ptr: u64,
-) -> Result<(), wasmtime::Error> {
+) -> wasmtime::Result<()> {
     // Get data
     //
     // Can we avoid the cloning here ?
@@ -490,7 +492,10 @@ pub enum Commit {
         introduction: Introduction,
         tx_ctx: TxCtx,
     },
-    Revocation(()),
+    Revocation {
+        revocation: Revocation,
+        tx_ctx: TxCtx,
+    },
 }
 
 /// Represents the different states of an active contract
@@ -513,11 +518,7 @@ impl ActiveContract {
     }
 
     pub fn is_none(&self) -> bool {
-        if let ActiveContract::None = &self {
-            true
-        } else {
-            false
-        }
+        matches!(self, ActiveContract::None)
     }
 
     pub fn as_opt(&self) -> Option<&ContractId> {
@@ -528,11 +529,7 @@ impl ActiveContract {
     }
 
     pub fn is_immutable(&self) -> bool {
-        if let ActiveContract::Immutable(_) = &self {
-            true
-        } else {
-            false
-        }
+        matches!(self, ActiveContract::Immutable(_))
     }
 }
 
@@ -555,12 +552,9 @@ impl StorageOp {
     }
 }
 
+// TODO: Remove
 /// Reads an action from the database
-pub fn read_action(
-    db: &impl Db,
-    cid: &ContractId,
-    idx: usize,
-) -> anyhow::Result<Option<ActionRecord>> {
+pub fn read_action(db: &impl Db, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
     let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, idx as u64);
     let db_ptr = db.open_sub_db(CONTRACT_SUB_DB)?;
     let txn = db.begin_ro_txn()?;
@@ -573,8 +567,9 @@ pub fn read_action(
     Ok(value)
 }
 
+// TODO: Remove
 /// Returns the length of all actions
-pub fn len_actions(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<u64>> {
+pub fn len_actions(db: &impl Db, cid: &ContractId) -> Result<Option<u64>> {
     let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN);
     let db_ptr = db.open_sub_db(CONTRACT_SUB_DB)?;
     let txn = db.begin_ro_txn()?;
@@ -584,118 +579,4 @@ pub fn len_actions(db: &impl Db, cid: &ContractId) -> anyhow::Result<Option<u64>
         None
     };
     Ok(value)
-}
-
-// Helper function to write fields with system-keys
-pub(crate) fn write_system_value<S: Db, D: Serialize>(
-    db_ptr: &S::Handle,
-    txn: &mut <S as Db>::RwTx<'_>,
-    cid: &ContractId,
-    base_key: u64,
-    sub_key: u64,
-    data: &D,
-) -> anyhow::Result<()> {
-    let key = StorageKey::system_key(&cid, base_key, sub_key);
-    let bytes = postcard::to_allocvec(data)?;
-    txn.write(db_ptr, &key, &bytes)?;
-    Ok(())
-}
-
-// Helper function to write fields with system-keys
-pub(crate) fn read_system_value<S: Db, D: DeserializeOwned>(
-    db_ptr: &S::Handle,
-    txn: &<S as Db>::RwTx<'_>,
-    cid: &ContractId,
-    base_key: u64,
-    sub_key: u64,
-) -> anyhow::Result<Option<D>> {
-    let key = StorageKey::system_key(&cid, base_key, sub_key);
-    let bytes = txn.read(db_ptr, &key)?;
-    match bytes {
-        Some(val) => {
-            let out = postcard::from_bytes(val)?;
-            Ok(Some(out))
-        }
-        None => Ok(None),
-    }
-}
-
-fn write_introduction<S: Db>(
-    db_ptr: &S::Handle,
-    txn: &mut <S as Db>::RwTx<'_>,
-    introduction: &Introduction,
-) -> anyhow::Result<()> {
-    use borderless_sdk::__private::storage_keys::*;
-    let cid = introduction.contract_id;
-
-    // Write contract-id
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_CONTRACT_ID,
-        &introduction.contract_id,
-    )?;
-
-    // Write participant list
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_PARTICIPANTS,
-        &introduction.participants,
-    )?;
-
-    // Write roles list
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_ROLES,
-        &introduction.roles,
-    )?;
-
-    // Write sink list
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_SINKS,
-        &introduction.sinks,
-    )?;
-
-    // Write description
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_DESC,
-        &introduction.desc,
-    )?;
-
-    // Write meta
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_META,
-        &introduction.meta,
-    )?;
-
-    // Write initial state
-    write_system_value::<S, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_INIT_STATE,
-        &introduction.initial_state,
-    )?;
-    Ok(())
 }

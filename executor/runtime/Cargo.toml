@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow.workspace = true
-borderless-sdk = { path = "../../sdk/core" }
+borderless.workspace = true
 borderless-kv-store = { path = "../../kv-store" }
 nohash = "0.2.0"
 log.workspace = true
@@ -22,3 +21,4 @@ mime = "0.3.17"
 ahash = "0.8.11"
 lru = "0.14.0"
 serde_bytes.workspace = true
+thiserror.workspace = true

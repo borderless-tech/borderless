@@ -1,9 +1,9 @@
 use crate::product;
-use borderless_sdk::__private::dev::rand;
-use borderless_sdk::__private::storage_keys::make_user_key;
-use borderless_sdk::__private::storage_traits::Storeable;
-use borderless_sdk::collections::lazyvec::LazyVec;
-use borderless_sdk::{info, warn, Context, Result};
+use borderless::__private::dev::rand;
+use borderless::__private::storage_keys::make_user_key;
+use borderless::__private::storage_traits::Storeable;
+use borderless::collections::lazyvec::LazyVec;
+use borderless::{info, warn, Context, Result};
 
 #[macro_export]
 macro_rules! ensure {

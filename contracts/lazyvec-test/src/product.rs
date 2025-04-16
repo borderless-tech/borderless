@@ -1,8 +1,8 @@
-use borderless_sdk::__private::dev::rand;
-use borderless_sdk::__private::storage_keys::make_user_key;
-use borderless_sdk::__private::storage_traits::Storeable;
-use borderless_sdk::collections::lazyvec::LazyVec;
-use borderless_sdk::{info, new_error, warn, Result};
+use borderless::__private::dev::rand;
+use borderless::__private::storage_keys::make_user_key;
+use borderless::__private::storage_traits::Storeable;
+use borderless::collections::lazyvec::LazyVec;
+use borderless::{info, new_error, warn, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
