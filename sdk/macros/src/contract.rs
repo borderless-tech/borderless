@@ -19,11 +19,11 @@ pub fn parse_module_content(
 
     let actions = get_actions(&state, &mod_items)?;
 
-    let action_types: Vec<_> = actions.iter().map(ActionFn::gen_type_tokens).collect();
+    let action_types = actions.iter().map(ActionFn::gen_type_tokens);
 
-    let call_action: Vec<_> = actions.iter().map(|a| a.gen_call_tokens(&state)).collect();
+    let call_action = actions.iter().map(|a| a.gen_call_tokens(&state));
 
-    let action_names: Vec<_> = actions.iter().map(ActionFn::method_name).collect();
+    let action_names = actions.iter().map(ActionFn::method_name);
 
     let read_state = quote! {
         let mut state = <#state as ::borderless::__private::storage_traits::State>::load()?;
@@ -189,8 +189,8 @@ impl ActionFn {
                 pub struct #ident ;
             }
         } else {
-            let fields: Vec<_> = self.args.iter().map(|a| a.0.clone()).collect();
-            let types: Vec<_> = self.args.iter().map(|a| a.1.clone()).collect();
+            let fields = self.args.iter().map(|a| a.0.clone());
+            let types = self.args.iter().map(|a| a.1.clone());
             quote! {
                 #[derive(serde::Serialize, serde::Deserialize)]
                 pub struct #ident {
@@ -216,7 +216,7 @@ impl ActionFn {
                 #state_ident::#fn_ident(#mut_state);
             }
         } else {
-            let arg_idents: Vec<_> = self.args.iter().map(|a| a.0.clone()).collect();
+            let arg_idents = self.args.iter().map(|a| a.0.clone());
             quote! {
                 let args: __derived::#args_ident = ::borderless::serialize::from_value(action.params)?;
                 #state_ident::#fn_ident(#mut_state, #(args.#arg_idents),*);
