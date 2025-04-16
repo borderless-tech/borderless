@@ -22,7 +22,18 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
 
     let storeable = quote! { ::borderless::__private::storage_traits::Storeable };
 
+    let type_checks = ftypes.iter().map(|ty| {
+        quote! {
+            __check_storeable::<#ty>();
+        }
+    });
+
     Ok(quote! {
+        const _: () = {
+            const fn __check_storeable<T: #storeable>() {}
+            #(#type_checks)*
+        };
+
         impl ::borderless::__private::storage_traits::State for #ident {
             fn load() -> ::borderless::Result<Self> {
                 // Decode every field based on the Storeable implementation
