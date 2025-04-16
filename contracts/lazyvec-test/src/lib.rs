@@ -58,19 +58,12 @@ fn exec_run() -> Result<()> {
         .method_name()
         .context("missing required method-name")?;
 
-    let storage_key = make_user_key(1000);
-    let lazy_vec: LazyVec<product::Product> = LazyVec::open(storage_key);
-
     match method {
         "test_product" => {
             test_product()?;
         }
         other => return Err(new_error!("Unknown method: {other}")),
     }
-
-    // Commit state
-    info!("New LazyVec length is: {}", lazy_vec.len());
-    lazy_vec.commit(storage_key);
     Ok(())
 }
 

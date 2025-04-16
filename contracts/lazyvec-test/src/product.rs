@@ -58,10 +58,11 @@ impl Display for Product {
 }
 
 pub fn test_product() -> Result<()> {
+    // Load LazyVec from DB
     let storage_key = make_user_key(1000);
     let mut lazy_vec = LazyVec::open(storage_key);
 
-    info!("Number of products in the lazy vector: {}", lazy_vec.len());
+    info!("Number of products BEFORE: {}", lazy_vec.len());
     if lazy_vec.len() > 100000 {
         warn!("Too many products! Clearing...");
         lazy_vec.clear();
@@ -82,5 +83,8 @@ pub fn test_product() -> Result<()> {
             return Err(new_error!("{} !== {}", *from_vec, product));
         }
     }
+    info!("Number of products AFTER: {}", lazy_vec.len());
+    // Commit state
+    lazy_vec.commit(storage_key);
     Ok(())
 }
