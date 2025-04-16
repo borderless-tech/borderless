@@ -1,3 +1,4 @@
+mod product;
 use borderless_sdk::{error, info, new_error, warn, Context, Result};
 
 #[no_mangle]
@@ -75,8 +76,6 @@ fn exec_run() -> Result<()> {
 
 use crate::product::test_product;
 use borderless_sdk::contract::Introduction;
-
-mod product;
 
 fn exec_introduction() -> Result<()> {
     // Read action
