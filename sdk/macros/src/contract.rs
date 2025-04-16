@@ -325,7 +325,7 @@ fn get_actions_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result<V
     }
     if actions.is_empty() {
         Err(Error::new_spanned(
-            state_ident,
+            impl_block,
             format!("No actions defined for '{state_ident}'"),
         ))
     } else {
