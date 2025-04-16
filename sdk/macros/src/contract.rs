@@ -1,7 +1,9 @@
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
-use syn::Result;
+use syn::{Error, Result};
 use syn::{Ident, Item};
+
+use crate::utils::check_if_state;
 
 pub fn parse_module_content(
     mod_span: Span,
@@ -12,18 +14,19 @@ pub fn parse_module_content(
         let input = read_register(REGISTER_INPUT).context("missing input register")?;
     };
 
+    let state = get_state(&mod_items, &mod_span)?;
+    // TODO: Parse state_ident !
+    //
     let read_state = quote! {
-        // Read state ( TODO )
-        // let storage_key_switch = make_user_key(xxh3_64("FLIPPER::switch".as_bytes()));
-        // let storage_key_counter = make_user_key(xxh3_64("FLIPPER::counter".as_bytes()));
-        // let switch = read_field(storage_key_switch, 0).context("missing field switch")?;
-        // let counter = read_field(storage_key_counter, 0).context("missing field counter")?;
-        // let mut state = Flipper { switch, counter };
+        let mut state = <#state as ::borderless::__private::storage_traits::State>::load()?;
+        ::borderless::info!("-- {state:#?}");
     };
 
     let match_method = quote! {};
 
-    let commit_state = quote! {};
+    let commit_state = quote! {
+        <#state as ::borderless::__private::storage_traits::State>::commit(state);
+    };
 
     let wasm_impl = quote! {
         pub fn exec_txn() -> Result<()> {
@@ -49,6 +52,8 @@ pub fn parse_module_content(
             let s = introduction.pretty_print()?;
             info!("{s}");
             // TODO: Parse state from introduction
+            let state = <#state as ::borderless::__private::storage_traits::State>::init(introduction.initial_state)?;
+
             #commit_state
             Ok(())
         }
@@ -72,6 +77,7 @@ pub fn parse_module_content(
     Ok(quote! {
         #[automatically_derived]
         pub(super) mod __derived {
+            use super::*;
             use ::borderless::*;
             use ::borderless::__private::{
                 read_field, read_register, read_string_from_register, registers::*,
@@ -132,6 +138,21 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
         }
     }
     }
+}
+
+// TODO: Make this the parse_items function later on, that checks that every required item is in the module
+fn get_state(items: &[Item], mod_span: &Span) -> Result<Ident> {
+    for item in items {
+        if let Item::Struct(item_struct) = item {
+            if check_if_state(item_struct) {
+                return Ok(item_struct.ident.clone());
+            }
+        }
+    }
+    Err(Error::new(
+        *mod_span,
+        "Each module requires a 'State' - use #[derive(State)]",
+    ))
 }
 
 /*

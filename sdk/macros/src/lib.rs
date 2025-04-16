@@ -25,7 +25,7 @@ pub fn contract(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     let new_tokens = match contract::parse_module_content(brace.span.join(), &items, &module.ident)
     {
         Ok(tokens) => tokens,
-        Err(e) => e.to_compile_error(),
+        Err(e) => return e.to_compile_error().into(),
     };
 
     // Add these new tokens to the existing items

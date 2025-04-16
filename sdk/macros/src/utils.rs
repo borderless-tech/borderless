@@ -1,7 +1,10 @@
 #![allow(unused)]
 //! Creates some utility functions to check and parse different attributes.
 use proc_macro2::Span;
-use syn::{Attribute, Fields, Ident, ItemEnum, MetaList, Result, Type};
+use syn::{
+    parse::Parser, punctuated::Punctuated, Attribute, Fields, Ident, ItemEnum, ItemStruct,
+    MetaList, Path, Result, Token, Type,
+};
 
 /// Returns true if the meta-list has a 'derive' attribute
 pub(crate) fn has_derive(meta_list: &MetaList) -> bool {
@@ -38,6 +41,42 @@ pub(crate) fn check_if_unit(item_enum: &ItemEnum) -> Result<()> {
     }
     Ok(())
 }
+pub(crate) fn check_if_state(item_struct: &ItemStruct) -> bool {
+    // Check attributes for "derive(State)" and "derive(borderless::State)"
+    let borderless = Ident::new("borderless", Span::call_site());
+    let target = Ident::new("State", Span::call_site());
+    for attr in item_struct.attrs.iter() {
+        let meta_list = match &attr.meta {
+            syn::Meta::List(m) => m,
+            _ => continue,
+        };
+        if !has_derive(meta_list) {
+            continue;
+        }
+        let parser = Punctuated::<Path, Token![,]>::parse_separated_nonempty;
+        let derive_paths = parser.parse2(meta_list.tokens.clone()).unwrap_or_default();
+        for path in derive_paths {
+            let mut iter = path.segments.iter();
+            let first = iter.next();
+            let sec = iter.next();
+            match (first, sec) {
+                (Some(first), Some(sec)) => {
+                    if first.ident == borderless || sec.ident == target {
+                        return true;
+                    }
+                }
+                (Some(first), None) => {
+                    if first.ident == target {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
 /// Checks if some attribute is an `#[action]`
 pub(crate) fn check_if_action(attr: &Attribute) -> bool {
     check_attr_name(attr, "action")
