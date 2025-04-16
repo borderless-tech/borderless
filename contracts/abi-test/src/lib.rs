@@ -298,6 +298,16 @@ impl Display for Flipper {
     }
 }
 
+pub enum FlipperActions {
+    FlipSwitch,
+    SetSwitch { switch: bool },
+    Something,
+}
+
+pub enum Sinks {
+    OtherFlipper(FlipperActions),
+}
+
 impl Flipper {
     fn flip_switch(&mut self) {
         self.switch = !self.switch;
@@ -308,6 +318,13 @@ impl Flipper {
         self.counter += 1;
         self.switch = switch;
     }
+
+    // fn something(&mut self) -> Result<()> {
+    //     // call(Sinks::OtherFlipper(FlipperActions::SetSwitch {
+    //     //     switch: false,
+    //     // }));
+    //     Ok(())
+    // }
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]

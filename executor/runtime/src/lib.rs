@@ -167,6 +167,7 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
+    // TODO: Handle transaction output !
     pub fn process_transaction(
         &mut self,
         cid: &ContractId,

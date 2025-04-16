@@ -552,6 +552,16 @@ impl Display for BlockCtx {
     }
 }
 
+/// Holds transaction data that shall be send "outwards" to the p2p network.
+///
+/// The receiver of an `OutTx` can use the contract-id and data fields
+/// to generate a transaction for the p2p network.
+#[derive(Debug, Clone)]
+pub struct OutTx {
+    pub contract_id: ContractId,
+    pub action: CallAction,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
