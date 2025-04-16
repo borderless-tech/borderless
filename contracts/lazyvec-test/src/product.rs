@@ -14,7 +14,6 @@ pub struct Product {
     related: Vec<Product>,
 }
 
-#[allow(dead_code)]
 impl Product {
     fn new(name: impl AsRef<str>, price: u64, available: bool) -> Self {
         Product {
