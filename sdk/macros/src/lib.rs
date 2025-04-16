@@ -3,6 +3,7 @@ use quote::quote;
 use syn::{parse_macro_input, Item, ItemMod};
 
 mod contract;
+mod utils;
 
 #[proc_macro_attribute]
 pub fn contract(_attrs: TokenStream, input: TokenStream) -> TokenStream {
