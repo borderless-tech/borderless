@@ -20,10 +20,6 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
 
     let storage_keys: Vec<u64> = fields.iter().map(|f| storage_key(f, &ident)).collect();
 
-    // for field in fields {
-    //     field.
-    // }
-
     let storeable = quote! { ::borderless::__private::storage_traits::Storeable };
 
     Ok(quote! {
@@ -53,8 +49,11 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
                 todo!()
             }
 
-            fn commit() {
-
+            fn commit(self) {
+                // call .commit() on every field
+                #(
+                    <#ftypes as #storeable>::commit(self.#idents, #storage_keys);
+                )*
             }
         }
     })

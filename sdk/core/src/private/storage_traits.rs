@@ -76,5 +76,5 @@ pub trait State: Sized {
 
     fn http_get(path: String) -> Option<String>;
 
-    fn commit();
+    fn commit(self);
 }
