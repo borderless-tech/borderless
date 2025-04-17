@@ -398,6 +398,7 @@ impl<S: Db> Runtime<S> {
         }
     }
 
+    // TODO: Decorator
     /// Returns the symbols of the contract
     pub fn get_symbols(&mut self, cid: &ContractId) -> Result<Option<Symbols>> {
         let instance = self
@@ -413,6 +414,8 @@ impl<S: Db> Runtime<S> {
             Err(_) => return Ok(None),
         };
         func.call(&mut self.store, ())?;
+
+        self.store.data_mut().finish_immutable_exec()?;
 
         let bytes = match self.store.data().get_register(REGISTER_OUTPUT) {
             Some(b) => b,

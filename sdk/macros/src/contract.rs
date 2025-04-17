@@ -91,12 +91,7 @@ pub fn parse_module_content(
     let get_symbols = quote! {
         #[automatically_derived]
         pub(crate) fn get_symbols() -> Result<()> {
-            let state_symbols = #as_state::symbols().iter().map(Into::into).collect();
-            let action_symbols = ACTION_SYMBOLS.iter().map(Into::into).collect();
-            let symbols = Symbols {
-                state: state_symbols,
-                actions: action_symbols,
-            };
+            let symbols = Symbols::from_symbols(#as_state::symbols(), ACTION_SYMBOLS);
             let bytes = symbols.to_bytes()?;
             write_register(REGISTER_OUTPUT, &bytes);
             Ok(())

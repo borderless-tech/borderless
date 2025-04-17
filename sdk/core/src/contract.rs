@@ -1,4 +1,4 @@
-use std::{fmt::Display, str::FromStr};
+use std::{collections::BTreeMap, fmt::Display, str::FromStr};
 
 use borderless_hash::Hash256;
 use borderless_id_types::{AgentId, BlockIdentifier, TxIdentifier, Uuid};
@@ -562,50 +562,37 @@ pub struct OutTx {
     pub action: CallAction,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Symbol {
-    /// Name of the symbol
-    name: String,
-    /// Hex-encoded address
-    address: String,
-}
-
-impl From<&(&str, u64)> for Symbol {
-    fn from(value: &(&str, u64)) -> Self {
-        Symbol {
-            name: value.0.to_string(),
-            address: format!("{:08x}", value.1),
-        }
-    }
-}
-
-impl From<&(&str, u32)> for Symbol {
-    fn from(value: &(&str, u32)) -> Self {
-        Symbol {
-            name: value.0.to_string(),
-            address: format!("{:04x}", value.1),
-        }
-    }
-}
-
 /// Generated symbols of a contract
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Symbols {
     /// Fields and addresses (storage-keys) of the contract-state
-    pub state: Vec<Symbol>,
+    pub state: BTreeMap<String, String>,
     /// Method-names and method-ids of all actions
-    pub actions: Vec<Symbol>,
+    pub actions: BTreeMap<String, String>,
 }
 
 impl Symbols {
-    /// Use postcard to encode the `Symbols`
-    pub fn to_bytes(&self) -> Result<Vec<u8>, postcard::Error> {
-        postcard::to_allocvec(&self)
+    pub fn from_symbols(state_syms: &[(&str, u64)], action_syms: &[(&str, u32)]) -> Self {
+        // NOTE: We use a BTreeMap instead of a hash-map to get sorted keys.
+        let mut state = BTreeMap::new();
+        for (name, addr) in state_syms {
+            state.insert(name.to_string(), format!("0x{addr:08x}"));
+        }
+        let mut actions = BTreeMap::new();
+        for (name, addr) in action_syms {
+            actions.insert(name.to_string(), format!("0x{addr:04x}"));
+        }
+        Self { state, actions }
     }
 
-    /// Use postcard to decode the `Symbols`
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, postcard::Error> {
-        postcard::from_bytes(bytes)
+    /// Use json to encode the `Symbols`
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    /// Use json to decode the `Symbols`
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
     }
 }
 
