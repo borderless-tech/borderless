@@ -12,8 +12,6 @@ use crate::__private::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 
-// TODO: Implement storage traits
-
 /// A value that can be read from the storage lazily.
 ///
 /// The value will only be read upon the first access.
@@ -103,7 +101,7 @@ impl<T: Serialize + DeserializeOwned + Display> Display for Lazy<T> {
 
 impl<T: Serialize + DeserializeOwned + std::fmt::Debug> std::fmt::Debug for Lazy<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Stored")
+        f.debug_struct("Lazy")
             .field("value", &self.value)
             .field("changed", &self.changed)
             .finish()
@@ -131,8 +129,8 @@ impl<T: Serialize + DeserializeOwned> Storeable for Lazy<T> {
     }
 
     fn commit(self, base_key: u64) {
-        // NOTE: changed is only true, if the value is set and therefore Some(T)
         debug_assert!(self.base_key == base_key);
+        // NOTE: changed is only true, if the value is set and therefore Some(T)
         if self.changed {
             let value = unsafe { &*self.value.get() };
             write_field(base_key, 0, value.as_ref().unwrap());
