@@ -270,6 +270,11 @@ where
                 let meta = controller.contract_meta(&contract_id)?;
                 Ok(json_response(&meta))
             }
+            "symbols" => {
+                let mut rt = self.rt.lock();
+                let symbols = rt.get_symbols(&contract_id)?;
+                Ok(json_response(&symbols))
+            }
             // Same as empty path
             "" => {
                 let full_info = controller.contract_full(&contract_id)?;

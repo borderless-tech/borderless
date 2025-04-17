@@ -88,52 +88,56 @@ pub fn parse_module_content(
     let as_state = quote! {
         <#state as ::borderless::__private::storage_traits::State>
     };
-
-    let read_state = quote! {
-        let mut state = #as_state::load()?;
-    };
-
-    let commit_state = quote! {
-        #as_state::commit(state);
-    };
-
-    let wasm_impl = quote! {
-        #exec_post
-
+    let get_symbols = quote! {
         #[automatically_derived]
-        pub fn exec_txn() -> Result<()> {
+        pub(crate) fn get_symbols() -> Result<()> {
+            let state_symbols = #as_state::symbols().iter().map(Into::into).collect();
+            let action_symbols = ACTION_SYMBOLS.iter().map(Into::into).collect();
+            let symbols = Symbols {
+                state: state_symbols,
+                actions: action_symbols,
+            };
+            let bytes = symbols.to_bytes()?;
+            write_register(REGISTER_OUTPUT, &bytes);
+            Ok(())
+        }
+    };
+
+    let exec_txn = quote! {
+        #[automatically_derived]
+        pub(crate) fn exec_txn() -> Result<()> {
             #read_input
 
             let action = CallAction::from_bytes(&input)?;
             let s = action.pretty_print()?;
             info!("{s}");
-            #read_state
+            let mut state = #as_state::load()?;
             #match_and_call_action
-            #commit_state
+            #as_state::commit(state);
             Ok(())
         }
-
         #[automatically_derived]
-        pub fn exec_introduction() -> Result<()> {
+        pub(crate) fn exec_introduction() -> Result<()> {
             #read_input
             let introduction = Introduction::from_bytes(&input)?;
             let s = introduction.pretty_print()?;
             info!("{s}");
             let state = #as_state::init(introduction.initial_state)?;
-            #commit_state
+            #as_state::commit(state);
             Ok(())
         }
-
         #[automatically_derived]
-        pub fn exec_revocation() -> Result<()> {
+        pub(crate) fn exec_revocation() -> Result<()> {
             #read_input
             let r = Revocation::from_bytes(&input)?;
             info!("Revoked contract. Reason: {}", r.reason);
             Ok(())
         }
+    };
 
+    let exec_http = quote! {
         #[automatically_derived]
-        pub fn exec_get_state() -> Result<()> {
+        pub(crate) fn exec_get_state() -> Result<()> {
             let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
             let result = #as_state::http_get(path)?;
             let status: u16 = if result.is_some() { 200 } else { 404 };
@@ -142,9 +146,8 @@ pub fn parse_module_content(
             write_string_to_register(REGISTER_OUTPUT_HTTP_RESULT, payload);
             Ok(())
         }
-
         #[automatically_derived]
-        pub fn exec_post_action() -> Result<()> {
+        pub(crate) fn exec_post_action() -> Result<()> {
             let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
             let payload = read_register(REGISTER_INPUT_HTTP_PAYLOAD).context("missing http-payload")?;
             match post_action_response(path, payload) {
@@ -161,7 +164,8 @@ pub fn parse_module_content(
         }
     };
 
-    Ok(quote! {
+    // Combine everything in the __derived module:
+    let derived = quote! {
         #[doc(hidden)]
         #[automatically_derived]
         pub(super) mod __derived {
@@ -174,9 +178,13 @@ pub fn parse_module_content(
             use ::borderless::contract::*;
             #action_symbols
             #(#action_types)*
-            #wasm_impl
+            #exec_post
+            #get_symbols
+            #exec_txn
+            #exec_http
         }
-    })
+    };
+    Ok(derived)
 }
 
 pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
@@ -228,6 +236,15 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
         let result = #derived::exec_post_action();
         if let Err(e) = result {
             ::borderless::error!("http-post failed: {e:?}");
+        }
+    }
+
+    #[no_mangle]
+    #[automatically_derived]
+    pub extern "C" fn get_symbols() {
+        let result = #derived::get_symbols();
+        if let Err(e) = result {
+            ::borderless::error!("get-symbols failed: {e:?}");
         }
     }
     }

@@ -562,6 +562,53 @@ pub struct OutTx {
     pub action: CallAction,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Symbol {
+    /// Name of the symbol
+    name: String,
+    /// Hex-encoded address
+    address: String,
+}
+
+impl From<&(&str, u64)> for Symbol {
+    fn from(value: &(&str, u64)) -> Self {
+        Symbol {
+            name: value.0.to_string(),
+            address: format!("{:08x}", value.1),
+        }
+    }
+}
+
+impl From<&(&str, u32)> for Symbol {
+    fn from(value: &(&str, u32)) -> Self {
+        Symbol {
+            name: value.0.to_string(),
+            address: format!("{:04x}", value.1),
+        }
+    }
+}
+
+/// Generated symbols of a contract
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Symbols {
+    /// Fields and addresses (storage-keys) of the contract-state
+    pub state: Vec<Symbol>,
+    /// Method-names and method-ids of all actions
+    pub actions: Vec<Symbol>,
+}
+
+impl Symbols {
+    /// Use postcard to encode the `Symbols`
+    pub fn to_bytes(&self) -> Result<Vec<u8>, postcard::Error> {
+        postcard::to_allocvec(&self)
+    }
+
+    /// Use postcard to decode the `Symbols`
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, postcard::Error> {
+        postcard::from_bytes(bytes)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
