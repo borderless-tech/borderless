@@ -16,7 +16,7 @@ mod proxy;
 use crate::__private::storage_traits;
 use crate::__private::storage_traits::private::Sealed;
 use crate::collections::lazyvec::ROOT_KEY;
-use cache::{Cache, Cell};
+use cache::{Cache, KeyPair};
 use proxy::{Proxy, ProxyMut};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -66,7 +66,7 @@ where
 
     pub fn insert(&mut self, key: u64, value: V) -> Option<Proxy<'_, V>> {
         //let prev = self.get(key);
-        self.cache.write(key, Cell::new(key, value));
+        self.cache.write(key, KeyPair::new(key, value));
         //prev
         None // TODO Fix borrow conflicts
     }
