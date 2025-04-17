@@ -12,10 +12,15 @@ use crate::{
 
 use super::storage_has_key;
 
+pub(crate) mod private {
+    /// Seals the implementation of the traits defined in `super`
+    pub trait Sealed {}
+}
+
 // TODO: Maybe make the decode fallible ?
 /// Trait used by the macro for storing and commiting values.
 ///
-/// It is automatically implemented for all types that are serializable by serde (as they have a [`Packed`] layout).
+/// It is automatically implemented for all types that are serializable by serde.
 pub trait Storeable: private::Sealed + Sized {
     /// Decodes a value from the storage using its base-key
     fn decode(base_key: u64) -> Self;
@@ -33,23 +38,30 @@ pub trait Storeable: private::Sealed + Sized {
     }
 }
 
-pub(crate) mod private {
-    /// Seals the implementation of `Packed` and `Storeable`.
-    pub trait Sealed {}
+/// Indicates a storeable state for either contracts or software-agents.
+///
+/// Note: You never want to implement this on your own, you always want to derive this trait
+pub trait State: Sized {
+    fn load() -> Result<Self>;
+
+    fn init(value: serde_json::Value) -> Result<Self>;
+
+    fn http_get(path: String) -> Result<Option<String>>;
+
+    fn commit(self);
 }
 
-// TODO: Do I really need the "packed" trait, or is this boilerplate ?
-
-/// Trait the implies a "packed" layout
+/// Indicates, that a stored value can be converted into a payload of an http-get request based on the path.
 ///
-/// This is automatically implemented for all types that implement [`serde::Serialize`] and [`serde::Deserialize`].
-/// Those types will be stored under a single key by simply serializing them with [`postcard`].
-/// There are no sub-keys attached to these types.
-pub trait Packed: Storeable {}
+/// Note: The payload will be json encoded.
+pub trait ToPayload: private::Sealed {
+    fn to_payload(&self, path: &str) -> Result<Option<String>>;
+}
 
 // This prevents users from implementing their own version of the Storeable trait
 impl<T: Serialize + DeserializeOwned> private::Sealed for T {}
 
+// Auto-Impl for serde types
 impl<T: Serialize + DeserializeOwned> Storeable for T {
     fn decode(base_key: u64) -> Self {
         // Just read the value from the base-key
@@ -72,18 +84,27 @@ impl<T: Serialize + DeserializeOwned> Storeable for T {
     }
 }
 
-// Serde types are automatically packed
-impl<T: Serialize + DeserializeOwned> Packed for T {}
+impl<T: Serialize + private::Sealed> ToPayload for T {
+    fn to_payload(&self, path: &str) -> Result<Option<String>> {
+        // Different Approach:
+        let value = serde_json::to_value(&self)?;
 
-/// Indicates a storeable state for either contracts or software-agents.
-///
-/// Note: You never want to implement this on your own, you always want to derive this trait
-pub trait State: Sized {
-    fn load() -> Result<Self>;
+        // Instantly return the value
+        if path.is_empty() {
+            return Ok(Some(value.to_string()));
+        }
 
-    fn init(value: serde_json::Value) -> Result<Self>;
-
-    fn http_get(path: String) -> Result<Option<String>>;
-
-    fn commit(self);
+        // Search sub-fields based on path
+        let mut current = &value;
+        for seg in path
+            .split('/')
+            .flat_map(|s| if s.is_empty() { None } else { Some(s) })
+        {
+            current = match current.get(seg) {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+        }
+        Ok(Some(current.to_string()))
+    }
 }

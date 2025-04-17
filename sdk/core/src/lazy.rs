@@ -7,12 +7,10 @@ use std::{
 
 use crate::__private::{
     read_field,
-    storage_traits::{private, Storeable},
+    storage_traits::{private, Storeable, ToPayload},
     write_field,
 };
 use serde::{de::DeserializeOwned, Serialize};
-
-// TODO: Implement storage traits
 
 /// A value that can be read from the storage lazily.
 ///
@@ -137,5 +135,13 @@ impl<T: Serialize + DeserializeOwned> Storeable for Lazy<T> {
             let value = unsafe { &*self.value.get() };
             write_field(base_key, 0, value.as_ref().unwrap());
         }
+    }
+}
+
+impl<T: Serialize + DeserializeOwned> ToPayload for Lazy<T> {
+    fn to_payload(&self, path: &str) -> anyhow::Result<Option<String>> {
+        // Delegate to the inner implementation
+        let value = self.get();
+        value.to_payload(path)
     }
 }

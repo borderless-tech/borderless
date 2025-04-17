@@ -28,25 +28,3 @@ where
     // FCK my life, this works so great...
     Ok(Some(current.to_string()))
 }
-
-// /// Extracts a sub-section from the given value based on the given url path
-// pub fn to_payload<T>(value: &T, path: &str) -> anyhow::Result<Option<serde_json::Value>>
-// where
-//     T: Serialize,
-// {
-//     // Different Approach:
-//     let value = serde_json::to_value(value)?;
-
-//     let mut current = &value;
-//     for seg in path
-//         .split('/')
-//         .flat_map(|s| if s.is_empty() { None } else { Some(s) })
-//     {
-//         current = match current.get(seg) {
-//             Some(v) => v,
-//             None => return Ok(None),
-//         };
-//     }
-//     // FCK my life, this works so great...
-//     Ok(Some(current.clone()))
-// }
