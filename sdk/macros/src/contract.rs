@@ -45,6 +45,7 @@ pub fn parse_module_content(
     };
 
     let wasm_impl = quote! {
+        #[automatically_derived]
         pub fn exec_txn() -> Result<()> {
             #read_input
 
@@ -62,6 +63,7 @@ pub fn parse_module_content(
             Ok(())
         }
 
+        #[automatically_derived]
         pub fn exec_introduction() -> Result<()> {
             #read_input
             let introduction = Introduction::from_bytes(&input)?;
@@ -72,6 +74,7 @@ pub fn parse_module_content(
             Ok(())
         }
 
+        #[automatically_derived]
         pub fn exec_revocation() -> Result<()> {
             #read_input
             let r = Revocation::from_bytes(&input)?;
@@ -79,6 +82,7 @@ pub fn parse_module_content(
             Ok(())
         }
 
+        #[automatically_derived]
         pub fn exec_get_state() -> Result<()> {
             let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
             let result = #as_state::http_get(path)?;
@@ -89,12 +93,14 @@ pub fn parse_module_content(
             Ok(())
         }
 
+        #[automatically_derived]
         pub fn exec_post_action() -> Result<()> {
             Ok(())
         }
     };
 
     Ok(quote! {
+        #[doc(hidden)]
         #[automatically_derived]
         pub(super) mod __derived {
             use super::*;
@@ -115,6 +121,7 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
 
     quote! {
     #[no_mangle]
+    #[automatically_derived]
     pub extern "C" fn process_transaction() {
         let result = #derived::exec_txn();
         match result {
@@ -124,6 +131,7 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     }
 
     #[no_mangle]
+    #[automatically_derived]
     pub extern "C" fn process_introduction() {
         let result = #derived::exec_introduction();
         match result {
@@ -133,6 +141,7 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     }
 
     #[no_mangle]
+    #[automatically_derived]
     pub extern "C" fn process_revocation() {
         let result = #derived::exec_revocation();
         match result {
@@ -142,6 +151,7 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     }
 
     #[no_mangle]
+    #[automatically_derived]
     pub extern "C" fn http_get_state() {
         let result = #derived::exec_get_state();
         if let Err(e) = result {
@@ -150,6 +160,7 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     }
 
     #[no_mangle]
+    #[automatically_derived]
     pub extern "C" fn http_post_action() {
         let result = #derived::exec_post_action();
         if let Err(e) = result {
@@ -187,6 +198,7 @@ impl ActionFn {
         let ident = format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal));
         if self.args.is_empty() {
             quote! {
+                #[automatically_derived]
                 #[derive(serde::Serialize, serde::Deserialize)]
                 pub struct #ident ;
             }
@@ -194,6 +206,7 @@ impl ActionFn {
             let fields = self.args.iter().map(|a| a.0.clone());
             let types = self.args.iter().map(|a| a.1.clone());
             quote! {
+                #[automatically_derived]
                 #[derive(serde::Serialize, serde::Deserialize)]
                 pub struct #ident {
                     #(
