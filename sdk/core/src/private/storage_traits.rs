@@ -74,7 +74,7 @@ pub trait State: Sized {
 
     fn init(value: serde_json::Value) -> Result<Self>;
 
-    fn http_get(path: String) -> Option<String>;
+    fn http_get(path: String) -> Result<Option<String>>;
 
     fn commit(self);
 }

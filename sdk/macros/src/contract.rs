@@ -16,17 +16,21 @@ pub fn parse_module_content(
     };
 
     let state = get_state(&mod_items, &mod_span)?;
-
     let actions = get_actions(&state, &mod_items)?;
-
     let action_types = actions.iter().map(ActionFn::gen_type_tokens);
-
     let call_action = actions.iter().map(|a| a.gen_call_tokens(&state));
-
     let action_names = actions.iter().map(ActionFn::method_name);
 
+    let as_state = quote! {
+        <#state as ::borderless::__private::storage_traits::State>
+    };
+
     let read_state = quote! {
-        let mut state = <#state as ::borderless::__private::storage_traits::State>::load()?;
+        let mut state = #as_state::load()?;
+    };
+
+    let commit_state = quote! {
+        #as_state::commit(state);
     };
 
     let match_method = quote! {
@@ -38,10 +42,6 @@ pub fn parse_module_content(
                 _ => (),
             )*
         }
-    };
-
-    let commit_state = quote! {
-        <#state as ::borderless::__private::storage_traits::State>::commit(state);
     };
 
     let wasm_impl = quote! {
@@ -67,9 +67,7 @@ pub fn parse_module_content(
             let introduction = Introduction::from_bytes(&input)?;
             let s = introduction.pretty_print()?;
             info!("{s}");
-            // TODO: Parse state from introduction
-            let state = <#state as ::borderless::__private::storage_traits::State>::init(introduction.initial_state)?;
-
+            let state = #as_state::init(introduction.initial_state)?;
             #commit_state
             Ok(())
         }
@@ -82,6 +80,12 @@ pub fn parse_module_content(
         }
 
         pub fn exec_get_state() -> Result<()> {
+            let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
+            let result = #as_state::http_get(path)?;
+            let status: u16 = if result.is_some() { 200 } else { 404 };
+            let payload = result.unwrap_or_default();
+            write_register(REGISTER_OUTPUT_HTTP_STATUS, status.to_be_bytes());
+            write_string_to_register(REGISTER_OUTPUT_HTTP_RESULT, payload);
             Ok(())
         }
 
@@ -140,18 +144,16 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     #[no_mangle]
     pub extern "C" fn http_get_state() {
         let result = #derived::exec_get_state();
-        match result {
-            Ok(()) => ::borderless::info!("execution successful"),
-            Err(e) => ::borderless::error!("execution failed: {e:?}"),
+        if let Err(e) = result {
+            ::borderless::error!("http-get failed: {e:?}");
         }
     }
 
     #[no_mangle]
     pub extern "C" fn http_post_action() {
         let result = #derived::exec_post_action();
-        match result {
-            Ok(()) => ::borderless::info!("execution successful"),
-            Err(e) => ::borderless::error!("execution failed: {e:?}"),
+        if let Err(e) = result {
+            ::borderless::error!("http-post failed: {e:?}");
         }
     }
     }

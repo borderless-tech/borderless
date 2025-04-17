@@ -11,7 +11,7 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
     let idents: Vec<Ident> = fields.iter().flat_map(|f| f.ident.clone()).collect();
     let ftypes: Vec<Type> = fields.iter().map(|f| f.ty.clone()).collect();
 
-    let ident_strings: Vec<String> = idents.iter().map(|f| format!("{f}")).collect();
+    let ident_strings: Vec<_> = idents.iter().map(|f| format!("{f}")).collect();
 
     let errs: Vec<_> = idents
         .iter()
@@ -56,8 +56,52 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
                 })
             }
 
-            fn http_get(path: String) -> Option<String> {
-                todo!()
+            // TODO
+            fn http_get(path: String) -> ::borderless::Result<Option<String>> {
+                use ::borderless::{__private::http::to_payload, Context};
+                let path = path.strip_prefix('/').unwrap_or(&path);
+
+                // Extract query string
+                let (path, _query) = match path.split_once('?') {
+                    Some((path, query)) => (path, Some(query)),
+                    None => (path, None),
+                };
+                // Quick-shot, check if the user wants to access the entire state
+                if path.is_empty() {
+                    // State does not implement serialize, so we have to to this field by field
+                    let state = <Self as ::borderless::__private::storage_traits::State>::load()?;
+                    // Manually build the json with the parsed fields
+                    let mut buf = String::with_capacity(100);
+                    buf.push('{');
+                    #(
+                        let value = to_payload(&state.#idents, "")?.context(#errs)?;
+                        buf.push('"');
+                        buf.push_str(#ident_strings);
+                        buf.push('"');
+                        buf.push(':');
+                        buf.push_str(&value);
+                        buf.push(',');
+                    )*
+                    buf.pop();
+                    buf.push('}');
+                    return Ok(Some(buf));
+                }
+                let (prefix, suffix) = match path.find('/') {
+                    Some(idx) => path.split_at(idx),
+                    None => (path, ""),
+                };
+
+                let payload = match prefix {
+                    #(
+                    #ident_strings => {
+                        // TODO: This only works for simple values; I think we have to pimp to_payload to be a trait
+                        let value = <#ftypes as #storeable>::decode(#storage_keys);
+                        to_payload(&value, suffix)?
+                    }
+                    )*
+                    _ => None,
+                };
+                Ok(payload)
             }
 
             fn commit(self) {
@@ -69,6 +113,13 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
         }
     })
 }
+
+/*
+ *
+// NOTE: This is something that's purely based on the state
+fn get_state_response(path: String) -> Result<(u16, String)> {
+}
+ */
 
 fn parse_input(data: Data) -> Result<Vec<Field>> {
     // Variants snake-case, camel-case and fields for each variant
@@ -93,7 +144,7 @@ fn parse_input(data: Data) -> Result<Vec<Field>> {
             if fields.is_empty() {
                 return Result::Err(Error::new_spanned(
                     struct_token,
-                    "ContractState must at least have one field",
+                    "State must at least have one field",
                 ));
             }
             // Extract field identifier and types
@@ -134,3 +185,7 @@ fn storage_key(field: &Field, ident: &Ident) -> u64 {
     // TODO: Write a test, that always checks that the macro keys are in user space !
     storage_key | (1 << 63)
 }
+
+/*
+ *
+ */
