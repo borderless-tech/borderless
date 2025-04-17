@@ -1,5 +1,5 @@
 [package]
-name = "lazyvec-test-contract"
+name = "collections-test-contract"
 version = "0.1.0"
 edition = "2021"
 
