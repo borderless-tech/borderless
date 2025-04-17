@@ -11,13 +11,18 @@
  *      sub-key   +-> ( key<String>, value<Product> )
  */
 mod cache;
+mod proxy;
 
 use crate::__private::storage_traits;
 use crate::__private::storage_traits::private::Sealed;
 use crate::collections::lazyvec::ROOT_KEY;
-use cache::Cache;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::cell::RefCell;
+use std::marker::PhantomData;
+
+use cache::{Cache, Cell};
+use proxy::Proxy;
 
 pub struct HashMap<V> {
     cache: Cache<V>,
@@ -61,16 +66,27 @@ where
         todo!()
     }
 
-    pub fn insert(&mut self, key: u64, value: V) -> Option<V> {
-        todo!()
+    pub fn insert(&mut self, key: u64, value: V) -> Option<Proxy<'_, V>> {
+        //let prev = self.get(key);
+        self.cache.write(key, Cell::new(key, value));
+        //prev
+        None // TODO Fix borrow conflicts
     }
 
     pub fn remove(&mut self, key: u64) -> Option<V> {
         todo!()
     }
 
+    pub fn get(&self, key: u64) -> Option<Proxy<'_, V>> {
+        let cell = self.cache.read(key);
+        let proxy = Proxy {
+            value_ptr: RefCell::new(cell),
+            _back_ref: PhantomData,
+        };
+        Some(proxy)
+    }
+
     // TODO Implement the following methods
-    // get()
     // get_mut()
 
     // These methods convert our Lazy Hashmap into a regular hashmap
@@ -78,7 +94,7 @@ where
     // value()
 
     pub fn contains_key(&self, key: u64) -> bool {
-        todo!()
+        self.cache.contains_key(key)
     }
 
     pub fn clear(&mut self) {
