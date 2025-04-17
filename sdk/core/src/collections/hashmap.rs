@@ -10,5 +10,6 @@
  *         |      |
  *      sub-key   +-> ( key<String>, value<Product> )
  */
+mod cache;
 
 pub struct HashMap {}

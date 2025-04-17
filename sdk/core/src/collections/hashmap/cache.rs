@@ -1,0 +1,100 @@
+use crate::__private::{
+    read_field, storage_gen_sub_key, storage_has_key, storage_remove, write_field,
+};
+use nohash_hasher::IntMap;
+use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+// TODO Store metadata in it?
+pub(crate) const ROOT_KEY: u64 = 0;
+
+enum CacheOp {
+    Update,
+    Remove,
+}
+
+pub struct Cache<V> {
+    base_key: u64,
+    map: RefCell<IntMap<u64, Rc<Cell<V>>>>,
+    operations: IntMap<u64, CacheOp>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct Cell<V> {
+    key: u64,
+    value: V,
+}
+
+impl<V> Cache<V>
+where
+    V: Serialize + for<'de> Deserialize<'de>,
+{
+    pub(crate) fn new(base_key: u64) -> Self {
+        Cache {
+            base_key,
+            map: RefCell::default(),
+            operations: IntMap::default(),
+        }
+    }
+
+    pub(crate) fn exists(&self) -> bool {
+        storage_has_key(self.base_key, ROOT_KEY)
+    }
+
+    pub(crate) fn reset(&mut self) {
+        // Clear the in-memory map, deallocating the used resources
+        self.map = RefCell::default();
+        self.operations = IntMap::default();
+    }
+
+    pub(crate) fn new_key(&mut self) -> u64 {
+        storage_gen_sub_key()
+    }
+
+    pub(crate) fn read(&self, key: u64) -> Rc<Cell<V>> {
+        if let Some(cell) = self.map.borrow().get(&key) {
+            return cell.clone();
+        }
+        // Read value from DB
+        let cell = read_field::<Cell<V>>(self.base_key, key).unwrap();
+        let cell = Rc::new(cell);
+        // Add value to the in-memory mirror
+        self.map.borrow_mut().insert(key, cell.clone());
+        cell
+    }
+
+    pub(crate) fn remove(&mut self, key: u64) {
+        self.operations.insert(key, CacheOp::Remove);
+        self.map.borrow_mut().remove(&key);
+    }
+
+    pub(crate) fn write(&mut self, key: u64, node: Cell<V>) {
+        self.operations.insert(key, CacheOp::Update);
+        self.map.borrow_mut().insert(key, Rc::new(node));
+    }
+
+    pub(crate) fn clear(&mut self) {
+        // Flag all cells for deletion
+        for key in self.map.borrow().keys() {
+            self.operations.insert(*key, CacheOp::Remove);
+        }
+        self.map.borrow_mut().clear();
+
+        // TODO Update metadata?
+    }
+
+    pub(crate) fn commit(self) {
+        // Sync the in-memory mirror with the DB state
+        for (key, op) in &self.operations {
+            match op {
+                CacheOp::Update => {
+                    let map = self.map.borrow();
+                    let cell = map.get(key).expect("Cache corruption");
+                    write_field(self.base_key, *key, cell.as_ref());
+                }
+                CacheOp::Remove => storage_remove(self.base_key, *key),
+            }
+        }
+    }
+}
