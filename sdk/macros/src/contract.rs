@@ -20,8 +20,8 @@ pub fn parse_module_content(
     let actions = get_actions(&state, mod_items)?;
     let action_types = actions.iter().map(ActionFn::gen_type_tokens);
     let call_action: Vec<_> = actions.iter().map(|a| a.gen_call_tokens(&state)).collect();
-    let action_names = actions.iter().map(ActionFn::method_name);
-    let action_ids = actions.iter().map(ActionFn::method_id);
+    let action_names: Vec<_> = actions.iter().map(ActionFn::method_name).collect();
+    let action_ids: Vec<_> = actions.iter().map(ActionFn::method_id).collect();
 
     // TODO: Check that arguments for all methods are serializable
 
@@ -123,6 +123,15 @@ pub fn parse_module_content(
                 storage_keys::make_user_key, write_field, write_register, write_string_to_register,
             };
             use ::borderless::contract::*;
+
+            #[doc(hidden)]
+            #[automatically_derived]
+            const ACTION_SYMBOLS: &[(&str, u32)] = &[
+                #(
+                    (#action_names, #action_ids)
+                ),*
+            ];
+
             #(#action_types)*
             #wasm_impl
         }
