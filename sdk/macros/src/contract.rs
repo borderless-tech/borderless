@@ -20,25 +20,39 @@ pub fn parse_module_content(
     let actions = get_actions(&state, mod_items)?;
     let action_types = actions.iter().map(ActionFn::gen_type_tokens);
     let call_action: Vec<_> = actions.iter().map(|a| a.gen_call_tokens(&state)).collect();
-    let check_action: Vec<_> = actions.iter().map(ActionFn::gen_check_tokens).collect();
     let action_names: Vec<_> = actions.iter().map(ActionFn::method_name).collect();
     let action_ids: Vec<_> = actions.iter().map(ActionFn::method_id).collect();
 
+    // let _args: __ArgsType = ::borderless::serialize::from_value(action.params.clone())?;
+    let check_action: Vec<_> = actions
+        .iter()
+        .map(|a| {
+            a.gen_check_tokens(
+                quote! { ::borderless::serialize::from_value(action.params.clone())? },
+            )
+        })
+        .collect();
+
+    // let _args: __ArgsType = ::borderless::serialize::from_slice(&payload)?;
+    let check_payload: Vec<_> = actions
+        .iter()
+        .map(|a| a.gen_check_tokens(quote! { ::borderless::serialize::from_slice(&payload)? }))
+        .collect();
+
+    let action_symbols = quote! {
+        #[doc(hidden)]
+        #[automatically_derived]
+        const ACTION_SYMBOLS: &[(&str, u32)] = &[
+            #(
+                (#action_names, #action_ids)
+            ),*
+        ];
+    };
+
     // TODO: Check that arguments for all methods are serializable
 
-    let as_state = quote! {
-        <#state as ::borderless::__private::storage_traits::State>
-    };
-
-    let read_state = quote! {
-        let mut state = #as_state::load()?;
-    };
-
-    let commit_state = quote! {
-        #as_state::commit(state);
-    };
-
-    // Matches the action (by either id or method) and calls the action fn
+    // Generate the nested match block for matching the action method by name or id
+    // match &action.method { ... => match method_name => { ... => FUNC } }
     let match_and_call_action = match_action(&action_names, &action_ids, &call_action);
     let match_and_check_action = match_action(&action_names, &action_ids, &check_action);
 
@@ -55,30 +69,32 @@ pub fn parse_module_content(
             match path {
                 "" => {
                     let action = CallAction::from_bytes(&payload).context("failed to parse action")?;
-                    let payload = &action.params;
                     #match_and_check_action
                     // At this point, the action is validated and can be returned
                     Ok(action)
                 }
-                // TODO: Re-Design the action tokens, so you can work with this
-                "flip_switch" => {
-                    let args: FlipSwitchArgs = ::borderless::serialize::from_slice(&payload)?;
-                    let value = borderless::serialize::to_value(&args)?;
-                    Ok(CallAction::by_method("flip_switch", value))
+                #(
+                #action_names => {
+                    #check_payload
+                    let value = ::borderless::serialize::to_value(&_args)?;
+                    Ok(CallAction::by_method(#action_names, value))
                 }
-                "set_switch" => {
-                    let args: SetSwitchArgs = ::borderless::serialize::from_slice(&payload)?;
-                    let value = ::borderless::serialize::to_value(&args)?;
-                    Ok(CallAction::by_method("set_switch", value))
-                }
-                "print_env" => {
-                    let args: FlipSwitchArgs = ::borderless::serialize::from_slice(&payload)?;
-                    let value = ::borderless::serialize::to_value(&args)?;
-                    Ok(CallAction::by_method("print_env", value))
-                }
+                )*
                 other => Err(new_error!("unknown method: {other}")),
             }
         }
+    };
+
+    let as_state = quote! {
+        <#state as ::borderless::__private::storage_traits::State>
+    };
+
+    let read_state = quote! {
+        let mut state = #as_state::load()?;
+    };
+
+    let commit_state = quote! {
+        #as_state::commit(state);
     };
 
     let wasm_impl = quote! {
@@ -156,15 +172,7 @@ pub fn parse_module_content(
                 storage_keys::make_user_key, write_field, write_register, write_string_to_register,
             };
             use ::borderless::contract::*;
-
-            #[doc(hidden)]
-            #[automatically_derived]
-            const ACTION_SYMBOLS: &[(&str, u32)] = &[
-                #(
-                    (#action_names, #action_ids)
-                ),*
-            ];
-
+            #action_symbols
             #(#action_types)*
             #wasm_impl
         }
@@ -246,8 +254,8 @@ fn match_action(
     call_fns: &[TokenStream2],
 ) -> TokenStream2 {
     quote! {
-    match action.method {
-        MethodOrId::ByName { method } => match method {
+    match &action.method {
+        MethodOrId::ByName { method } => match method.as_str() {
             #(
             #action_names => {
                 #call_fns
@@ -288,25 +296,16 @@ struct ActionFn {
 impl ActionFn {
     fn gen_type_tokens(&self) -> TokenStream2 {
         let args_ident = self.args_ident();
-        if self.args.is_empty() {
-            quote! {
-                #[doc(hidden)]
-                #[automatically_derived]
-                #[derive(serde::Serialize, serde::Deserialize)]
-                pub struct #args_ident ;
-            }
-        } else {
-            let fields = self.args.iter().map(|a| a.0.clone());
-            let types = self.args.iter().map(|a| a.1.clone());
-            quote! {
-                #[doc(hidden)]
-                #[automatically_derived]
-                #[derive(serde::Serialize, serde::Deserialize)]
-                pub struct #args_ident {
-                    #(
-                        #fields: #types
-                    ),*
-                }
+        let fields = self.args.iter().map(|a| a.0.clone());
+        let types = self.args.iter().map(|a| a.1.clone());
+        quote! {
+            #[doc(hidden)]
+            #[automatically_derived]
+            #[derive(serde::Serialize, serde::Deserialize)]
+            pub struct #args_ident {
+                #(
+                    #fields: #types
+                ),*
             }
         }
     }
@@ -338,10 +337,10 @@ impl ActionFn {
     /// Generates the check, to parse the args from action.params (used in the http-post function)
     ///
     /// References 'action' in generated tokens
-    fn gen_check_tokens(&self) -> TokenStream2 {
+    fn gen_check_tokens(&self, value: TokenStream2) -> TokenStream2 {
         let args_ident = self.args_ident();
         quote! {
-            let _args: __derived::#args_ident = ::borderless::serialize::from_value(action.params)?;
+            let _args: __derived::#args_ident = #value;
         }
     }
 
