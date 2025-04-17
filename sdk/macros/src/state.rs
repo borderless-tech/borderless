@@ -22,6 +22,8 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
 
     let storeable = quote! { ::borderless::__private::storage_traits::Storeable };
 
+    let to_payload = quote! { ::borderless::__private::storage_traits::ToPayload };
+
     let type_checks = ftypes.iter().map(|ty| {
         quote! {
             __check_storeable::<#ty>();
@@ -58,7 +60,7 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
 
             // TODO
             fn http_get(path: String) -> ::borderless::Result<Option<String>> {
-                use ::borderless::{__private::http::to_payload, Context};
+                use ::borderless::Context;
                 let path = path.strip_prefix('/').unwrap_or(&path);
 
                 // Extract query string
@@ -74,7 +76,7 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
                     let mut buf = String::with_capacity(100);
                     buf.push('{');
                     #(
-                        let value = to_payload(&state.#idents, "")?.context(#errs)?;
+                        let value = <#ftypes as #to_payload>::to_payload(&state.#idents, "")?.context(#errs)?;
                         buf.push('"');
                         buf.push_str(#ident_strings);
                         buf.push('"');
@@ -91,17 +93,15 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
                     None => (path, ""),
                 };
 
-                let payload = match prefix {
+                match prefix {
                     #(
                     #ident_strings => {
-                        // TODO: This only works for simple values; I think we have to pimp to_payload to be a trait
                         let value = <#ftypes as #storeable>::decode(#storage_keys);
-                        to_payload(&value, suffix)?
+                        <#ftypes as #to_payload>::to_payload(&value, path)
                     }
                     )*
-                    _ => None,
-                };
-                Ok(payload)
+                    _ => Ok(None),
+                }
             }
 
             fn commit(self) {
