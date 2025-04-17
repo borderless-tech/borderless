@@ -96,9 +96,6 @@ where
     }
 
     // TODO Implement the following methods
-    // get_mut()
-
-    // These methods convert our Lazy Hashmap into a regular hashmap
     // keys()
     // value()
 
