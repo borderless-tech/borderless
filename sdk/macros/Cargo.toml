@@ -11,5 +11,5 @@ proc-macro = true
 syn = { version = "2.0", features = ["full"] }
 quote = "1.0"
 proc-macro2 = "1.0"
-xxhash-rust = { version = "0.8", features = ["const_xxh3", "xxh64"] }
+xxhash-rust = { version = "0.8", features = ["const_xxh3", "xxh64", "xxh32"] }
 convert_case = "0.8"

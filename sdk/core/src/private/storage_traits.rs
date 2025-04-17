@@ -42,13 +42,20 @@ pub trait Storeable: private::Sealed + Sized {
 ///
 /// Note: You never want to implement this on your own, you always want to derive this trait
 pub trait State: Sized {
+    /// Loads the state
     fn load() -> Result<Self>;
 
+    /// Initializes the state using a json value
     fn init(value: serde_json::Value) -> Result<Self>;
 
+    /// Use a GET request to query the state
     fn http_get(path: String) -> Result<Option<String>>;
 
+    /// Commit the value to disk
     fn commit(self);
+
+    /// Return the static list of symbols (field-names and their addresses)
+    fn symbols() -> &'static [(&'static str, u64)];
 }
 
 /// Indicates, that a stored value can be converted into a payload of an http-get request based on the path.

@@ -3,6 +3,7 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
 use syn::{Error, FnArg, ImplItem, ItemImpl, Pat, PatIdent, Result, ReturnType, Type};
 use syn::{Ident, Item};
+use xxhash_rust::const_xxh3::xxh3_64;
 
 use crate::utils::{check_if_action, check_if_state};
 
@@ -18,8 +19,11 @@ pub fn parse_module_content(
     let state = get_state(mod_items, &mod_span)?;
     let actions = get_actions(&state, mod_items)?;
     let action_types = actions.iter().map(ActionFn::gen_type_tokens);
-    let call_action = actions.iter().map(|a| a.gen_call_tokens(&state));
+    let call_action: Vec<_> = actions.iter().map(|a| a.gen_call_tokens(&state)).collect();
     let action_names = actions.iter().map(ActionFn::method_name);
+    let action_ids = actions.iter().map(ActionFn::method_id);
+
+    // TODO: Check that arguments for all methods are serializable
 
     let as_state = quote! {
         <#state as ::borderless::__private::storage_traits::State>
@@ -33,14 +37,25 @@ pub fn parse_module_content(
         #as_state::commit(state);
     };
 
-    let match_method = quote! {
-        match method {
+    let match_method_names = quote! {
+        match method.as_str() {
             #(
                 #action_names => {
                     #call_action
                 }
-                _ => (),
             )*
+                other => { return Err(new_error!("Unknown method: {other}")) }
+        }
+    };
+
+    let match_method_ids = quote! {
+        match method_id {
+            #(
+                #action_ids => {
+                    #call_action
+                }
+            )*
+                other => { return Err(new_error!("Unknown method-id: 0x{other:04x}")) }
         }
     };
 
@@ -52,13 +67,11 @@ pub fn parse_module_content(
             let action = CallAction::from_bytes(&input)?;
             let s = action.pretty_print()?;
             info!("{s}");
-
-            let method = action
-                .method_name()
-                .context("missing required method-name")?;
-
             #read_state
-            #match_method
+            match action.method {
+                MethodOrId::ByName { method } => #match_method_names,
+                MethodOrId::ById { method_id } => #match_method_ids,
+            }
             #commit_state
             Ok(())
         }
@@ -185,11 +198,21 @@ fn get_state(items: &[Item], mod_span: &Span) -> Result<Ident> {
     ))
 }
 
+// TODO:
+#[allow(unused)]
 /// Helper struct to bundle all necessary information for our action-functions
 struct ActionFn {
+    /// Ident (name) of the action
     ident: Ident,
+    /// Associated method-id - either calculated or overriden by the user
+    method_id: u32,
+    /// true, if the method-id was set manually
+    id_override: bool,
+    /// Weather or not the function requires &mut self
     mut_self: bool,
+    /// Return type of the function
     output: ReturnType,
+    /// Arguments of the function
     args: Vec<(Ident, Box<Type>)>,
 }
 
@@ -246,7 +269,7 @@ impl ActionFn {
     }
 
     fn method_id(&self) -> u32 {
-        todo!("generate method-id from function name or via attribute")
+        self.method_id
     }
 }
 
@@ -332,9 +355,13 @@ fn get_actions_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result<V
             ));
         }
 
-        // TODO: Check that arguments are serializable
+        // TODO: Check, if the action has a method-id assigned to it
+        // TODO: Check, that there are no actions with the same ID
+        let method_id = calc_method_id(state_ident, &impl_fn.sig.ident);
         actions.push(ActionFn {
             ident: impl_fn.sig.ident.clone(),
+            method_id,
+            id_override: false,
             mut_self,
             output: impl_fn.sig.output.clone(),
             args,
@@ -348,6 +375,13 @@ fn get_actions_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result<V
     } else {
         Ok(actions)
     }
+}
+
+/// Calculate the method-id based on the state and action name.
+fn calc_method_id(state_ident: &Ident, action_ident: &Ident) -> u32 {
+    let full_name = format!("{}::{}", state_ident, action_ident).to_uppercase();
+    // Since we only want 32-bits, we simply truncate the output:
+    xxh3_64(full_name.as_bytes()) as u32
 }
 
 /*

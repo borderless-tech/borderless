@@ -36,8 +36,18 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
             #[allow(unused_extern_crates, clippy::useless_attribute)]
             extern crate borderless as _borderless;
 
+            #[doc(hidden)]
+            #[automatically_derived]
             const fn __check_storeable<T: _borderless::__private::storage_traits::Storeable>() {}
             #(#type_checks)*
+
+            #[doc(hidden)]
+            #[automatically_derived]
+            const SYMBOLS: &[(&str, u64)] = &[
+                #(
+                    (#ident_strings, #storage_keys)
+                ),*
+            ];
 
             #[automatically_derived]
             impl _borderless::__private::storage_traits::State for #ident {
@@ -112,6 +122,10 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
                     #(
                         <#ftypes as #storeable>::commit(self.#idents, #storage_keys);
                     )*
+                }
+
+                fn symbols() -> &'static [(&'static str, u64)] {
+                    SYMBOLS
                 }
             }
         };
