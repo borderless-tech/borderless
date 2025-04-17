@@ -16,13 +16,11 @@ mod proxy;
 use crate::__private::storage_traits;
 use crate::__private::storage_traits::private::Sealed;
 use crate::collections::lazyvec::ROOT_KEY;
+use cache::{Cache, Cell};
+use proxy::{Proxy, ProxyMut};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::cell::RefCell;
 use std::marker::PhantomData;
-
-use cache::{Cache, Cell};
-use proxy::Proxy;
 
 pub struct HashMap<V> {
     cache: Cache<V>,
@@ -80,7 +78,18 @@ where
     pub fn get(&self, key: u64) -> Option<Proxy<'_, V>> {
         let cell = self.cache.read(key);
         let proxy = Proxy {
-            value_ptr: RefCell::new(cell),
+            cell_ptr: cell,
+            _back_ref: PhantomData,
+        };
+        Some(proxy)
+    }
+
+    pub fn get_mut(&mut self, key: u64) -> Option<ProxyMut<'_, V>> {
+        let cell = self.cache.read(key);
+        // NOTE: Mark the node as changed, because the user could totally do that.
+        self.cache.flag_write(key);
+        let proxy = ProxyMut {
+            cell_ptr: cell,
             _back_ref: PhantomData,
         };
         Some(proxy)

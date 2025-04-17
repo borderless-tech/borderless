@@ -1,13 +1,11 @@
-use crate::__private::{
-    read_field, storage_gen_sub_key, storage_has_key, storage_remove, write_field,
-};
+use crate::__private::{read_field, storage_has_key, storage_remove, write_field};
 use nohash_hasher::IntMap;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 // TODO Store metadata in it?
-pub(crate) const ROOT_KEY: u64 = 0;
+const ROOT_KEY: u64 = 0;
 
 enum CacheOp {
     Update,
@@ -16,7 +14,7 @@ enum CacheOp {
 
 pub struct Cache<V> {
     base_key: u64,
-    map: RefCell<IntMap<u64, Rc<Cell<V>>>>,
+    map: RefCell<IntMap<u64, Rc<RefCell<Cell<V>>>>>,
     operations: IntMap<u64, CacheOp>,
 }
 
@@ -66,13 +64,13 @@ where
         self.operations = IntMap::default();
     }
 
-    pub(crate) fn read(&self, key: u64) -> Rc<Cell<V>> {
+    pub(crate) fn read(&self, key: u64) -> Rc<RefCell<Cell<V>>> {
         if let Some(cell) = self.map.borrow().get(&key) {
             return cell.clone();
         }
         // Read value from DB
         let cell = read_field::<Cell<V>>(self.base_key, key).unwrap();
-        let cell = Rc::new(cell);
+        let cell = Rc::new(RefCell::new(cell));
         // Add value to the in-memory mirror
         self.map.borrow_mut().insert(key, cell.clone());
         cell
@@ -83,9 +81,15 @@ where
         self.map.borrow_mut().remove(&key);
     }
 
+    pub(crate) fn flag_write(&mut self, key: u64) {
+        self.operations.insert(key, CacheOp::Update);
+    }
+
     pub(crate) fn write(&mut self, key: u64, node: Cell<V>) {
         self.operations.insert(key, CacheOp::Update);
-        self.map.borrow_mut().insert(key, Rc::new(node));
+        self.map
+            .borrow_mut()
+            .insert(key, Rc::new(RefCell::new(node)));
     }
 
     pub(crate) fn clear(&mut self) {
