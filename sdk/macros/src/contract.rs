@@ -8,15 +8,15 @@ use crate::utils::{check_if_action, check_if_state};
 
 pub fn parse_module_content(
     mod_span: Span,
-    mod_items: &Vec<Item>,
+    mod_items: &[Item],
     _mod_ident: &Ident,
 ) -> Result<TokenStream2> {
     let read_input = quote! {
         let input = read_register(REGISTER_INPUT).context("missing input register")?;
     };
 
-    let state = get_state(&mod_items, &mod_span)?;
-    let actions = get_actions(&state, &mod_items)?;
+    let state = get_state(mod_items, &mod_span)?;
+    let actions = get_actions(&state, mod_items)?;
     let action_types = actions.iter().map(ActionFn::gen_type_tokens);
     let call_action = actions.iter().map(|a| a.gen_call_tokens(&state));
     let action_names = actions.iter().map(ActionFn::method_name);
@@ -198,6 +198,7 @@ impl ActionFn {
         let ident = format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal));
         if self.args.is_empty() {
             quote! {
+                #[doc(hidden)]
                 #[automatically_derived]
                 #[derive(serde::Serialize, serde::Deserialize)]
                 pub struct #ident ;
@@ -206,6 +207,7 @@ impl ActionFn {
             let fields = self.args.iter().map(|a| a.0.clone());
             let types = self.args.iter().map(|a| a.1.clone());
             quote! {
+                #[doc(hidden)]
                 #[automatically_derived]
                 #[derive(serde::Serialize, serde::Deserialize)]
                 pub struct #ident {
@@ -303,7 +305,7 @@ fn get_actions_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result<V
                 FnArg::Receiver(s) => {
                     has_self = true;
                     mut_self = s.mutability.is_some();
-                    if !s.reference.is_some() {
+                    if s.reference.is_none() {
                         return Err(Error::new_spanned(
                             item,
                             "Action functions must not consume state - use either &self or &mut self",

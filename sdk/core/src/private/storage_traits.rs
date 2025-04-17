@@ -87,7 +87,7 @@ impl<T: Serialize + DeserializeOwned> Storeable for T {
 impl<T: Serialize + private::Sealed> ToPayload for T {
     fn to_payload(&self, path: &str) -> Result<Option<String>> {
         // Different Approach:
-        let value = serde_json::to_value(&self)?;
+        let value = serde_json::to_value(self)?;
 
         // Instantly return the value
         if path.is_empty() {

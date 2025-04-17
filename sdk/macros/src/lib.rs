@@ -40,9 +40,8 @@ pub fn contract(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         syn::Visibility::Public(_) => (),
         _ => {
             let tokens =
-                syn::Error::new_spanned(&module.mod_token, "Contract module must be public")
-                    .to_compile_error()
-                    .into();
+                syn::Error::new_spanned(module.mod_token, "Contract module must be public")
+                    .to_compile_error();
             items.push(Item::Verbatim(tokens));
         }
     }
