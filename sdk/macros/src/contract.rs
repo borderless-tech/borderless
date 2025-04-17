@@ -20,6 +20,7 @@ pub fn parse_module_content(
     let actions = get_actions(&state, mod_items)?;
     let action_types = actions.iter().map(ActionFn::gen_type_tokens);
     let call_action: Vec<_> = actions.iter().map(|a| a.gen_call_tokens(&state)).collect();
+    let check_action: Vec<_> = actions.iter().map(ActionFn::gen_check_tokens).collect();
     let action_names: Vec<_> = actions.iter().map(ActionFn::method_name).collect();
     let action_ids: Vec<_> = actions.iter().map(ActionFn::method_id).collect();
 
@@ -37,29 +38,52 @@ pub fn parse_module_content(
         #as_state::commit(state);
     };
 
-    let match_method_names = quote! {
-        match method.as_str() {
-            #(
-                #action_names => {
-                    #call_action
-                }
-            )*
-                other => { return Err(new_error!("Unknown method: {other}")) }
-        }
-    };
+    // Matches the action (by either id or method) and calls the action fn
+    let match_and_call_action = match_action(&action_names, &action_ids, &call_action);
+    let match_and_check_action = match_action(&action_names, &action_ids, &check_action);
 
-    let match_method_ids = quote! {
-        match method_id {
-            #(
-                #action_ids => {
-                    #call_action
+    let exec_post = quote! {
+        #[automatically_derived]
+        fn post_action_response(path: String, payload: Vec<u8>) -> Result<CallAction> {
+            let path = path.replace("-", "_"); // Convert from kebab-case to snake_case
+            let path = path.strip_prefix('/').unwrap_or(&path); // stip leading "/"
+
+            let content = String::from_utf8(payload.clone()).unwrap_or_default();
+            info!("{content}");
+
+            // TODO: Check access of writer
+            match path {
+                "" => {
+                    let action = CallAction::from_bytes(&payload).context("failed to parse action")?;
+                    let payload = &action.params;
+                    #match_and_check_action
+                    // At this point, the action is validated and can be returned
+                    Ok(action)
                 }
-            )*
-                other => { return Err(new_error!("Unknown method-id: 0x{other:04x}")) }
+                // TODO: Re-Design the action tokens, so you can work with this
+                "flip_switch" => {
+                    let args: FlipSwitchArgs = ::borderless::serialize::from_slice(&payload)?;
+                    let value = borderless::serialize::to_value(&args)?;
+                    Ok(CallAction::by_method("flip_switch", value))
+                }
+                "set_switch" => {
+                    let args: SetSwitchArgs = ::borderless::serialize::from_slice(&payload)?;
+                    let value = ::borderless::serialize::to_value(&args)?;
+                    Ok(CallAction::by_method("set_switch", value))
+                }
+                "print_env" => {
+                    let args: FlipSwitchArgs = ::borderless::serialize::from_slice(&payload)?;
+                    let value = ::borderless::serialize::to_value(&args)?;
+                    Ok(CallAction::by_method("print_env", value))
+                }
+                other => Err(new_error!("unknown method: {other}")),
+            }
         }
     };
 
     let wasm_impl = quote! {
+        #exec_post
+
         #[automatically_derived]
         pub fn exec_txn() -> Result<()> {
             #read_input
@@ -68,10 +92,7 @@ pub fn parse_module_content(
             let s = action.pretty_print()?;
             info!("{s}");
             #read_state
-            match action.method {
-                MethodOrId::ByName { method } => #match_method_names,
-                MethodOrId::ById { method_id } => #match_method_ids,
-            }
+            #match_and_call_action
             #commit_state
             Ok(())
         }
@@ -108,6 +129,18 @@ pub fn parse_module_content(
 
         #[automatically_derived]
         pub fn exec_post_action() -> Result<()> {
+            let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
+            let payload = read_register(REGISTER_INPUT_HTTP_PAYLOAD).context("missing http-payload")?;
+            match post_action_response(path, payload) {
+                Ok(action) => {
+                    write_register(REGISTER_OUTPUT_HTTP_STATUS, 200u16.to_be_bytes());
+                    write_register(REGISTER_OUTPUT_HTTP_RESULT, action.to_bytes()?);
+                }
+                Err(e) => {
+                    write_register(REGISTER_OUTPUT_HTTP_STATUS, 400u16.to_be_bytes());
+                    write_string_to_register(REGISTER_OUTPUT_HTTP_RESULT, e.to_string());
+                }
+            };
             Ok(())
         }
     };
@@ -207,6 +240,33 @@ fn get_state(items: &[Item], mod_span: &Span) -> Result<Ident> {
     ))
 }
 
+fn match_action(
+    action_names: &[String],
+    action_ids: &[u32],
+    call_fns: &[TokenStream2],
+) -> TokenStream2 {
+    quote! {
+    match action.method {
+        MethodOrId::ByName { method } => match method {
+            #(
+            #action_names => {
+                #call_fns
+            }
+            )*
+            other => { return Err(new_error!("Unknown method: {other}")) }
+        }
+        MethodOrId::ById { method_id } => match method_id {
+            #(
+            #action_ids => {
+                #call_fns
+            }
+            )*
+            other => { return Err(new_error!("Unknown method-id: 0x{other:04x}")) }
+        }
+    }
+    }
+}
+
 // TODO:
 #[allow(unused)]
 /// Helper struct to bundle all necessary information for our action-functions
@@ -227,13 +287,13 @@ struct ActionFn {
 
 impl ActionFn {
     fn gen_type_tokens(&self) -> TokenStream2 {
-        let ident = format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal));
+        let args_ident = self.args_ident();
         if self.args.is_empty() {
             quote! {
                 #[doc(hidden)]
                 #[automatically_derived]
                 #[derive(serde::Serialize, serde::Deserialize)]
-                pub struct #ident ;
+                pub struct #args_ident ;
             }
         } else {
             let fields = self.args.iter().map(|a| a.0.clone());
@@ -242,7 +302,7 @@ impl ActionFn {
                 #[doc(hidden)]
                 #[automatically_derived]
                 #[derive(serde::Serialize, serde::Deserialize)]
-                pub struct #ident {
+                pub struct #args_ident {
                     #(
                         #fields: #types
                     ),*
@@ -251,9 +311,11 @@ impl ActionFn {
         }
     }
 
-    // References 'action' and 'state' in generated tokens
+    /// Generates the parsing of the function arguments + calling of the associated state function.
+    ///
+    /// References 'action' and 'state' in generated tokens
     fn gen_call_tokens(&self, state_ident: &Ident) -> TokenStream2 {
-        let args_ident = format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal));
+        let args_ident = self.args_ident();
         let fn_ident = &self.ident;
         let mut_state = if self.mut_self {
             quote! { &mut state }
@@ -271,6 +333,20 @@ impl ActionFn {
                 #state_ident::#fn_ident(#mut_state, #(args.#arg_idents),*);
             }
         }
+    }
+
+    /// Generates the check, to parse the args from action.params (used in the http-post function)
+    ///
+    /// References 'action' in generated tokens
+    fn gen_check_tokens(&self) -> TokenStream2 {
+        let args_ident = self.args_ident();
+        quote! {
+            let _args: __derived::#args_ident = ::borderless::serialize::from_value(action.params)?;
+        }
+    }
+
+    fn args_ident(&self) -> Ident {
+        format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal))
     }
 
     fn method_name(&self) -> String {
