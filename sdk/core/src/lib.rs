@@ -1,7 +1,7 @@
 pub mod collections;
 pub mod contract;
+pub mod lazy;
 pub mod log;
-pub mod storage;
 
 pub use anyhow::{anyhow as new_error, ensure, Context, Error, Result};
 

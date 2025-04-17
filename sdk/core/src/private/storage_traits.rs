@@ -10,6 +10,8 @@ use crate::{
     error,
 };
 
+use super::storage_has_key;
+
 // TODO: Maybe make the decode fallible ?
 /// Trait used by the macro for storing and commiting values.
 ///
@@ -22,6 +24,13 @@ pub trait Storeable: private::Sealed + Sized {
 
     /// Commits a value to the storage under the given base-key
     fn commit(self, base_key: u64);
+
+    /// Checks, if the value exists in the storage
+    ///
+    /// Assumes that a value must live under `sub-key=0` !
+    fn exists(base_key: u64) -> bool {
+        storage_has_key(base_key, 0)
+    }
 }
 
 pub(crate) mod private {
