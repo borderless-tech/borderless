@@ -12,4 +12,85 @@
  */
 mod cache;
 
-pub struct HashMap {}
+use crate::__private::storage_traits;
+use crate::__private::storage_traits::private::Sealed;
+use crate::collections::lazyvec::ROOT_KEY;
+use cache::Cache;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+pub struct HashMap<V> {
+    cache: Cache<V>,
+}
+
+impl<V> Sealed for HashMap<V> {}
+
+impl<V> storage_traits::Storeable for HashMap<V> {
+    fn decode(base_key: u64) -> Self {
+        todo!()
+    }
+
+    fn parse_value(value: Value, base_key: u64) -> anyhow::Result<Self> {
+        todo!()
+    }
+
+    fn commit(self, _base_key: u64) {
+        todo!()
+    }
+}
+
+impl<V> HashMap<V>
+where
+    V: Serialize + for<'de> Deserialize<'de>,
+{
+    pub fn new(base_key: u64) -> Self {
+        HashMap {
+            cache: Cache::new(base_key),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        todo!()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn contains(&self, value: V) -> bool {
+        todo!()
+    }
+
+    pub fn insert(&mut self, key: u64, value: V) -> Option<V> {
+        todo!()
+    }
+
+    pub fn remove(&mut self, key: u64) -> Option<V> {
+        todo!()
+    }
+
+    // TODO Implement the following methods
+    // get()
+    // get_mut()
+
+    // These methods convert our Lazy Hashmap into a regular hashmap
+    // keys()
+    // value()
+
+    pub fn contains_key(&self, key: u64) -> bool {
+        todo!()
+    }
+
+    pub fn clear(&mut self) {
+        // Discard the local changes
+        self.cache.reset();
+        // Loads all the nodes to the cache
+        self.load(ROOT_KEY);
+        self.cache.clear();
+    }
+
+    // Fetches all the nodes from the DB, loading them in the cache
+    fn load(&mut self, key: u64) {
+        todo!()
+    }
+}
