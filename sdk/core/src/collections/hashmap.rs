@@ -91,18 +91,6 @@ where
         Some(proxy)
     }
 
-    // TODO Implement the following methods (they are eager methods instead of lazy)
-    // keys()
-    // value()
-    pub fn contains(&self, value: V) -> bool {
-        todo!()
-    }
-
-    // Fetches all the nodes from the DB, loading them in the cache
-    fn load(&mut self, key: u64) {
-        todo!()
-    }
-
     pub fn contains_key(&self, key: u64) -> bool {
         self.cache.contains_key(key)
     }
@@ -113,5 +101,17 @@ where
         // Loads all the nodes to the cache
         self.load(ROOT_KEY);
         self.cache.clear();
+    }
+
+    // TODO Implement the following methods (they are eager methods instead of lazy)
+    // keys()
+    // value()
+    pub fn contains(&self, value: V) -> bool {
+        todo!()
+    }
+
+    // Fetches all the nodes from the DB, loading them in the cache
+    fn load(&mut self, key: u64) {
+        todo!()
     }
 }
