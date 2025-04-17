@@ -1,4 +1,4 @@
 pub mod appendvec;
-pub mod ringbuffer;
-
+pub mod hashmap;
 pub mod lazyvec;
+pub mod ringbuffer;

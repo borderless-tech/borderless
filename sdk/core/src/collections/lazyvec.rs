@@ -16,19 +16,6 @@ use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 // use std::ops::{Index, IndexMut};
 
-/*
- * IntMap<u64, Product>;
- *         |      |
- *      sub-key   +-> ( key<u64>, value<Product> )
- *
- * get(key: u64)                    -> read_field(BASE_KEY, key) -> (key, value) -> &(_, value)
- * insert(key: u64, value: Product) -> (key, value) -> write_field(BASE_KEY, key, value)
- *
- * Map<String, Product>
- *         |      |
- *      sub-key   +-> ( key<String>, value<Product> )
- */
-
 pub(crate) const ROOT_KEY: u64 = 0;
 pub(crate) const ORDER: usize = 16;
 
