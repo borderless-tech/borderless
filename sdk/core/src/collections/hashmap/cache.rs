@@ -14,22 +14,22 @@ enum CacheOp {
 
 pub struct Cache<V> {
     base_key: u64,
-    map: RefCell<IntMap<u64, Rc<RefCell<KeyPair<V>>>>>,
+    map: RefCell<IntMap<u64, Rc<RefCell<KeyValue<V>>>>>,
     operations: IntMap<u64, CacheOp>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct KeyPair<V> {
+pub struct KeyValue<V> {
     key: u64,
     pub(crate) value: V, // Proxy needs access to the field
 }
 
-impl<V> KeyPair<V>
+impl<V> KeyValue<V>
 where
     V: Serialize + for<'de> Deserialize<'de>,
 {
     pub(crate) fn new(key: u64, value: V) -> Self {
-        KeyPair { key, value }
+        KeyValue { key, value }
     }
 }
 
@@ -64,13 +64,13 @@ where
         self.operations = IntMap::default();
     }
 
-    pub(crate) fn read(&self, key: u64) -> Option<Rc<RefCell<KeyPair<V>>>> {
+    pub(crate) fn read(&self, key: u64) -> Option<Rc<RefCell<KeyValue<V>>>> {
         // Check first the in-memory copy
         if let Some(cell) = self.map.borrow().get(&key) {
             return Some(cell.clone());
         }
         // Fallback to DB
-        match read_field::<KeyPair<V>>(self.base_key, key) {
+        match read_field::<KeyValue<V>>(self.base_key, key) {
             None => None,
             Some(keypair) => {
                 let cell = Rc::new(RefCell::new(keypair));
@@ -90,7 +90,7 @@ where
         self.operations.insert(key, CacheOp::Update);
     }
 
-    pub(crate) fn write(&mut self, key: u64, node: KeyPair<V>) {
+    pub(crate) fn write(&mut self, key: u64, node: KeyValue<V>) {
         self.operations.insert(key, CacheOp::Update);
         self.map
             .borrow_mut()

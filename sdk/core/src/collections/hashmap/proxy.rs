@@ -4,10 +4,10 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
-use super::cache::KeyPair;
+use super::cache::KeyValue;
 
 pub struct Proxy<'a, V> {
-    pub(super) cell_ptr: Rc<RefCell<KeyPair<V>>>,
+    pub(super) cell_ptr: Rc<RefCell<KeyValue<V>>>,
     pub(super) _back_ref: PhantomData<&'a V>, // <- prevents the tree from being borrowed mutably, while a proxy object exists
 }
 
@@ -34,7 +34,7 @@ impl<'a, V> Borrow<V> for Proxy<'a, V> {
 }
 
 pub struct ProxyMut<'a, V> {
-    pub(super) cell_ptr: Rc<RefCell<KeyPair<V>>>,
+    pub(super) cell_ptr: Rc<RefCell<KeyValue<V>>>,
     pub(super) _back_ref: PhantomData<&'a mut V>, // <- prevents the tree from being borrowed, while a proxy object exists
 }
 

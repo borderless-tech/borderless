@@ -16,7 +16,7 @@ mod proxy;
 use crate::__private::storage_traits;
 use crate::__private::storage_traits::private::Sealed;
 use crate::collections::lazyvec::ROOT_KEY;
-use cache::{Cache, KeyPair};
+use cache::{Cache, KeyValue};
 use proxy::{Proxy, ProxyMut};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -68,7 +68,7 @@ where
                 Some(value)
             }
         };
-        self.cache.write(key, KeyPair::new(key, value));
+        self.cache.write(key, KeyValue::new(key, value));
         old_value
     }
 
