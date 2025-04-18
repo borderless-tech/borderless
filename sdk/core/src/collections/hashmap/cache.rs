@@ -3,9 +3,8 @@ use nohash_hasher::IntMap;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
-
+use super::ROOT_KEY;
 // TODO Store metadata in it?
-const ROOT_KEY: u64 = 0;
 
 enum CacheOp {
     Update,

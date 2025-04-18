@@ -15,12 +15,13 @@ mod proxy;
 
 use crate::__private::storage_traits;
 use crate::__private::storage_traits::private::Sealed;
-use crate::collections::lazyvec::ROOT_KEY;
 use cache::{Cache, KeyValue};
 use proxy::{Proxy, ProxyMut};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::marker::PhantomData;
+
+pub(crate) const ROOT_KEY: u64 = 0;
 
 pub struct HashMap<V> {
     cache: Cache<V>,
