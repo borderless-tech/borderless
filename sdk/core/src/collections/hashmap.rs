@@ -44,7 +44,7 @@ impl<V> storage_traits::Storeable for HashMap<V> {
 
 impl<V> HashMap<V>
 where
-    V: Serialize + for<'de> Deserialize<'de>,
+    V: Serialize + for<'de> Deserialize<'de> + Clone,
 {
     pub fn new(base_key: u64) -> Self {
         HashMap {
@@ -68,27 +68,42 @@ where
     }
 
     pub fn remove(&mut self, key: u64) -> Option<V> {
-        todo!()
+        match self.cache.read(key) {
+            None => None,
+            Some(cell) => {
+                let value = cell.borrow().value.clone();
+                self.cache.remove(key);
+                Some(value)
+            }
+        }
     }
 
     pub fn get(&self, key: u64) -> Option<Proxy<'_, V>> {
-        let cell = self.cache.read(key);
-        let proxy = Proxy {
-            cell_ptr: cell,
-            _back_ref: PhantomData,
-        };
-        Some(proxy)
+        match self.cache.read(key) {
+            None => None,
+            Some(cell) => {
+                let proxy = Proxy {
+                    cell_ptr: cell,
+                    _back_ref: PhantomData,
+                };
+                Some(proxy)
+            }
+        }
     }
 
     pub fn get_mut(&mut self, key: u64) -> Option<ProxyMut<'_, V>> {
-        let cell = self.cache.read(key);
-        // NOTE: Mark the node as changed, because the user could totally do that.
-        self.cache.flag_write(key);
-        let proxy = ProxyMut {
-            cell_ptr: cell,
-            _back_ref: PhantomData,
-        };
-        Some(proxy)
+        match self.cache.read(key) {
+            None => None,
+            Some(cell) => {
+                // NOTE: Mark the node as changed, because the user could totally do that.
+                self.cache.flag_write(key);
+                let proxy = ProxyMut {
+                    cell_ptr: cell,
+                    _back_ref: PhantomData,
+                };
+                Some(proxy)
+            }
+        }
     }
 
     pub fn contains_key(&self, key: u64) -> bool {

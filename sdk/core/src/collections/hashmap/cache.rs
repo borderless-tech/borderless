@@ -64,16 +64,16 @@ where
         self.operations = IntMap::default();
     }
 
-    pub(crate) fn read(&self, key: u64) -> Rc<RefCell<KeyPair<V>>> {
+    pub(crate) fn read(&self, key: u64) -> Option<Rc<RefCell<KeyPair<V>>>> {
         if let Some(cell) = self.map.borrow().get(&key) {
-            return cell.clone();
+            return Some(cell.clone());
         }
         // Read value from DB
         let cell = read_field::<KeyPair<V>>(self.base_key, key).unwrap();
         let cell = Rc::new(RefCell::new(cell));
         // Add value to the in-memory mirror
         self.map.borrow_mut().insert(key, cell.clone());
-        cell
+        Some(cell)
     }
 
     pub(crate) fn remove(&mut self, key: u64) {
