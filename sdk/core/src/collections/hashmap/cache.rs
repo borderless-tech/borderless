@@ -65,15 +65,20 @@ where
     }
 
     pub(crate) fn read(&self, key: u64) -> Option<Rc<RefCell<KeyPair<V>>>> {
+        // Check first the in-memory copy
         if let Some(cell) = self.map.borrow().get(&key) {
             return Some(cell.clone());
         }
-        // Read value from DB
-        let cell = read_field::<KeyPair<V>>(self.base_key, key).unwrap();
-        let cell = Rc::new(RefCell::new(cell));
-        // Add value to the in-memory mirror
-        self.map.borrow_mut().insert(key, cell.clone());
-        Some(cell)
+        // Fallback to DB
+        match read_field::<KeyPair<V>>(self.base_key, key) {
+            None => None,
+            Some(keypair) => {
+                let cell = Rc::new(RefCell::new(keypair));
+                // Add value to the in-memory mirror
+                self.map.borrow_mut().insert(key, cell.clone());
+                Some(cell)
+            }
+        }
     }
 
     pub(crate) fn remove(&mut self, key: u64) {
