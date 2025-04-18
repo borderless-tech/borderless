@@ -60,11 +60,16 @@ where
         self.len() == 0
     }
 
-    pub fn insert(&mut self, key: u64, value: V) -> Option<Proxy<'_, V>> {
-        //let prev = self.get(key);
+    pub fn insert(&mut self, key: u64, value: V) -> Option<V> {
+        let old_value = match self.cache.read(key) {
+            None => None,
+            Some(cell) => {
+                let value = cell.borrow().value.clone();
+                Some(value)
+            }
+        };
         self.cache.write(key, KeyPair::new(key, value));
-        //prev
-        None // TODO Fix borrow conflicts
+        old_value
     }
 
     pub fn remove(&mut self, key: u64) -> Option<V> {
