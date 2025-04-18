@@ -121,9 +121,6 @@ where
     // TODO Implement the following methods (they are eager methods instead of lazy)
     // keys()
     // value()
-    pub fn contains(&self, value: V) -> bool {
-        todo!()
-    }
 
     // Fetches all the nodes from the DB, loading them in the cache
     fn load(&mut self, key: u64) {
