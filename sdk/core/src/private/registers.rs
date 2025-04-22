@@ -11,8 +11,11 @@ pub(crate) const REGISTER_ATOMIC_OP: u64 = u64::MAX - 1;
 /// Register used to feed input into the contract
 pub const REGISTER_INPUT: u64 = 0;
 
+/// Register used to return output back to the caller
+pub const REGISTER_OUTPUT: u64 = 1;
+
 /// Register used to feed the writer-id into the contract
-pub const REGISTER_WRITER: u64 = 1;
+pub const REGISTER_WRITER: u64 = 2;
 
 // NOTE: I think this is not a good idea - the executor differs, depending on where the contract is executed.
 // Giving users access to the executor-id enables them to write logic, that breaks the distributed contract execution !

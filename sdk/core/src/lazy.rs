@@ -5,10 +5,12 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::__private::{read_field, storage_has_key, write_field};
+use crate::__private::{
+    read_field,
+    storage_traits::{private, Storeable, ToPayload},
+    write_field,
+};
 use serde::{de::DeserializeOwned, Serialize};
-
-// TODO: Implement storage types
 
 /// A value that can be read from the storage lazily.
 ///
@@ -22,22 +24,6 @@ pub struct Lazy<T> {
 }
 
 impl<T: Serialize + DeserializeOwned> Lazy<T> {
-    pub fn new(base_key: u64, value: Option<T>) -> Self {
-        let changed = value.is_some();
-        Self {
-            value: UnsafeCell::new(value),
-            base_key,
-            changed,
-        }
-    }
-    pub fn init(base_key: u64, value: T) -> Self {
-        Self::new(base_key, Some(value))
-    }
-
-    pub fn open(base_key: u64) -> Self {
-        Self::new(base_key, None)
-    }
-
     pub fn get(&self) -> &T {
         let value = unsafe { &mut *self.value.get() };
 
@@ -79,20 +65,6 @@ impl<T: Serialize + DeserializeOwned> Lazy<T> {
         let old_value = unsafe { &mut *self.value.get() };
         *old_value = Some(value);
     }
-
-    // TODO: This has to be used in some kind of sealed trait
-    pub fn store(&self) {
-        // NOTE: changed is only true, if the value is set and therefore Some(T)
-        if self.changed {
-            let value = unsafe { &*self.value.get() };
-            write_field(self.base_key, 0, value.as_ref().unwrap());
-        }
-    }
-
-    // TODO: This has to be used in some kind of sealed trait
-    pub fn exists(&self) -> bool {
-        storage_has_key(self.base_key, 0)
-    }
 }
 
 impl<T: Serialize + DeserializeOwned> Borrow<T> for Lazy<T> {
@@ -121,12 +93,6 @@ impl<T: Serialize + DeserializeOwned> DerefMut for Lazy<T> {
     }
 }
 
-// impl<T: Serialize + DeserializeOwned> From<T> for Stored<T> {
-//     fn from(value: T) -> Self {
-//         Self::init(value)
-//     }
-// }
-
 impl<T: Serialize + DeserializeOwned + Display> Display for Lazy<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Display::fmt(self.get(), f)
@@ -142,23 +108,40 @@ impl<T: Serialize + DeserializeOwned + std::fmt::Debug> std::fmt::Debug for Lazy
     }
 }
 
-impl<T: Serialize + DeserializeOwned> Serialize for Lazy<T> {
-    fn serialize<S>(&self, serializer: S) -> std::prelude::v1::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        T::serialize(self, serializer)
+impl<T: Serialize + DeserializeOwned> private::Sealed for Lazy<T> {}
+
+impl<T: Serialize + DeserializeOwned> Storeable for Lazy<T> {
+    fn decode(base_key: u64) -> Self {
+        Self {
+            value: UnsafeCell::new(None),
+            base_key,
+            changed: false,
+        }
+    }
+
+    fn parse_value(value: serde_json::Value, base_key: u64) -> anyhow::Result<Self> {
+        let value: T = serde_json::from_value(value)?;
+        Ok(Self {
+            value: UnsafeCell::new(Some(value)),
+            base_key,
+            changed: true,
+        })
+    }
+
+    fn commit(self, base_key: u64) {
+        // NOTE: changed is only true, if the value is set and therefore Some(T)
+        debug_assert!(self.base_key == base_key);
+        if self.changed {
+            let value = unsafe { &*self.value.get() };
+            write_field(base_key, 0, value.as_ref().unwrap());
+        }
     }
 }
 
-// impl<'de, T: Deserialize<'de>> Deserialize<'de> for Stored<T> {
-//     fn deserialize<D>(deserializer: D) -> std::prelude::v1::Result<Self, D::Error>
-//     where
-//         D: serde::Deserializer<'de>,
-//     {
-//         T::deserialize(deserializer).map(|ok| Stored {
-//             value: UnsafeCell::new(Some(ok)),
-//             changed: false,
-//         })
-//     }
-// }
+impl<T: Serialize + DeserializeOwned> ToPayload for Lazy<T> {
+    fn to_payload(&self, path: &str) -> anyhow::Result<Option<String>> {
+        // Delegate to the inner implementation
+        let value = self.get();
+        value.to_payload(path)
+    }
+}

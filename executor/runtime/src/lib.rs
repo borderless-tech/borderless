@@ -4,12 +4,12 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use action_log::ActionRecord;
-use borderless_kv_store::backend::lmdb::Lmdb;
-use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use borderless::__private::registers::*;
-use borderless::contract::{BlockCtx, Introduction, Revocation, TxCtx};
+use borderless::contract::{BlockCtx, Introduction, Revocation, Symbols, TxCtx};
 use borderless::{contract::CallAction, ContractId};
 use borderless::{BlockIdentifier, BorderlessId};
+use borderless_kv_store::backend::lmdb::Lmdb;
+use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use error::ErrorKind;
 use lru::LruCache;
 use parking_lot::Mutex;
@@ -396,6 +396,33 @@ impl<S: Db> Runtime<S> {
             })?;
             Ok(Err((status, error)))
         }
+    }
+
+    // TODO: Decorator
+    /// Returns the symbols of the contract
+    pub fn get_symbols(&mut self, cid: &ContractId) -> Result<Option<Symbols>> {
+        let instance = self
+            .contract_store
+            .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
+            .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
+
+        self.store.data_mut().begin_immutable_exec(*cid)?;
+
+        // In case the contract does not export any symbols, just return 'None'
+        let func = match instance.get_typed_func::<(), ()>(&mut self.store, "get_symbols") {
+            Ok(f) => f,
+            Err(_) => return Ok(None),
+        };
+        func.call(&mut self.store, ())?;
+
+        self.store.data_mut().finish_immutable_exec()?;
+
+        let bytes = match self.store.data().get_register(REGISTER_OUTPUT) {
+            Some(b) => b,
+            None => return Ok(None),
+        };
+        let symbols = Symbols::from_bytes(&bytes)?;
+        Ok(Some(symbols))
     }
 
     pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {

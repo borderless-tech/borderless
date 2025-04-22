@@ -3,94 +3,165 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
 use syn::{Error, FnArg, ImplItem, ItemImpl, Pat, PatIdent, Result, ReturnType, Type};
 use syn::{Ident, Item};
+use xxhash_rust::const_xxh3::xxh3_64;
 
 use crate::utils::{check_if_action, check_if_state};
 
 pub fn parse_module_content(
     mod_span: Span,
-    mod_items: &Vec<Item>,
+    mod_items: &[Item],
     _mod_ident: &Ident,
 ) -> Result<TokenStream2> {
     let read_input = quote! {
         let input = read_register(REGISTER_INPUT).context("missing input register")?;
     };
 
-    let state = get_state(&mod_items, &mod_span)?;
-
-    let actions = get_actions(&state, &mod_items)?;
-
+    let state = get_state(mod_items, &mod_span)?;
+    let actions = get_actions(&state, mod_items)?;
     let action_types = actions.iter().map(ActionFn::gen_type_tokens);
+    let call_action: Vec<_> = actions.iter().map(|a| a.gen_call_tokens(&state)).collect();
+    let action_names: Vec<_> = actions.iter().map(ActionFn::method_name).collect();
+    let action_ids: Vec<_> = actions.iter().map(ActionFn::method_id).collect();
 
-    let call_action = actions.iter().map(|a| a.gen_call_tokens(&state));
+    // let _args: __ArgsType = ::borderless::serialize::from_value(action.params.clone())?;
+    let check_action: Vec<_> = actions
+        .iter()
+        .map(|a| {
+            a.gen_check_tokens(
+                quote! { ::borderless::serialize::from_value(action.params.clone())? },
+            )
+        })
+        .collect();
 
-    let action_names = actions.iter().map(ActionFn::method_name);
+    // let _args: __ArgsType = ::borderless::serialize::from_slice(&payload)?;
+    let check_payload: Vec<_> = actions
+        .iter()
+        .map(|a| a.gen_check_tokens(quote! { ::borderless::serialize::from_slice(&payload)? }))
+        .collect();
 
-    let read_state = quote! {
-        let mut state = <#state as ::borderless::__private::storage_traits::State>::load()?;
+    let action_symbols = quote! {
+        #[doc(hidden)]
+        #[automatically_derived]
+        const ACTION_SYMBOLS: &[(&str, u32)] = &[
+            #(
+                (#action_names, #action_ids)
+            ),*
+        ];
     };
 
-    let match_method = quote! {
-        match method {
-            #(
-                #action_names => {
-                    #call_action
+    // TODO: Check that arguments for all methods are serializable
+
+    // Generate the nested match block for matching the action method by name or id
+    // match &action.method { ... => match method_name => { ... => FUNC } }
+    let match_and_call_action = match_action(&action_names, &action_ids, &call_action);
+    let match_and_check_action = match_action(&action_names, &action_ids, &check_action);
+
+    let exec_post = quote! {
+        #[automatically_derived]
+        fn post_action_response(path: String, payload: Vec<u8>) -> Result<CallAction> {
+            let path = path.replace("-", "_"); // Convert from kebab-case to snake_case
+            let path = path.strip_prefix('/').unwrap_or(&path); // stip leading "/"
+
+            let content = String::from_utf8(payload.clone()).unwrap_or_default();
+            info!("{content}");
+
+            // TODO: Check access of writer
+            match path {
+                "" => {
+                    let action = CallAction::from_bytes(&payload).context("failed to parse action")?;
+                    #match_and_check_action
+                    // At this point, the action is validated and can be returned
+                    Ok(action)
                 }
-                _ => (),
-            )*
+                #(
+                #action_names => {
+                    #check_payload
+                    let value = ::borderless::serialize::to_value(&_args)?;
+                    Ok(CallAction::by_method(#action_names, value))
+                }
+                )*
+                other => Err(new_error!("unknown method: {other}")),
+            }
         }
     };
 
-    let commit_state = quote! {
-        <#state as ::borderless::__private::storage_traits::State>::commit(state);
+    let as_state = quote! {
+        <#state as ::borderless::__private::storage_traits::State>
+    };
+    let get_symbols = quote! {
+        #[automatically_derived]
+        pub(crate) fn get_symbols() -> Result<()> {
+            let symbols = Symbols::from_symbols(#as_state::symbols(), ACTION_SYMBOLS);
+            let bytes = symbols.to_bytes()?;
+            write_register(REGISTER_OUTPUT, &bytes);
+            Ok(())
+        }
     };
 
-    let wasm_impl = quote! {
-        pub fn exec_txn() -> Result<()> {
+    let exec_txn = quote! {
+        #[automatically_derived]
+        pub(crate) fn exec_txn() -> Result<()> {
             #read_input
 
             let action = CallAction::from_bytes(&input)?;
             let s = action.pretty_print()?;
             info!("{s}");
-
-            let method = action
-                .method_name()
-                .context("missing required method-name")?;
-
-            #read_state
-            #match_method
-            #commit_state
+            let mut state = #as_state::load()?;
+            #match_and_call_action
+            #as_state::commit(state);
             Ok(())
         }
-
-        pub fn exec_introduction() -> Result<()> {
+        #[automatically_derived]
+        pub(crate) fn exec_introduction() -> Result<()> {
             #read_input
             let introduction = Introduction::from_bytes(&input)?;
             let s = introduction.pretty_print()?;
             info!("{s}");
-            // TODO: Parse state from introduction
-            let state = <#state as ::borderless::__private::storage_traits::State>::init(introduction.initial_state)?;
-
-            #commit_state
+            let state = #as_state::init(introduction.initial_state)?;
+            #as_state::commit(state);
             Ok(())
         }
-
-        pub fn exec_revocation() -> Result<()> {
+        #[automatically_derived]
+        pub(crate) fn exec_revocation() -> Result<()> {
             #read_input
             let r = Revocation::from_bytes(&input)?;
             info!("Revoked contract. Reason: {}", r.reason);
             Ok(())
         }
+    };
 
-        pub fn exec_get_state() -> Result<()> {
+    let exec_http = quote! {
+        #[automatically_derived]
+        pub(crate) fn exec_get_state() -> Result<()> {
+            let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
+            let result = #as_state::http_get(path)?;
+            let status: u16 = if result.is_some() { 200 } else { 404 };
+            let payload = result.unwrap_or_default();
+            write_register(REGISTER_OUTPUT_HTTP_STATUS, status.to_be_bytes());
+            write_string_to_register(REGISTER_OUTPUT_HTTP_RESULT, payload);
             Ok(())
         }
-
-        pub fn exec_post_action() -> Result<()> {
+        #[automatically_derived]
+        pub(crate) fn exec_post_action() -> Result<()> {
+            let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
+            let payload = read_register(REGISTER_INPUT_HTTP_PAYLOAD).context("missing http-payload")?;
+            match post_action_response(path, payload) {
+                Ok(action) => {
+                    write_register(REGISTER_OUTPUT_HTTP_STATUS, 200u16.to_be_bytes());
+                    write_register(REGISTER_OUTPUT_HTTP_RESULT, action.to_bytes()?);
+                }
+                Err(e) => {
+                    write_register(REGISTER_OUTPUT_HTTP_STATUS, 400u16.to_be_bytes());
+                    write_string_to_register(REGISTER_OUTPUT_HTTP_RESULT, e.to_string());
+                }
+            };
             Ok(())
         }
     };
 
-    Ok(quote! {
+    // Combine everything in the __derived module:
+    let derived = quote! {
+        #[doc(hidden)]
         #[automatically_derived]
         pub(super) mod __derived {
             use super::*;
@@ -100,10 +171,15 @@ pub fn parse_module_content(
                 storage_keys::make_user_key, write_field, write_register, write_string_to_register,
             };
             use ::borderless::contract::*;
+            #action_symbols
             #(#action_types)*
-            #wasm_impl
+            #exec_post
+            #get_symbols
+            #exec_txn
+            #exec_http
         }
-    })
+    };
+    Ok(derived)
 }
 
 pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
@@ -111,6 +187,7 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
 
     quote! {
     #[no_mangle]
+    #[automatically_derived]
     pub extern "C" fn process_transaction() {
         let result = #derived::exec_txn();
         match result {
@@ -120,6 +197,7 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     }
 
     #[no_mangle]
+    #[automatically_derived]
     pub extern "C" fn process_introduction() {
         let result = #derived::exec_introduction();
         match result {
@@ -129,6 +207,7 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     }
 
     #[no_mangle]
+    #[automatically_derived]
     pub extern "C" fn process_revocation() {
         let result = #derived::exec_revocation();
         match result {
@@ -138,20 +217,29 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     }
 
     #[no_mangle]
+    #[automatically_derived]
     pub extern "C" fn http_get_state() {
         let result = #derived::exec_get_state();
-        match result {
-            Ok(()) => ::borderless::info!("execution successful"),
-            Err(e) => ::borderless::error!("execution failed: {e:?}"),
+        if let Err(e) = result {
+            ::borderless::error!("http-get failed: {e:?}");
         }
     }
 
     #[no_mangle]
+    #[automatically_derived]
     pub extern "C" fn http_post_action() {
         let result = #derived::exec_post_action();
-        match result {
-            Ok(()) => ::borderless::info!("execution successful"),
-            Err(e) => ::borderless::error!("execution failed: {e:?}"),
+        if let Err(e) = result {
+            ::borderless::error!("http-post failed: {e:?}");
+        }
+    }
+
+    #[no_mangle]
+    #[automatically_derived]
+    pub extern "C" fn get_symbols() {
+        let result = #derived::get_symbols();
+        if let Err(e) = result {
+            ::borderless::error!("get-symbols failed: {e:?}");
         }
     }
     }
@@ -172,39 +260,73 @@ fn get_state(items: &[Item], mod_span: &Span) -> Result<Ident> {
     ))
 }
 
+fn match_action(
+    action_names: &[String],
+    action_ids: &[u32],
+    call_fns: &[TokenStream2],
+) -> TokenStream2 {
+    quote! {
+    match &action.method {
+        MethodOrId::ByName { method } => match method.as_str() {
+            #(
+            #action_names => {
+                #call_fns
+            }
+            )*
+            other => { return Err(new_error!("Unknown method: {other}")) }
+        }
+        MethodOrId::ById { method_id } => match method_id {
+            #(
+            #action_ids => {
+                #call_fns
+            }
+            )*
+            other => { return Err(new_error!("Unknown method-id: 0x{other:04x}")) }
+        }
+    }
+    }
+}
+
+// TODO: Remember, if an action should get a web-api or not
+#[allow(unused)]
 /// Helper struct to bundle all necessary information for our action-functions
 struct ActionFn {
+    /// Ident (name) of the action
     ident: Ident,
+    /// Associated method-id - either calculated or overriden by the user
+    method_id: u32,
+    /// true, if the method-id was set manually
+    id_override: bool,
+    /// Weather or not the function requires &mut self
     mut_self: bool,
+    /// Return type of the function
     output: ReturnType,
+    /// Arguments of the function
     args: Vec<(Ident, Box<Type>)>,
 }
 
 impl ActionFn {
     fn gen_type_tokens(&self) -> TokenStream2 {
-        let ident = format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal));
-        if self.args.is_empty() {
-            quote! {
-                #[derive(serde::Serialize, serde::Deserialize)]
-                pub struct #ident ;
-            }
-        } else {
-            let fields = self.args.iter().map(|a| a.0.clone());
-            let types = self.args.iter().map(|a| a.1.clone());
-            quote! {
-                #[derive(serde::Serialize, serde::Deserialize)]
-                pub struct #ident {
-                    #(
-                        #fields: #types
-                    ),*
-                }
+        let args_ident = self.args_ident();
+        let fields = self.args.iter().map(|a| a.0.clone());
+        let types = self.args.iter().map(|a| a.1.clone());
+        quote! {
+            #[doc(hidden)]
+            #[automatically_derived]
+            #[derive(serde::Serialize, serde::Deserialize)]
+            pub struct #args_ident {
+                #(
+                    #fields: #types
+                ),*
             }
         }
     }
 
-    // References 'action' and 'state' in generated tokens
+    /// Generates the parsing of the function arguments + calling of the associated state function.
+    ///
+    /// References 'action' and 'state' in generated tokens
     fn gen_call_tokens(&self, state_ident: &Ident) -> TokenStream2 {
-        let args_ident = format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal));
+        let args_ident = self.args_ident();
         let fn_ident = &self.ident;
         let mut_state = if self.mut_self {
             quote! { &mut state }
@@ -224,12 +346,26 @@ impl ActionFn {
         }
     }
 
+    /// Generates the check, to parse the args from action.params (used in the http-post function)
+    ///
+    /// References 'action' in generated tokens
+    fn gen_check_tokens(&self, value: TokenStream2) -> TokenStream2 {
+        let args_ident = self.args_ident();
+        quote! {
+            let _args: __derived::#args_ident = #value;
+        }
+    }
+
+    fn args_ident(&self) -> Ident {
+        format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal))
+    }
+
     fn method_name(&self) -> String {
         self.ident.to_string()
     }
 
     fn method_id(&self) -> u32 {
-        todo!("generate method-id from function name or via attribute")
+        self.method_id
     }
 }
 
@@ -288,7 +424,7 @@ fn get_actions_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result<V
                 FnArg::Receiver(s) => {
                     has_self = true;
                     mut_self = s.mutability.is_some();
-                    if !s.reference.is_some() {
+                    if s.reference.is_none() {
                         return Err(Error::new_spanned(
                             item,
                             "Action functions must not consume state - use either &self or &mut self",
@@ -315,9 +451,13 @@ fn get_actions_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result<V
             ));
         }
 
-        // TODO: Check that arguments are serializable
+        // TODO: Check, if the action has a method-id assigned to it
+        // TODO: Check, that there are no actions with the same ID
+        let method_id = calc_method_id(state_ident, &impl_fn.sig.ident);
         actions.push(ActionFn {
             ident: impl_fn.sig.ident.clone(),
+            method_id,
+            id_override: false,
             mut_self,
             output: impl_fn.sig.output.clone(),
             args,
@@ -331,6 +471,13 @@ fn get_actions_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result<V
     } else {
         Ok(actions)
     }
+}
+
+/// Calculate the method-id based on the state and action name.
+fn calc_method_id(state_ident: &Ident, action_ident: &Ident) -> u32 {
+    let full_name = format!("{}::{}", state_ident, action_ident).to_uppercase();
+    // Since we only want 32-bits, we simply truncate the output:
+    xxh3_64(full_name.as_bytes()) as u32
 }
 
 /*

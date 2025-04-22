@@ -172,18 +172,21 @@ where
     }
 
     async fn process_rq(&self, req: Request) -> crate::Result<Response> {
-        match *req.method() {
+        let start = Instant::now();
+        let path = req.uri().path().to_string();
+        let result = match *req.method() {
             Method::GET => self.process_get_rq(req),
             Method::POST => self.process_post_rq(req).await,
             _ => Ok(method_not_allowed()),
-        }
+        };
+        let elapsed = start.elapsed();
+        info!("Finished executing request. path={path}. Time elapsed: {elapsed:?}");
+        result
     }
 
     fn process_get_rq(&self, req: Request) -> crate::Result<Response> {
         let path = req.uri().path();
         let query = req.uri().query();
-
-        info!("{path}");
 
         if path == "/" {
             let contracts = self.rt.lock().available_contracts()?;
@@ -266,6 +269,11 @@ where
             "meta" => {
                 let meta = controller.contract_meta(&contract_id)?;
                 Ok(json_response(&meta))
+            }
+            "symbols" => {
+                let mut rt = self.rt.lock();
+                let symbols = rt.get_symbols(&contract_id)?;
+                Ok(json_response(&symbols))
             }
             // Same as empty path
             "" => {
@@ -382,7 +390,6 @@ where
     }
 
     fn call(&mut self, req: Request) -> Self::Future {
-        let start = Instant::now();
         let this = self.clone();
         let fut = async move {
             let result: Response = match this.process_rq(req).await {
@@ -391,8 +398,6 @@ where
             };
             Ok(result)
         };
-        let elapsed = start.elapsed();
-        info!("Time elapsed: {elapsed:?}");
         Box::pin(fut)
     }
 }

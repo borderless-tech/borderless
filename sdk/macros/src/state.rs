@@ -11,7 +11,7 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
     let idents: Vec<Ident> = fields.iter().flat_map(|f| f.ident.clone()).collect();
     let ftypes: Vec<Type> = fields.iter().map(|f| f.ty.clone()).collect();
 
-    let ident_strings: Vec<String> = idents.iter().map(|f| format!("{f}")).collect();
+    let ident_strings: Vec<_> = idents.iter().map(|f| format!("{f}")).collect();
 
     let errs: Vec<_> = idents
         .iter()
@@ -22,6 +22,8 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
 
     let storeable = quote! { ::borderless::__private::storage_traits::Storeable };
 
+    let to_payload = quote! { ::borderless::__private::storage_traits::ToPayload };
+
     let type_checks = ftypes.iter().map(|ty| {
         quote! {
             __check_storeable::<#ty>();
@@ -29,46 +31,114 @@ pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
     });
 
     Ok(quote! {
+        #[doc(hidden)]
         const _: () = {
-            const fn __check_storeable<T: #storeable>() {}
+            #[allow(unused_extern_crates, clippy::useless_attribute)]
+            extern crate borderless as _borderless;
+
+            #[doc(hidden)]
+            #[automatically_derived]
+            const fn __check_storeable<T: _borderless::__private::storage_traits::Storeable>() {}
             #(#type_checks)*
+
+            #[doc(hidden)]
+            #[automatically_derived]
+            const SYMBOLS: &[(&str, u64)] = &[
+                #(
+                    (#ident_strings, #storage_keys)
+                ),*
+            ];
+
+            #[automatically_derived]
+            impl _borderless::__private::storage_traits::State for #ident {
+                fn load() -> _borderless::Result<Self> {
+                    // Decode every field based on the Storeable implementation
+                    #(
+                        let #idents = <#ftypes as #storeable>::decode(#storage_keys);
+                    )*
+                    Ok(Self {
+                        #(#idents),*
+                    })
+                }
+
+                fn init(mut value: _borderless::serialize::Value) -> _borderless::Result<Self> {
+                    use _borderless::Context;
+                    #(
+                        let base_value = value.get_mut(#ident_strings).take().context(#errs)?;
+                        let #idents = <#ftypes as #storeable>::parse_value(base_value.clone(), #storage_keys).context(#errs)?;
+                    )*
+                    Ok(Self {
+                        #(#idents),*
+                    })
+                }
+
+                fn http_get(path: String) -> _borderless::Result<Option<String>> {
+                    use _borderless::Context;
+                    let path = path.strip_prefix('/').unwrap_or(&path);
+
+                    // Extract query string
+                    let (path, _query) = match path.split_once('?') {
+                        Some((path, query)) => (path, Some(query)),
+                        None => (path, None),
+                    };
+                    // Quick-shot, check if the user wants to access the entire state
+                    if path.is_empty() {
+                        // State does not implement serialize, so we have to to this field by field
+                        let state = <Self as _borderless::__private::storage_traits::State>::load()?;
+                        // Manually build the json with the parsed fields
+                        let mut buf = String::with_capacity(100);
+                        buf.push('{');
+                        #(
+                            let value = <#ftypes as #to_payload>::to_payload(&state.#idents, "")?.context(#errs)?;
+                            buf.push('"');
+                            buf.push_str(#ident_strings);
+                            buf.push('"');
+                            buf.push(':');
+                            buf.push_str(&value);
+                            buf.push(',');
+                        )*
+                        buf.pop();
+                        buf.push('}');
+                        return Ok(Some(buf));
+                    }
+                    let (prefix, suffix) = match path.find('/') {
+                        Some(idx) => path.split_at(idx),
+                        None => (path, ""),
+                    };
+
+                    match prefix {
+                        #(
+                            #ident_strings => {
+                                let value = <#ftypes as #storeable>::decode(#storage_keys);
+                                <#ftypes as #to_payload>::to_payload(&value, suffix)
+                            }
+                        )*
+                        _ => Ok(None),
+                    }
+                }
+
+                fn commit(self) {
+                    // call .commit() on every field
+                    #(
+                        <#ftypes as #storeable>::commit(self.#idents, #storage_keys);
+                    )*
+                }
+
+                fn symbols() -> &'static [(&'static str, u64)] {
+                    SYMBOLS
+                }
+            }
         };
 
-        impl ::borderless::__private::storage_traits::State for #ident {
-            fn load() -> ::borderless::Result<Self> {
-                // Decode every field based on the Storeable implementation
-                #(
-                    let #idents = <#ftypes as #storeable>::decode(#storage_keys);
-                )*
-                Ok(Self {
-                    #(#idents),*
-                })
-            }
-
-            fn init(mut value: ::borderless::serialize::Value) -> ::borderless::Result<Self> {
-                use ::borderless::Context;
-                #(
-                    let base_value = value.get_mut(#ident_strings).take().context(#errs)?;
-                    let #idents = <#ftypes as #storeable>::parse_value(base_value.clone(), #storage_keys).context(#errs)?;
-                )*
-                Ok(Self {
-                    #(#idents),*
-                })
-            }
-
-            fn http_get(path: String) -> Option<String> {
-                todo!()
-            }
-
-            fn commit(self) {
-                // call .commit() on every field
-                #(
-                    <#ftypes as #storeable>::commit(self.#idents, #storage_keys);
-                )*
-            }
-        }
     })
 }
+
+/*
+ *
+// NOTE: This is something that's purely based on the state
+fn get_state_response(path: String) -> Result<(u16, String)> {
+}
+ */
 
 fn parse_input(data: Data) -> Result<Vec<Field>> {
     // Variants snake-case, camel-case and fields for each variant
@@ -93,7 +163,7 @@ fn parse_input(data: Data) -> Result<Vec<Field>> {
             if fields.is_empty() {
                 return Result::Err(Error::new_spanned(
                     struct_token,
-                    "ContractState must at least have one field",
+                    "State must at least have one field",
                 ));
             }
             // Extract field identifier and types
@@ -134,3 +204,7 @@ fn storage_key(field: &Field, ident: &Ident) -> u64 {
     // TODO: Write a test, that always checks that the macro keys are in user space !
     storage_key | (1 << 63)
 }
+
+/*
+ *
+ */
