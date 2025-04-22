@@ -107,7 +107,11 @@ impl<S: Db> VmState<S> {
         let buf = std::mem::take(&mut self.db_acid_txn_buffer).unwrap_or_default();
         let mut txn = self.db.begin_rw_txn()?;
         for op in buf.into_iter() {
-            // TODO: Check, that all keys are user-keys - ignore system-keys.
+            // Check, that all keys are user-keys - ignore system-keys.
+            if !op.is_userspace() {
+                warn!("Contract tried to write or remove a value with a storage-key that is not in user-space");
+                continue;
+            }
             match op {
                 StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
                 StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
@@ -552,6 +556,12 @@ impl StorageOp {
 
     pub fn remove(key: StorageKey) -> Self {
         Self::Remove { key }
+    }
+
+    pub fn is_userspace(&self) -> bool {
+        match self {
+            StorageOp::Write { key, .. } | StorageOp::Remove { key } => key.is_user_key(),
+        }
     }
 }
 
