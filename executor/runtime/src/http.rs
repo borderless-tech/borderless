@@ -137,9 +137,9 @@ where
 {
     rt: Arc<Mutex<Runtime<S>>>,
     db: S,
-    writer: BorderlessId,
     // TODO: This is not optimal. The runtime is not tied to a tx-writer,
     // and for our multi-tenant contract-node we require this to be flexible.
+    writer: BorderlessId,
     action_writer: A,
 }
 
@@ -334,7 +334,7 @@ where
 
                 let action = {
                     let mut rt = self.rt.lock();
-                    match rt.http_post_action(&contract_id, trunc, payload.into())? {
+                    match rt.http_post_action(&contract_id, trunc, payload.into(), &self.writer)? {
                         Ok(action) => {
                             // Perform dry-run of action ( and return action resp in case of error )
                             if let Err(e) = rt.perform_dry_run(&contract_id, &action, &self.writer)

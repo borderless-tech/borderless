@@ -363,6 +363,7 @@ impl<S: Db> Runtime<S> {
         cid: &ContractId,
         path: String,
         payload: Vec<u8>,
+        writer: &BorderlessId,
     ) -> Result<std::result::Result<CallAction, (u16, String)>> {
         let instance = self
             .contract_store
@@ -378,6 +379,10 @@ impl<S: Db> Runtime<S> {
         self.store
             .data_mut()
             .set_register(REGISTER_INPUT_HTTP_PAYLOAD, payload);
+
+        self.store
+            .data_mut()
+            .set_register(REGISTER_WRITER, writer.into_bytes().into());
 
         if let Err(e) = instance
             .get_typed_func::<(), ()>(&mut self.store, "http_post_action")
