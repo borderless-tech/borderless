@@ -46,7 +46,7 @@ impl ActionFn {
     pub fn gen_field_match(&self) -> TokenStream2 {
         let fields: Vec<_> = self.args.iter().map(|a| a.0.clone()).collect();
         let field_ident = self.field_ident();
-        let method_name = self.ident.to_string();
+        let method_name = self.method_name();
         let args_ident = self.args_ident(); // NOTE: This requires use super::__derived::*;
         quote! {
             Actions::#field_ident { #(#fields),* } => {
@@ -120,8 +120,16 @@ impl ActionFn {
         }
     }
 
+    /// Returns the method name
+    ///
+    /// This is either the name of the function, or the user-defined method-name
+    /// that was passed to the action macro.
     pub fn method_name(&self) -> String {
-        self.ident.to_string()
+        if let Some(rename) = &self.name_override {
+            rename.clone()
+        } else {
+            self.ident.to_string()
+        }
     }
 
     pub fn method_id(&self) -> u32 {
