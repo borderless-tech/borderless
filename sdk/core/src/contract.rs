@@ -5,7 +5,7 @@ use borderless_id_types::{AgentId, BlockIdentifier, TxIdentifier, Uuid};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{BorderlessId, ContractId, RoleId};
+use crate::{BorderlessId, ContractId};
 
 /// Contract Environment
 pub mod env {
@@ -28,37 +28,55 @@ pub mod env {
             .expect("contract-id not in metadata")
     }
 
+    /// Returns the contract participants
     pub fn participants() -> Vec<BorderlessId> {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS)
             .expect("participants not in metadata")
     }
 
+    /// Returns the roles that are assigned in this contract
     pub fn roles() -> Vec<Role> {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_ROLES).expect("roles not in metadata")
     }
 
+    /// Returns the available sinks of this contract
     pub fn sinks() -> Vec<Sink> {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS).expect("sinks not in metadata")
     }
 
+    /// Returns the [`Description`] of a contract
     pub fn desc() -> Description {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_DESC).expect("description not in metadata")
     }
 
+    /// Returns the [`Metadata`] of a contract
     pub fn meta() -> Metadata {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_META).expect("meta not in metadata")
     }
 
+    /// Returns the writer of the current transaction
     pub fn writer() -> BorderlessId {
         let bytes = read_register(REGISTER_WRITER).expect("caller not present");
         BorderlessId::from_bytes(bytes.try_into().expect("caller must be a borderless-id"))
     }
 
+    /// Returns the roles that are assigned to the writer of the current transaction
+    pub fn writer_roles() -> Vec<String> {
+        let writer = writer();
+        roles()
+            .into_iter()
+            .filter(|r| r.participant_id == writer)
+            .map(|r| r.role)
+            .collect()
+    }
+
+    /// Returns the [`TxCtx`] for the current transaction
     pub fn tx_ctx() -> TxCtx {
         let bytes = read_register(REGISTER_TX_CTX).expect("tx-id not present");
         TxCtx::from_bytes(&bytes).expect("invalid data-model in tx-id register")
     }
 
+    /// Returns the [`TxId`] for the current transaction
     pub fn tx_id() -> TxIdentifier {
         let bytes = read_register(REGISTER_TX_CTX).expect("tx-id not present");
         TxCtx::from_bytes(&bytes)
@@ -66,6 +84,7 @@ pub mod env {
             .tx_id
     }
 
+    /// Returns the transaction-index (index inside the block) for the current transaction
     pub fn tx_index() -> u64 {
         let bytes = read_register(REGISTER_TX_CTX).expect("tx-id not present");
         TxCtx::from_bytes(&bytes)
@@ -73,11 +92,13 @@ pub mod env {
             .index
     }
 
+    /// Returns the [`BlockCtx`] for the block for the current transaction
     pub fn block_ctx() -> BlockCtx {
         let bytes = read_register(REGISTER_BLOCK_CTX).expect("block-id not present");
         BlockCtx::from_bytes(&bytes).expect("invalid data-model in block-ctx register")
     }
 
+    /// Returns the [`BlockId`] of the block for the current transaction
     pub fn block_id() -> BlockIdentifier {
         let bytes = read_register(REGISTER_BLOCK_CTX).expect("block-id not present");
         BlockCtx::from_bytes(&bytes)
@@ -85,6 +106,7 @@ pub mod env {
             .block_id
     }
 
+    /// Returns the timestamp of the block for the current transaction
     pub fn block_timestamp() -> u64 {
         let bytes = read_register(REGISTER_BLOCK_CTX).expect("block-timestamp not present");
         BlockCtx::from_bytes(&bytes)
@@ -159,12 +181,29 @@ impl CallAction {
     }
 }
 
-/// Connects a Borderless-ID and Role-ID
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Maps a `BorderlessId` to a role in a smart-contract
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Role {
+    /// Borderless-ID of the contract-participant that we assign the role to
     pub participant_id: BorderlessId,
-    pub role_id: RoleId,
+
+    /// Alias of the role that is assigned
+    ///
+    /// Roles are defined as enums and usually represented as strings to the outside world.
+    pub role: String,
 }
+
+// NOTE: We could re-write the participant logic like this
+//
+// But that's maybe something for later.
+//
+// pub struct Participant {
+//     pub borderless_id: BorderlessId,
+//     pub alias: String,
+//     pub roles: Vec<String>,
+//     pub sinks: Vec<String>,
+// }
+// { "borderless-id": "4bec7f8e-5074-49a5-9b94-620fb13f12c0", "alias": null, roles": [ "Flipper" ], "sinks": [ "OTHERFLIPPER" ] },
 
 /*
  * Ok, spitballing here:
