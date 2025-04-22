@@ -107,6 +107,7 @@ impl<S: Db> VmState<S> {
         let buf = std::mem::take(&mut self.db_acid_txn_buffer).unwrap_or_default();
         let mut txn = self.db.begin_rw_txn()?;
         for op in buf.into_iter() {
+            // TODO: Check, that all keys are user-keys - ignore system-keys.
             match op {
                 StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
                 StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
@@ -203,7 +204,7 @@ impl<S: Db> VmState<S> {
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
         self.active_contract
             .as_opt()
-            .map(|cid| StorageKey::user_key(cid, base_key, sub_key))
+            .map(|cid| StorageKey::new(cid, base_key, sub_key))
             .ok_or_else(|| wasmtime::Error::msg("no contract has been activated"))
     }
 

@@ -31,7 +31,6 @@ pub mod flipper {
     impl Flipper {
         #[action]
         fn flip_switch(&mut self) {
-            info!("hello");
             self.set_switch(!self.switch);
         }
 
