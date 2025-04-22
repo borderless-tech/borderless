@@ -3,7 +3,8 @@
   "participants": [],
   "initial_state": {
     "switch": true,
-    "counter": 0
+    "counter": 0,
+    "history": []
   },
   "roles": [],
   "sinks": [],

@@ -86,7 +86,7 @@ where
 
     fn parse_value(value: serde_json::Value, base_key: u64) -> anyhow::Result<Self> {
         let values: Vec<V> = serde_json::from_value(value)?;
-        let mut out = Self::open(base_key);
+        let mut out = Self::new(base_key);
         for v in values {
             out.push(v);
         }
@@ -122,6 +122,7 @@ where
         let mut buf = String::with_capacity(encoded.len() * n_items + n_items + 10);
         buf.push('[');
         buf.push_str(&encoded);
+        buf.push(',');
         for item in items {
             let encoded = serde_json::to_string(item.as_ref())?;
             buf.push_str(&encoded);
@@ -178,12 +179,14 @@ where
         }
     }
 
+    // TODO: pub(crate)
     pub fn new(base_key: u64) -> Self {
         Self {
             cache: Cache::new(base_key, true),
         }
     }
 
+    // TODO: pub(crate)
     pub fn open(base_key: u64) -> Self {
         Self {
             cache: Cache::new(base_key, false),
