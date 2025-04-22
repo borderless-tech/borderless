@@ -67,7 +67,7 @@ pub fn parse_module_content(
             let content = String::from_utf8(payload.clone()).unwrap_or_default();
             info!("{content}");
 
-            // TODO: Check access of writer
+            #[allow(unreachable_code)]
             match path {
                 "" => {
                     let action = CallAction::from_bytes(&payload).context("failed to parse action")?;
@@ -318,8 +318,6 @@ fn impl_actions_enum(actions: &[ActionFn]) -> TokenStream2 {
     }
 }
 
-// TODO: Remember, if an action should get a web-api or not
-// TODO: Roles
 #[allow(unused)]
 /// Helper struct to bundle all necessary information for our action-functions
 struct ActionFn {
@@ -327,8 +325,12 @@ struct ActionFn {
     ident: Ident,
     /// Associated method-id - either calculated or overriden by the user
     method_id: u32,
-    /// true, if the method-id was set manually
+    /// true, if the method-id was set manually or the method-name was changed from the default
     id_override: bool,
+    /// Weather or not the action should be exposed via api
+    web_api: bool,
+    /// Roles, that are allowed to call the function. Empty means no restrictions.
+    roles: Vec<String>,
     /// Weather or not the function requires &mut self
     mut_self: bool,
     /// Return type of the function
@@ -388,6 +390,7 @@ impl ActionFn {
         } else {
             quote! { &state }
         };
+        // TODO: Check writer access
         if self.args.is_empty() {
             quote! {
                 #state_ident::#fn_ident(#mut_state);
@@ -406,8 +409,16 @@ impl ActionFn {
     /// References 'action' in generated tokens
     fn gen_check_tokens(&self, value: TokenStream2) -> TokenStream2 {
         let args_ident = self.args_ident();
-        quote! {
-            let _args: __derived::#args_ident = #value;
+        if self.web_api {
+            quote! {
+                let _args: __derived::#args_ident = #value;
+            }
+        } else {
+            let err_msg = format!("{} cannot be called via web-api", self.ident);
+            quote! {
+                return Err(::borderless::new_error!(#err_msg));
+                let _args: __derived::#args_ident = #value;
+            }
         }
     }
 
@@ -512,11 +523,15 @@ fn get_actions_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result<V
 
         // TODO: Check, if the action has a method-id assigned to it
         // TODO: Check, that there are no actions with the same ID
+        // TODO: Remember, if an action should get a web-api or not
+        // TODO: Roles
         let method_id = calc_method_id(state_ident, &impl_fn.sig.ident);
         actions.push(ActionFn {
             ident: impl_fn.sig.ident.clone(),
             method_id,
             id_override: false,
+            web_api: true,
+            roles: Vec::new(),
             mut_self,
             output: impl_fn.sig.output.clone(),
             args,
