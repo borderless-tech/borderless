@@ -7,6 +7,8 @@ use xxhash_rust::const_xxh3::xxh3_64;
 
 use crate::utils::{check_if_action, check_if_state};
 
+// TODO: Check, if module contains all required elements for a contract
+
 pub fn parse_module_content(
     mod_span: Span,
     mod_items: &[Item],
@@ -49,7 +51,7 @@ pub fn parse_module_content(
         ];
     };
 
-    // TODO: Check that arguments for all methods are serializable
+    let actions_enum = impl_actions_enum(&actions);
 
     // Generate the nested match block for matching the action method by name or id
     // match &action.method { ... => match method_name => { ... => FUNC } }
@@ -172,6 +174,7 @@ pub fn parse_module_content(
             };
             use ::borderless::contract::*;
             #action_symbols
+            #actions_enum
             #(#action_types)*
             #exec_post
             #get_symbols
@@ -245,7 +248,6 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     }
 }
 
-// TODO: Make this the parse_items function later on, that checks that every required item is in the module
 fn get_state(items: &[Item], mod_span: &Span) -> Result<Ident> {
     for item in items {
         if let Item::Struct(item_struct) = item {
@@ -287,6 +289,32 @@ fn match_action(
     }
 }
 
+fn impl_actions_enum(actions: &[ActionFn]) -> TokenStream2 {
+    let fields = actions.iter().map(ActionFn::gen_field);
+    let match_items = actions.iter().map(ActionFn::gen_field_match);
+    quote! {
+        #[automatically_derived]
+        #[allow(private_interfaces)]
+        pub enum Actions {
+            #( #fields ),*
+        }
+
+        #[automatically_derived]
+        impl TryFrom<Actions> for CallAction {
+            type Error = ::borderless::serialize::Error;
+
+            fn try_from(value: Actions) -> ::std::result::Result<CallAction, Self::Error> {
+                let action = match value {
+                    #(
+                    #match_items
+                    )*
+                };
+                Ok(action)
+            }
+        }
+    }
+}
+
 // TODO: Remember, if an action should get a web-api or not
 #[allow(unused)]
 /// Helper struct to bundle all necessary information for our action-functions
@@ -306,6 +334,29 @@ struct ActionFn {
 }
 
 impl ActionFn {
+    fn gen_field(&self) -> TokenStream2 {
+        let fields = self.args.iter().map(|a| a.0.clone());
+        let types = self.args.iter().map(|a| a.1.clone());
+        let ident = self.field_ident();
+        quote! {
+            #ident { #( #fields: #types ),* }
+        }
+    }
+
+    fn gen_field_match(&self) -> TokenStream2 {
+        let fields: Vec<_> = self.args.iter().map(|a| a.0.clone()).collect();
+        let field_ident = self.field_ident();
+        let method_name = self.ident.to_string();
+        let args_ident = self.args_ident();
+        quote! {
+            Actions::#field_ident { #(#fields),* } => {
+                let args = #args_ident { #(#fields),* };
+                let args_value = ::borderless::serialize::to_value(&args)?;
+                CallAction::by_method(#method_name, args_value)
+            }
+        }
+    }
+
     fn gen_type_tokens(&self) -> TokenStream2 {
         let args_ident = self.args_ident();
         let fields = self.args.iter().map(|a| a.0.clone());
@@ -358,6 +409,10 @@ impl ActionFn {
 
     fn args_ident(&self) -> Ident {
         format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal))
+    }
+
+    fn field_ident(&self) -> Ident {
+        format_ident!("{}", self.ident.to_string().to_case(Case::Pascal))
     }
 
     fn method_name(&self) -> String {

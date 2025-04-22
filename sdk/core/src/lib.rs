@@ -9,6 +9,7 @@ pub mod serialize {
     pub use serde_json::from_slice;
     pub use serde_json::from_value;
     pub use serde_json::to_value;
+    pub use serde_json::Error;
     pub use serde_json::Value;
 }
 

@@ -1,6 +1,6 @@
 #[borderless::contract]
 pub mod flipper {
-    use borderless::*;
+    use borderless::{Result, *};
     use collections::lazyvec::LazyVec;
     use serde::{Deserialize, Serialize};
 
@@ -23,6 +23,11 @@ pub mod flipper {
         Observer,
     }
 
+    #[derive(Deserialize, Serialize)]
+    struct NonSerde {
+        string: String,
+    }
+
     impl Flipper {
         #[action]
         pub fn flip_switch(&mut self) {
@@ -39,5 +44,13 @@ pub mod flipper {
             self.counter += 1;
             self.switch = switch;
         }
+
+        #[action]
+        fn foo(&self, _foo: NonSerde) {}
+
+        // pub fn set_other(&self, switch: bool) -> Result<Events> {
+        //     Events::default().push(Sinks::)
+        //     todo!()
+        // }
     }
 }
