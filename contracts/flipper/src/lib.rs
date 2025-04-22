@@ -30,13 +30,13 @@ pub mod flipper {
 
     impl Flipper {
         #[action]
-        pub fn flip_switch(&mut self) {
+        fn flip_switch(&mut self) {
             info!("hello");
             self.set_switch(!self.switch);
         }
 
-        #[action(web-api = true)]
-        pub fn set_switch(&mut self, switch: bool) {
+        #[action(web-api = true, roles = "Flipper")]
+        fn set_switch(&mut self, switch: bool) {
             self.history.push(History {
                 switch: self.switch,
                 counter: self.counter,

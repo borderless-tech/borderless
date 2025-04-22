@@ -319,6 +319,7 @@ fn impl_actions_enum(actions: &[ActionFn]) -> TokenStream2 {
 }
 
 // TODO: Remember, if an action should get a web-api or not
+// TODO: Roles
 #[allow(unused)]
 /// Helper struct to bundle all necessary information for our action-functions
 struct ActionFn {
