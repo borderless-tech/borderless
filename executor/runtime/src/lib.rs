@@ -11,6 +11,7 @@ use borderless::{BlockIdentifier, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use error::ErrorKind;
+use log::{error, warn};
 use lru::LruCache;
 use parking_lot::Mutex;
 use vm::{Commit, VmState};
@@ -177,7 +178,6 @@ impl<S: Db> Runtime<S> {
     ) -> Result<()> {
         let input = action.to_bytes()?;
 
-        // TODO: Decorate process_chain_tx and abort execution in VmState
         self.store.data_mut().begin_mutable_exec(*cid)?;
         self.process_chain_tx("process_transaction", *cid, input, *writer, &tx_ctx)?;
         self.store
@@ -237,6 +237,8 @@ impl<S: Db> Runtime<S> {
     }
 
     /// Abstraction over all possible chain transactions
+    ///
+    /// In case of an error, the `VmState` is reset by this function.
     fn process_chain_tx(
         &mut self,
         contract_method: &str,
@@ -260,8 +262,15 @@ impl<S: Db> Runtime<S> {
             .set_register(REGISTER_WRITER, writer.into_bytes().into());
 
         // Call the actual function on the wasm side
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, contract_method)?;
-        func.call(&mut self.store, ())?;
+        if let Err(e) = instance
+            .get_typed_func::<(), ()>(&mut self.store, contract_method)
+            .and_then(|func| func.call(&mut self.store, ()))
+        {
+            warn!("{contract_method} failed with error: {e}");
+            self.store.data_mut().finish_immutable_exec()?;
+        }
+
+        // TODO: Read output events
         Ok(())
     }
 
@@ -273,7 +282,7 @@ impl<S: Db> Runtime<S> {
         writer: &BorderlessId,
     ) -> Result<()> {
         let input = action.to_bytes()?;
-        let tx_ctx = TxCtx::dummy();
+        let tx_ctx = TxCtx::dummy().to_bytes()?;
 
         let instance = self
             .contract_store
@@ -284,17 +293,18 @@ impl<S: Db> Runtime<S> {
 
         // Prepare registers
         self.store.data_mut().set_register(REGISTER_INPUT, input);
-        self.store
-            .data_mut()
-            .set_register(REGISTER_TX_CTX, tx_ctx.to_bytes()?);
+        self.store.data_mut().set_register(REGISTER_TX_CTX, tx_ctx);
         self.store
             .data_mut()
             .set_register(REGISTER_WRITER, writer.into_bytes().into());
 
         // Call the actual function on the wasm side
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_transaction")?;
-        func.call(&mut self.store, ())?;
-
+        if let Err(e) = instance
+            .get_typed_func::<(), ()>(&mut self.store, "process_transaction")
+            .and_then(|func| func.call(&mut self.store, ()))
+        {
+            warn!("dry-run of process_transaction failed with error: {e}");
+        }
         // Finish the execution
         self.store.data_mut().finish_immutable_exec()?;
         Ok(())
@@ -314,8 +324,14 @@ impl<S: Db> Runtime<S> {
             .data_mut()
             .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());
 
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, "http_get_state")?;
-        func.call(&mut self.store, ())?;
+        if let Err(e) = instance
+            .get_typed_func::<(), ()>(&mut self.store, "http_get_state")
+            .and_then(|func| func.call(&mut self.store, ()))
+        {
+            warn!("http_get_state failed with error: {e}");
+        }
+        // Finish the execution
+        let log = self.store.data_mut().finish_immutable_exec()?;
 
         let status = self
             .store
@@ -330,8 +346,7 @@ impl<S: Db> Runtime<S> {
             .get_register(REGISTER_OUTPUT_HTTP_RESULT)
             .ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
 
-        // Finish the execution
-        let log = self.store.data_mut().finish_immutable_exec()?;
+        // Print the log
         for l in log {
             logger::print_log_line(l);
         }
@@ -364,8 +379,14 @@ impl<S: Db> Runtime<S> {
             .data_mut()
             .set_register(REGISTER_INPUT_HTTP_PAYLOAD, payload);
 
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, "http_post_action")?;
-        func.call(&mut self.store, ())?;
+        if let Err(e) = instance
+            .get_typed_func::<(), ()>(&mut self.store, "http_post_action")
+            .and_then(|func| func.call(&mut self.store, ()))
+        {
+            error!("http_post_action failed with error: {e}");
+        }
+        // Finish the execution
+        let log = self.store.data_mut().finish_immutable_exec()?;
 
         let status = self
             .store
@@ -380,8 +401,7 @@ impl<S: Db> Runtime<S> {
             .get_register(REGISTER_OUTPUT_HTTP_RESULT)
             .ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
 
-        // Finish the execution
-        let log = self.store.data_mut().finish_immutable_exec()?;
+        // Print the log
         for l in log {
             logger::print_log_line(l);
         }
@@ -398,7 +418,6 @@ impl<S: Db> Runtime<S> {
         }
     }
 
-    // TODO: Decorator
     /// Returns the symbols of the contract
     pub fn get_symbols(&mut self, cid: &ContractId) -> Result<Option<Symbols>> {
         let instance = self
@@ -409,12 +428,12 @@ impl<S: Db> Runtime<S> {
         self.store.data_mut().begin_immutable_exec(*cid)?;
 
         // In case the contract does not export any symbols, just return 'None'
-        let func = match instance.get_typed_func::<(), ()>(&mut self.store, "get_symbols") {
-            Ok(f) => f,
-            Err(_) => return Ok(None),
-        };
-        func.call(&mut self.store, ())?;
-
+        if let Err(e) = instance
+            .get_typed_func::<(), ()>(&mut self.store, "get_symbols")
+            .and_then(|func| func.call(&mut self.store, ()))
+        {
+            error!("get_symbols failed with error: {e}");
+        }
         self.store.data_mut().finish_immutable_exec()?;
 
         let bytes = match self.store.data().get_register(REGISTER_OUTPUT) {

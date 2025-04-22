@@ -176,6 +176,8 @@ impl<S: Db> VmState<S> {
 
     /// Marks the end of an immutable contract execution.
     ///
+    /// Can also be called to clear the `VmState` in case a mutable execution produced an error.
+    ///
     /// Internally, this function does the following things:
     /// 1. Reset the contract-id for the next execution
     /// 2. Clear the log-buffer
