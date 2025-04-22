@@ -35,7 +35,7 @@ pub mod flipper {
             self.set_switch(!self.switch);
         }
 
-        #[action(web-api = true, roles = "Flipper")]
+        #[action(web_api = true, roles = "Flipper")]
         fn set_switch(&mut self, switch: bool) {
             self.history.push(History {
                 switch: self.switch,
