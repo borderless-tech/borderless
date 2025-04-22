@@ -390,14 +390,17 @@ impl ActionFn {
         } else {
             quote! { &state }
         };
+        let access_check = self.writer_access();
         // TODO: Check writer access
         if self.args.is_empty() {
             quote! {
+                #access_check
                 #state_ident::#fn_ident(#mut_state);
             }
         } else {
             let arg_idents = self.args.iter().map(|a| a.0.clone());
             quote! {
+                #access_check
                 let args: __derived::#args_ident = ::borderless::serialize::from_value(action.params)?;
                 #state_ident::#fn_ident(#mut_state, #(args.#arg_idents),*);
             }
@@ -409,15 +412,33 @@ impl ActionFn {
     /// References 'action' in generated tokens
     fn gen_check_tokens(&self, value: TokenStream2) -> TokenStream2 {
         let args_ident = self.args_ident();
+        let access_check = self.writer_access();
         if self.web_api {
             quote! {
+                #access_check
                 let _args: __derived::#args_ident = #value;
             }
         } else {
-            let err_msg = format!("{} cannot be called via web-api", self.ident);
+            let err_msg = format!("action '{}' cannot be called via web-api", self.ident);
             quote! {
-                return Err(::borderless::new_error!(#err_msg));
+                return Err(new_error!(#err_msg));
                 let _args: __derived::#args_ident = #value;
+            }
+        }
+    }
+
+    fn writer_access(&self) -> TokenStream2 {
+        let roles = self.roles.iter();
+        if self.roles.is_empty() {
+            quote! { /* no access restriction */ }
+        } else {
+            let fn_name = self.ident.to_string();
+            quote! {
+                let writer_roles = ::borderless::contract::env::writer_roles();
+                if !writer_roles.iter().any(|role| #( role.eq_ignore_ascii_case(#roles) )||* ) {
+                    let writer = ::borderless::contract::env::writer();
+                    return Err(new_error!("writer {} has no access to action '{}'", writer, #fn_name));
+                }
             }
         }
     }
