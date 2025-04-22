@@ -23,9 +23,9 @@ pub mod flipper {
         Observer,
     }
 
-    #[derive(Deserialize, Serialize)]
-    struct NonSerde {
-        string: String,
+    use self::actions::Actions;
+    pub enum Sinks {
+        OtherFlipper(Actions),
     }
 
     impl Flipper {
@@ -44,9 +44,6 @@ pub mod flipper {
             self.counter += 1;
             self.switch = switch;
         }
-
-        #[action]
-        fn foo(&self, _foo: NonSerde) {}
 
         // pub fn set_other(&self, switch: bool) -> Result<Events> {
         //     Events::default().push(Sinks::)

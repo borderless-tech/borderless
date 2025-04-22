@@ -174,12 +174,16 @@ pub fn parse_module_content(
             };
             use ::borderless::contract::*;
             #action_symbols
-            #actions_enum
             #(#action_types)*
             #exec_post
             #get_symbols
             #exec_txn
             #exec_http
+        }
+
+        pub(super) mod actions {
+            use super::__derived::*;
+            #actions_enum
         }
     };
     Ok(derived)
@@ -293,17 +297,16 @@ fn impl_actions_enum(actions: &[ActionFn]) -> TokenStream2 {
     let fields = actions.iter().map(ActionFn::gen_field);
     let match_items = actions.iter().map(ActionFn::gen_field_match);
     quote! {
-        #[automatically_derived]
         #[allow(private_interfaces)]
         pub enum Actions {
             #( #fields ),*
         }
 
         #[automatically_derived]
-        impl TryFrom<Actions> for CallAction {
+        impl TryFrom<Actions> for ::borderless::contract::CallAction {
             type Error = ::borderless::serialize::Error;
 
-            fn try_from(value: Actions) -> ::std::result::Result<CallAction, Self::Error> {
+            fn try_from(value: Actions) -> ::std::result::Result<::borderless::contract::CallAction, Self::Error> {
                 let action = match value {
                     #(
                     #match_items
@@ -347,12 +350,12 @@ impl ActionFn {
         let fields: Vec<_> = self.args.iter().map(|a| a.0.clone()).collect();
         let field_ident = self.field_ident();
         let method_name = self.ident.to_string();
-        let args_ident = self.args_ident();
+        let args_ident = self.args_ident(); // NOTE: This requires use super::__derived::*;
         quote! {
             Actions::#field_ident { #(#fields),* } => {
                 let args = #args_ident { #(#fields),* };
                 let args_value = ::borderless::serialize::to_value(&args)?;
-                CallAction::by_method(#method_name, args_value)
+                ::borderless::contract::CallAction::by_method(#method_name, args_value)
             }
         }
     }
@@ -365,9 +368,9 @@ impl ActionFn {
             #[doc(hidden)]
             #[automatically_derived]
             #[derive(serde::Serialize, serde::Deserialize)]
-            pub struct #args_ident {
+            pub(crate) struct #args_ident {
                 #(
-                    #fields: #types
+                    pub(crate) #fields: #types
                 ),*
             }
         }
