@@ -17,7 +17,8 @@ use crate::__private::storage_traits;
 use crate::__private::storage_traits::private::Sealed;
 use cache::{Cache, KeyValue};
 use proxy::{Proxy, ProxyMut};
-use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json::Value;
 use std::marker::PhantomData;
 
@@ -45,7 +46,7 @@ impl<V> storage_traits::Storeable for HashMap<V> {
 
 impl<V> HashMap<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + Clone,
+    V: Serialize + DeserializeOwned + Clone,
 {
     pub fn new(base_key: u64) -> Self {
         HashMap {

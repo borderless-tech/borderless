@@ -1,9 +1,10 @@
+use super::ROOT_KEY;
 use crate::__private::{read_field, storage_has_key, storage_remove, write_field};
 use nohash_hasher::IntMap;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
-use super::ROOT_KEY;
 // TODO Store metadata in it?
 
 enum CacheOp {
@@ -25,7 +26,7 @@ pub struct KeyValue<V> {
 
 impl<V> KeyValue<V>
 where
-    V: Serialize + for<'de> Deserialize<'de>,
+    V: Serialize + DeserializeOwned,
 {
     pub(crate) fn new(key: u64, value: V) -> Self {
         KeyValue { key, value }
@@ -34,7 +35,7 @@ where
 
 impl<V> Cache<V>
 where
-    V: Serialize + for<'de> Deserialize<'de>,
+    V: Serialize + DeserializeOwned,
 {
     pub(crate) fn new(base_key: u64) -> Self {
         Cache {
