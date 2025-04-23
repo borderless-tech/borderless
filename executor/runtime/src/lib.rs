@@ -6,6 +6,7 @@ use std::time::Instant;
 use action_log::ActionRecord;
 use borderless::__private::registers::*;
 use borderless::contracts::{BlockCtx, Introduction, Revocation, Symbols, TxCtx};
+use borderless::events::Events;
 use borderless::{events::CallAction, ContractId};
 use borderless::{BlockIdentifier, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
@@ -177,22 +178,21 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
-    // TODO: Handle transaction output !
     pub fn process_transaction(
         &mut self,
         cid: &ContractId,
         action: CallAction,
         writer: &BorderlessId,
         tx_ctx: TxCtx,
-    ) -> Result<()> {
+    ) -> Result<Option<Events>> {
         let input = action.to_bytes()?;
 
         self.store.data_mut().begin_mutable_exec(*cid)?;
-        self.process_chain_tx("process_transaction", *cid, input, *writer, &tx_ctx)?;
+        let events = self.process_chain_tx("process_transaction", *cid, input, *writer, &tx_ctx)?;
         self.store
             .data_mut()
             .finish_mutable_exec(Commit::Action { action, tx_ctx })?;
-        Ok(())
+        Ok(events)
     }
 
     pub fn process_introduction(
@@ -245,6 +245,7 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
+    // TODO: Return Option<Events> to have None or use Events::default() ?
     /// Abstraction over all possible chain transactions
     ///
     /// In case of an error, the `VmState` is reset by this function.
@@ -255,7 +256,7 @@ impl<S: Db> Runtime<S> {
         input: Vec<u8>,
         writer: BorderlessId,
         tx_ctx: &TxCtx,
-    ) -> Result<()> {
+    ) -> Result<Option<Events>> {
         let instance = self
             .contract_store
             .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
@@ -276,11 +277,17 @@ impl<S: Db> Runtime<S> {
             .and_then(|func| func.call(&mut self.store, ()))
         {
             warn!("{contract_method} failed with error: {e}");
+            // TODO: Maybe we abort the execution with a different function,
+            // so that we save the Action; the TxCtx and the Logs of the contract ?
+            // -> This needs some refinement.
             self.store.data_mut().finish_immutable_exec()?;
         }
 
-        // TODO: Read output events
-        Ok(())
+        // Return output events
+        match self.store.data().get_register(REGISTER_OUTPUT) {
+            Some(bytes) => Ok(Some(Events::from_bytes(&bytes)?)),
+            None => Ok(None),
+        }
     }
 
     /// Executes an action without commiting the state

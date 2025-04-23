@@ -53,7 +53,7 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
 
         let mut rt = self.rt.lock();
         let result = match rt.process_transaction(&cid, action, &self.writer, tx_ctx) {
-            Ok(()) => Ok(hash),
+            Ok(_events) => Ok(hash),
             Err(e) => Err(e),
         };
 
