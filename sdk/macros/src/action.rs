@@ -308,6 +308,31 @@ fn calc_method_id(state_ident: &Ident, action_ident: &Ident, rename: Option<Stri
     xxh3_64(full_name.as_bytes()) as u32
 }
 
+pub fn impl_actions_enum(actions: &[ActionFn]) -> TokenStream2 {
+    let fields = actions.iter().map(ActionFn::gen_field);
+    let match_items = actions.iter().map(ActionFn::gen_field_match);
+    quote! {
+        #[allow(private_interfaces)]
+        pub enum Actions {
+            #( #fields ),*
+        }
+
+        #[automatically_derived]
+        impl TryFrom<Actions> for ::borderless::events::CallAction {
+            type Error = ::borderless::serialize::Error;
+
+            fn try_from(value: Actions) -> ::std::result::Result<::borderless::events::CallAction, Self::Error> {
+                let action = match value {
+                    #(
+                    #match_items
+                    )*
+                };
+                Ok(action)
+            }
+        }
+    }
+}
+
 // #[derive(Debug, FromMeta)]
 // pub struct ActionArgs {
 //     #[darling(default)]

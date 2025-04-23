@@ -3,7 +3,7 @@ use quote::quote;
 use syn::{Error, Ident, Item, Result};
 
 use crate::{
-    action::{get_actions, ActionFn},
+    action::{get_actions, impl_actions_enum, ActionFn},
     utils::check_if_state,
 };
 
@@ -289,30 +289,5 @@ fn match_action(
             other => { return Err(new_error!("Unknown method-id: 0x{other:04x}")) }
         }
     }
-    }
-}
-
-fn impl_actions_enum(actions: &[ActionFn]) -> TokenStream2 {
-    let fields = actions.iter().map(ActionFn::gen_field);
-    let match_items = actions.iter().map(ActionFn::gen_field_match);
-    quote! {
-        #[allow(private_interfaces)]
-        pub enum Actions {
-            #( #fields ),*
-        }
-
-        #[automatically_derived]
-        impl TryFrom<Actions> for ::borderless::events::CallAction {
-            type Error = ::borderless::serialize::Error;
-
-            fn try_from(value: Actions) -> ::std::result::Result<::borderless::events::CallAction, Self::Error> {
-                let action = match value {
-                    #(
-                    #match_items
-                    )*
-                };
-                Ok(action)
-            }
-        }
     }
 }
