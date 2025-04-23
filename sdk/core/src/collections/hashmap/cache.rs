@@ -50,12 +50,7 @@ where
     }
 
     pub(crate) fn contains_key(&self, sub_key: u64) -> bool {
-        // Check first the in-memory copy
-        if self.map.borrow().contains_key(&sub_key) {
-            return true;
-        }
-        // Fallback to DB
-        storage_has_key(self.base_key, sub_key)
+        self.read(sub_key).is_some()
     }
 
     pub(crate) fn reset(&mut self) {
