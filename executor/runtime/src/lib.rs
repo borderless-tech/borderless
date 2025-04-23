@@ -277,9 +277,9 @@ impl<S: Db> Runtime<S> {
             .and_then(|func| func.call(&mut self.store, ()))
         {
             warn!("{contract_method} failed with error: {e}");
-            // TODO: Maybe we abort the execution with a different function,
-            // so that we save the Action; the TxCtx and the Logs of the contract ?
-            // -> This needs some refinement.
+            // NOTE: It is okay to abort the execution here with the finish_immutable_exec function,
+            // because we only get here, if the wasm execution has failed. Therefore there are no
+            // logs or actions to be commited to the database. We simply need this line to 'reset' the VmState for the next execution.
             self.store.data_mut().finish_immutable_exec()?;
         }
 
