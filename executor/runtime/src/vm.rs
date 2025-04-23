@@ -35,6 +35,10 @@ use crate::{
     Error, Result, CONTRACT_SUB_DB,
 };
 
+// NOTE: I think this generalizes for both contracts and sw-agents;
+//
+// We have to fine-tune some things, but in general this works.
+
 pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
     db: S,
@@ -552,6 +556,7 @@ pub enum Commit {
     },
 }
 
+// TODO: Maybe add Agents here aswell ?
 /// Represents the different states of an active contract
 ///
 /// A contract can be executed with a mutable or immutable state.
