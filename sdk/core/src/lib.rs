@@ -57,7 +57,7 @@ pub mod events {
     use serde_json::Value;
     use std::{fmt::Display, str::FromStr};
 
-    use crate::NamedSink;
+    use crate::{debug, error, NamedSink};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(untagged)]
@@ -215,7 +215,7 @@ pub mod events {
             let action = match action.try_into() {
                 Ok(a) => a,
                 Err(e) => {
-                    crate::error!(
+                    error!(
                         "critical error while converting action for dynamic sink '{alias}': {e}"
                     );
                     crate::__private::abort();
@@ -235,7 +235,7 @@ pub mod events {
             let action = match action.try_into() {
                 Ok(a) => a,
                 Err(e) => {
-                    crate::error!(
+                    error!(
                         "critical error while converting action for dynamic sink '{contract_id}': {e}"
                     );
                     crate::__private::abort();
@@ -253,7 +253,7 @@ pub mod events {
             let action = match action.try_into() {
                 Ok(a) => a,
                 Err(e) => {
-                    crate::error!(
+                    error!(
                         "critical error while converting action for dynamic sink '{agent_id}': {e}"
                     );
                     crate::__private::abort();
@@ -261,6 +261,40 @@ pub mod events {
             };
             self.actions.push((SinkType::Agent(agent_id), action))
         }
+    }
+
+    pub fn convert_out_events(caller: BorderlessId, out: ActionOutput, sinks: &[Sink]) -> Events {
+        let mut contracts = Vec::new();
+        let mut local = Vec::new();
+
+        for (sink, action) in out.actions {
+            match sink {
+                SinkType::Named(alias) => {
+                    if let Some(sink) = sinks.iter().find(|s| s.has_alias(&alias)) {
+                        if !sink.has_access(caller) {
+                            debug!("caller {caller} does not have access to sink {alias}");
+                            continue;
+                        }
+                        match sink {
+                            Sink::Contract { contract_id, .. } => contracts.push(ContractCall {
+                                contract_id: *contract_id,
+                                action,
+                            }),
+                            Sink::Agent { agent_id, .. } => local.push(ProcessCall {
+                                agent_id: *agent_id,
+                                action,
+                            }),
+                        }
+                    }
+                }
+                SinkType::Agent(agent_id) => local.push(ProcessCall { agent_id, action }),
+                SinkType::Contract(contract_id) => contracts.push(ContractCall {
+                    contract_id,
+                    action,
+                }),
+            }
+        }
+        Events { contracts, local }
     }
 
     /// An event Sink for either a contract or sw-agent
@@ -301,31 +335,6 @@ pub mod events {
             }
         }
 
-        /// Consumes the sink and returns the same sink,
-        /// but with alias converted to ascii-uppercase.
-        pub fn ensure_uppercase_alias(self) -> Self {
-            match self {
-                Sink::Contract {
-                    contract_id,
-                    alias,
-                    restrict_to_users,
-                } => Sink::Contract {
-                    contract_id,
-                    alias: alias.to_ascii_uppercase(),
-                    restrict_to_users,
-                },
-                Sink::Agent {
-                    agent_id,
-                    alias,
-                    owner,
-                } => Sink::Agent {
-                    agent_id,
-                    alias: alias.to_ascii_uppercase(),
-                    owner,
-                },
-            }
-        }
-
         /// Checks weather or not the given user has access to this sink
         pub fn has_access(&self, user: BorderlessId) -> bool {
             match self {
@@ -339,11 +348,11 @@ pub mod events {
             }
         }
 
-        pub fn alias(&self) -> String {
-            match self {
-                Sink::Agent { alias, .. } => alias.to_ascii_uppercase(),
-                Sink::Contract { alias, .. } => alias.to_ascii_uppercase(),
-            }
+        pub fn has_alias(&self, alias: impl AsRef<str>) -> bool {
+            let own_alias = match self {
+                Sink::Agent { alias, .. } | Sink::Contract { alias, .. } => alias,
+            };
+            alias.as_ref().eq_ignore_ascii_case(own_alias)
         }
 
         pub fn is_process(&self) -> bool {
