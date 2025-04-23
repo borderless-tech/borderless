@@ -271,7 +271,7 @@ fn get_actions_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result<V
             .find(|a: &&ActionFn| a.method_id == method_id)
         {
             return Err(Error::new_spanned(
-                &impl_fn,
+                impl_fn,
                 format!(
                     "duplicate method-id for {} and {} - this is likely because you used 'rename' on one action",
                     a.ident, impl_fn.sig.ident

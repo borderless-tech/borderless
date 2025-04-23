@@ -385,9 +385,9 @@ where
                     node.children.push(key); // <- mutation here
                 }
                 None => {
-                    node.keys
-                        .last_mut()
-                        .map(|last_key| *last_key = last_key.saturating_add(1));
+                    if let Some(last_key) = node.keys.last_mut() {
+                        *last_key = last_key.saturating_add(1);
+                    }
                 }
             }
         }
@@ -424,9 +424,9 @@ where
                 }
                 (value, empty)
             } else {
-                node.keys
-                    .last_mut()
-                    .map(|last_key| *last_key = last_key.saturating_sub(1));
+                if let Some(last_key) = node.keys.last_mut() {
+                    *last_key = last_key.saturating_sub(1);
+                }
                 self.cache.flag_write(node_key);
                 (value, false)
             }
@@ -769,7 +769,7 @@ where
         // Traverse down to the last leaf of the tree
         while !node.borrow().is_leaf() {
             // Invariant: internal nodes will always contain at least 1 child
-            let last_child = node.borrow().children.last().unwrap().clone();
+            let last_child = *node.borrow().children.last().unwrap();
             node = self.cache.read(last_child);
             leaf_key = last_child;
         }
