@@ -20,7 +20,6 @@ pub(crate) fn test_integrity() -> Result<()> {
     if lazy_vec.exists() && !lazy_vec.is_empty() {
         warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
         lazy_vec.clear();
-        lazy_vec.commit(storage_key);
     }
 
     info!("Executing the LazyVec integrity test suite...");
@@ -33,6 +32,7 @@ pub(crate) fn test_integrity() -> Result<()> {
     remove()?;
 
     info!("All integrity tests run successfully!");
+    lazy_vec.commit(storage_key);
     Ok(())
 }
 

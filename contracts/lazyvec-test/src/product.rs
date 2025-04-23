@@ -86,7 +86,6 @@ pub fn test_product() -> Result<()> {
         }
     }
     info!("Number of products AFTER: {}", lazy_vec.len());
-    // Commit state
     lazy_vec.commit(storage_key);
     Ok(())
 }

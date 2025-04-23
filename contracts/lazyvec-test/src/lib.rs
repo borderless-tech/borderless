@@ -91,23 +91,21 @@ fn exec_introduction() -> Result<()> {
     if lazy_vec.exists() {
         warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
         lazy_vec.clear();
-        lazy_vec.commit(storage_key);
     } else {
         info!("Create new LazyVec for the product test");
-        let lazy_vec: LazyVec<product::Product> = LazyVec::parse_value(json!([]), storage_key)?;
-        lazy_vec.commit(storage_key);
+        lazy_vec = LazyVec::parse_value(json!([]), storage_key)?;
     }
+    lazy_vec.commit(storage_key);
 
     let storage_key = make_user_key(TEST_INTEGRITY_BASE_KEY);
     let mut lazy_vec: LazyVec<u64> = LazyVec::decode(storage_key);
     if lazy_vec.exists() {
         warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
         lazy_vec.clear();
-        lazy_vec.commit(storage_key);
     } else {
         info!("Create new LazyVec for the integrity test");
-        let lazy_vec: LazyVec<u64> = LazyVec::parse_value(json!([]), storage_key)?;
-        lazy_vec.commit(storage_key);
+        lazy_vec = LazyVec::parse_value(json!([]), storage_key)?;
     }
+    lazy_vec.commit(storage_key);
     Ok(())
 }
