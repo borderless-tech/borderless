@@ -1,7 +1,7 @@
 use super::proxy::Proxy;
-use serde::{Deserialize, Serialize};
-
 use super::LazyVec;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 /// Immutable B+Tree Iterator
 pub struct LazyVecIt<'a, V> {
@@ -11,7 +11,7 @@ pub struct LazyVecIt<'a, V> {
 
 impl<'a, V> Iterator for LazyVecIt<'a, V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + Clone,
+    V: Serialize + DeserializeOwned + Clone,
 {
     type Item = Proxy<'a, V>;
 
@@ -24,7 +24,7 @@ where
 
 impl<'a, V> LazyVecIt<'a, V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + Clone,
+    V: Serialize + DeserializeOwned + Clone,
 {
     pub(crate) fn new(tree: &'a LazyVec<V>) -> Self {
         LazyVecIt {
@@ -42,7 +42,7 @@ where
 
 // impl<'a, V> Iterator for LazyVecItMut<'a, V>
 // where
-//     V: Serialize + for<'de> Deserialize<'de> + Clone,
+//     V: Serialize + DeserializeOwned + Clone,
 // {
 //     type Item = ProxyMut<'a, V>;
 
@@ -55,7 +55,7 @@ where
 
 // impl<'a, V> LazyVecItMut<'a, V>
 // where
-//     V: Serialize + for<'de> Deserialize<'de> + Clone,
+//     V: Serialize + DeserializeOwned + Clone,
 // {
 //     pub(crate) fn new(tree: &'a mut LazyVec<V>) -> Self {
 //         LazyVecItMut {

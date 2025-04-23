@@ -4,12 +4,12 @@ use std::rc::Rc;
 use super::cache::CacheOp::{Remove, Update};
 use super::node::Node;
 use super::{ORDER, ROOT_KEY};
-use nohash_hasher::IntMap;
-use serde::{Deserialize, Serialize};
-
 use crate::__private::{
     read_field, storage_gen_sub_key, storage_has_key, storage_remove, write_field,
 };
+use nohash_hasher::IntMap;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 enum CacheOp {
     Update,
@@ -24,7 +24,7 @@ pub struct Cache<V> {
 
 impl<V> Cache<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + Clone,
+    V: Serialize + DeserializeOwned + Clone,
 {
     pub(crate) fn new(base_key: u64, init: bool) -> Self {
         let mut cache = Cache {

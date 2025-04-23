@@ -10,7 +10,8 @@ use cache::Cache;
 use iterator::LazyVecIt;
 use node::Node;
 use proxy::{Proxy, ProxyMut};
-use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
@@ -38,7 +39,7 @@ pub struct LazyVec<V> {
 
 impl<V: Serialize> Debug for LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + Debug + Clone,
+    V: Serialize + DeserializeOwned + Debug + Clone,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if self.fmt_internal(ROOT_KEY, 0, f).is_ok() {
@@ -50,7 +51,7 @@ where
 
 impl<V> LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + Debug + Clone,
+    V: Serialize + DeserializeOwned + Debug + Clone,
 {
     fn fmt_internal(&self, node_key: u64, depth: usize, f: &mut Formatter<'_>) -> std::fmt::Result {
         let indent = "  ".repeat(depth);
@@ -73,7 +74,7 @@ where
 
 impl<V> LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
+    V: Serialize + DeserializeOwned + PartialEq + Clone,
 {
     pub fn contains(&self, value: V) -> bool {
         let mut node = self.cache.read(ROOT_KEY);
@@ -99,11 +100,11 @@ where
     }
 }
 
-impl<V> Sealed for LazyVec<V> where V: Clone + Serialize + for<'de> Deserialize<'de> {}
+impl<V> Sealed for LazyVec<V> where V: Clone + Serialize + DeserializeOwned {}
 
 impl<V> storage_traits::Storeable for LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + Clone,
+    V: Serialize + DeserializeOwned + Clone,
 {
     fn decode(base_key: u64) -> Self {
         LazyVec::open(base_key)
@@ -125,7 +126,7 @@ where
 
 impl<V> storage_traits::ToPayload for LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + Clone,
+    V: Serialize + DeserializeOwned + Clone,
 {
     fn to_payload(&self, path: &str) -> anyhow::Result<Option<String>> {
         // As this is a vector, there is no further nesting
@@ -165,7 +166,7 @@ where
 // // TODO
 // impl<V> Index<usize> for LazyVec<V>
 // where
-//     V: Clone + Serialize + for<'de> Deserialize<'de>,
+//     V: Clone + Serialize + DeserializeOwned,
 // {
 //     type Output = Proxy<'a, V>;
 
@@ -176,7 +177,7 @@ where
 
 // impl<V> IndexMut<usize> for LazyVec<V>
 // where
-//     V: Serialize + for<'de> Deserialize<'de> + Clone,
+//     V: Serialize + DeserializeOwned + Clone,
 // {
 //     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 //         self.get_mut(index).expect("Index out of bounds")
@@ -185,7 +186,7 @@ where
 
 impl<V> LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + Clone,
+    V: Serialize + DeserializeOwned + Clone,
 {
     fn get_node_rank(&self, key: u64) -> usize {
         self.cache.read(key).borrow().rank()
