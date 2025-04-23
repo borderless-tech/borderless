@@ -52,6 +52,7 @@ pub trait NamedSink {
 }
 
 pub mod events {
+    use anyhow::anyhow;
     use borderless_id_types::{AgentId, BorderlessId, ContractId};
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
@@ -334,6 +335,9 @@ pub mod events {
                                     action,
                                 }),
                             }
+                        } else {
+                            // TODO: Should this be an error or should we just log the error here ?
+                            return Err(anyhow!("Failed to find sink '{alias}', which is referenced in the action output"));
                         }
                     }
                     SinkType::Agent(agent_id) => local.push(ProcessCall { agent_id, action }),
