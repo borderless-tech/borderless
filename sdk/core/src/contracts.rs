@@ -525,6 +525,10 @@ impl Display for BlockCtx {
     }
 }
 
+pub struct ActionOutput {
+    // events: Vec<Box>
+}
+
 /// Generated symbols of a contract
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Symbols {

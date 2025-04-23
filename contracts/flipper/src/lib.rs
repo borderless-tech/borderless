@@ -24,6 +24,8 @@ pub mod flipper {
     }
 
     use self::actions::Actions;
+
+    #[derive(NamedSink)]
     pub enum Sinks {
         OtherFlipper(Actions),
     }

@@ -15,7 +15,7 @@ pub mod serialize {
 
 // Directly export macros, so that the user can write:
 // #[borderless::contract], #[borderless::agent] and #[borderless::action]
-pub use borderless_sdk_macros::{action, contract, State};
+pub use borderless_sdk_macros::{action, contract, NamedSink, State};
 
 /// This module is **not** part of the public API.
 /// It exists, because the procedural macros and some internal implementations (like the contract runtime) rely on it.
@@ -37,6 +37,18 @@ pub mod http;
 pub mod prelude {
     pub use crate::contracts::*;
     pub use crate::events::*;
+}
+
+/// Trait that must be implemented on the `Sink` enum inside a contract module.
+///
+/// Implementing this trait ensures, that you can split the sink into a static string
+/// (which represents the 'alias'-string we use to match sinks) and a CallAction object,
+/// which will be used to generate the output transaction.
+pub trait NamedSink {
+    /// Splits the sink into its alias and the encoded CallAction object.
+    fn into_action(
+        self,
+    ) -> std::result::Result<(&'static str, events::CallAction), serde_json::Error>;
 }
 
 pub mod events {
@@ -110,6 +122,16 @@ pub mod events {
             serde_json::to_vec(&self)
         }
     }
+
+    // /// Represents a target that should execute some action.
+    // ///
+    // /// Since contracts and software-agents both use the [`CallAction`] struct,
+    // /// but also use different ID types, this enum can be used in cases where a `CallAction`
+    // /// is bundled with either a [`ContractId`] or [`AgentId`].
+    // pub enum TargetId {
+    //     Agent(AgentId),
+    //     Contract(ContractId),
+    // }
 
     /// An outgoing event for another contract
     #[derive(Debug)]
