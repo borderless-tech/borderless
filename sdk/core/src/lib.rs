@@ -259,13 +259,12 @@ pub mod events {
                     crate::__private::abort();
                 }
             };
-            self.actions
-                .push((SinkType::Contract(contract_id.into()), action.into()))
+            self.actions.push((SinkType::Contract(contract_id), action))
         }
 
         pub fn add_event_for_process<IntoAction>(&mut self, agent_id: AgentId, action: IntoAction)
         where
-            IntoAction: Into<CallAction>,
+            IntoAction: TryInto<CallAction>,
             <IntoAction as TryInto<CallAction>>::Error: std::fmt::Display,
         {
             let action = match action.try_into() {
