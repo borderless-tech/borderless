@@ -156,7 +156,7 @@ impl<S: Db> Runtime<S> {
 
     /// Sets the currently active block
     ///
-    /// This write the [`BlockCtx`] to the dedicated register, so that the wasm side can query it.
+    /// This writes the [`BlockCtx`] to the dedicated register, so that the wasm side can query it.
     pub fn set_block(&mut self, block_id: BlockIdentifier, block_timestamp: u64) -> Result<()> {
         let ctx = BlockCtx {
             block_id,
@@ -165,6 +165,15 @@ impl<S: Db> Runtime<S> {
         self.store
             .data_mut()
             .set_register(REGISTER_BLOCK_CTX, ctx.to_bytes()?);
+        Ok(())
+    }
+
+    /// Sets the currently active executor
+    ///
+    /// This writes the [`BorderlessId`] of the executor to the dedicated register, so that the wasm side can query it.
+    pub fn set_executor(&mut self, executor_id: BorderlessId) -> Result<()> {
+        let bytes = executor_id.into_bytes().to_vec();
+        self.store.data_mut().set_register(REGISTER_EXECUTOR, bytes);
         Ok(())
     }
 

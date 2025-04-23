@@ -164,6 +164,52 @@ impl<S: Db> VmState<S> {
         Ok(())
     }
 
+    // /// Aborts a mutable contract execution - use this in case of an error.
+    // ///
+    // /// In contrast to [`finish_mutable_exec`], this function does not commit the state back to the database,
+    // /// but nonetheless will log the action and write the log-buffer to the database.
+    // ///
+    // /// # Errors
+    // ///
+    // /// Calling this function while the `VmState` has no active contract results in an error.
+    // pub fn abort_mutable_exec(&mut self, commit: Commit) -> Result<()> {
+    //     let cid = match self.active_contract {
+    //         ActiveContract::Mutable(cid) => cid,
+    //         ActiveContract::Immutable(_) => {
+    //             return Err(Error::msg("Contract execution was marked as immutable"));
+    //         }
+    //         ActiveContract::None => {
+    //             return Err(Error::msg("Must start contract execution before commiting"));
+    //         }
+    //     };
+    //     let mut txn = self.db.begin_rw_txn()?;
+
+    //     // Flush log
+    //     let logger = Logger::new(&self.db, cid);
+    //     logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
+
+    //     // Commit external item (introduction, action or revocation)
+    //     match commit {
+    //         Commit::Action { action, tx_ctx } => {
+    //             let action_log = ActionLog::new(&self.db, cid);
+    //             action_log.commit(&self.db_ptr, &mut txn, &action, tx_ctx)?;
+    //         }
+    //         _ => {
+    //             txn.commit(); // commit the logs
+    //             return Err(Error::msg("failed to commit introduction/revocation"));
+    //         }
+    //     }
+
+    //     // Commit txn
+    //     txn.commit();
+
+    //     // Reset everything
+    //     self.active_contract = ActiveContract::None;
+    //     self.log_buffer.clear();
+
+    //     Ok(())
+    // }
+
     /// Sets an contract as active and marks it as immutable
     ///
     /// This is used for handling http-requests (as they never modify the state)

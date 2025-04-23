@@ -136,6 +136,9 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
 
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
 
+    // The writer is also the executor
+    rt.set_executor(writer)?;
+
     // Parse command
     match command.action {
         ContractAction::Introduce { introduction } => {

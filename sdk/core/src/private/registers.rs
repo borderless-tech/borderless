@@ -17,17 +17,16 @@ pub const REGISTER_OUTPUT: u64 = 1;
 /// Register used to feed the writer-id into the contract
 pub const REGISTER_WRITER: u64 = 2;
 
-// NOTE: I think this is not a good idea - the executor differs, depending on where the contract is executed.
-// Giving users access to the executor-id enables them to write logic, that breaks the distributed contract execution !
-//
-// /// Register used to feed the executor-id into the contract
-// pub const REGISTER_EXECUTOR: u64 = 2;
+/// Register used to feed the executor-id into the contract
+///
+/// Should only be accessed by the macro and never by the user, since this could introduce side-effects
+pub const REGISTER_EXECUTOR: u64 = 3;
 
 /// Register used to feed the transaction context (tx-id + tx-index) into the contract
-pub const REGISTER_TX_CTX: u64 = 3;
+pub const REGISTER_TX_CTX: u64 = 4;
 
 /// Register used to feed the block context (block-id + block-timestamp) into the contract
-pub const REGISTER_BLOCK_CTX: u64 = 4;
+pub const REGISTER_BLOCK_CTX: u64 = 5;
 
 /// Register to feed http requests into the contract
 pub const REGISTER_INPUT_HTTP_PATH: u64 = 1024;

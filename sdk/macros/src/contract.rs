@@ -110,6 +110,11 @@ pub fn parse_module_content(
             info!("{s}");
             let mut state = #as_state::load()?;
             #match_and_call_action
+            let events = _match_result?;
+            if !events.is_empty() {
+                let bytes = events.to_bytes()?;
+                write_register(REGISTER_OUTPUT, &bytes);
+            }
             #as_state::commit(state);
             Ok(())
         }
@@ -265,13 +270,16 @@ fn get_state(items: &[Item], mod_span: &Span) -> Result<Ident> {
     ))
 }
 
+/// Creates the doubly nested match block required to match actions either by method-name or method-id.
+///
+/// The result of `call_fns` will be captured as an outer variable `_match_result`.
 fn match_action(
     action_names: &[String],
     action_ids: &[u32],
     call_fns: &[TokenStream2],
 ) -> TokenStream2 {
     quote! {
-    match &action.method {
+    let _match_result = match &action.method {
         MethodOrId::ByName { method } => match method.as_str() {
             #(
             #action_names => {
@@ -288,6 +296,6 @@ fn match_action(
             )*
             other => { return Err(new_error!("Unknown method-id: 0x{other:04x}")) }
         }
-    }
+    };
     }
 }

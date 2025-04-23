@@ -8,16 +8,13 @@ pub mod storage_keys;
 #[path = "private/storage_traits.rs"]
 pub mod storage_traits;
 
-// DEPRECATED
-// #[path = "private/action_log.rs"]
-// pub mod action_log;
-
 use borderless_abi as abi;
 
 use registers::REGISTER_ATOMIC_OP;
 use serde::{de::DeserializeOwned, Serialize};
 
 pub use postcard::from_bytes as from_postcard_bytes;
+pub use postcard::to_allocvec as to_postcard_bytes;
 
 use crate::{contracts::Introduction, error};
 

@@ -79,6 +79,10 @@ impl ActionFn {
     pub fn gen_call_tokens(&self, state_ident: &Ident) -> TokenStream2 {
         let args_ident = self.args_ident();
         let fn_ident = &self.ident;
+        let return_type = match &self.output {
+            ReturnType::Default => quote! { () },
+            ReturnType::Type(_, ty) => quote! { #ty },
+        };
         let mut_state = if self.mut_self {
             quote! { &mut state }
         } else {
@@ -88,14 +92,16 @@ impl ActionFn {
         if self.args.is_empty() {
             quote! {
                 #access_check
-                #state_ident::#fn_ident(#mut_state);
+                let result = #state_ident::#fn_ident(#mut_state);
+                <#return_type as ::borderless::events::ActionOutEvent>::convert_out_events(result)
             }
         } else {
             let arg_idents = self.args.iter().map(|a| a.0.clone());
             quote! {
                 #access_check
                 let args: __derived::#args_ident = ::borderless::serialize::from_value(action.params)?;
-                #state_ident::#fn_ident(#mut_state, #(args.#arg_idents),*);
+                let result = #state_ident::#fn_ident(#mut_state, #(args.#arg_idents),*);
+                <#return_type as ::borderless::events::ActionOutEvent>::convert_out_events(result)
             }
         }
     }

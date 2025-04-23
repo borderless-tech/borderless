@@ -15,7 +15,7 @@ pub mod env {
         BorderlessId, ContractId,
         __private::{
             read_field, read_register,
-            registers::{REGISTER_BLOCK_CTX, REGISTER_TX_CTX, REGISTER_WRITER},
+            registers::{REGISTER_BLOCK_CTX, REGISTER_EXECUTOR, REGISTER_TX_CTX, REGISTER_WRITER},
             storage_keys::*,
         },
     };
@@ -58,6 +58,12 @@ pub mod env {
     pub fn writer() -> BorderlessId {
         let bytes = read_register(REGISTER_WRITER).expect("caller not present");
         BorderlessId::from_bytes(bytes.try_into().expect("caller must be a borderless-id"))
+    }
+
+    /// Returns the writer of the current transaction
+    pub(crate) fn executor() -> BorderlessId {
+        let bytes = read_register(REGISTER_EXECUTOR).expect("executor not present");
+        BorderlessId::from_bytes(bytes.try_into().expect("executor must be a borderless-id"))
     }
 
     /// Returns the roles that are assigned to the writer of the current transaction
