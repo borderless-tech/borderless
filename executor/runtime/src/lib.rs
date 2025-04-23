@@ -469,7 +469,7 @@ impl<S: Db> Runtime<S> {
         self.store.data().read_action(cid, idx)
     }
 
-    pub fn len_actions(&self, cid: &ContractId) -> Result<Option<u64>> {
+    pub fn len_actions(&self, cid: &ContractId) -> Result<u64> {
         self.store.data().len_actions(cid)
     }
 

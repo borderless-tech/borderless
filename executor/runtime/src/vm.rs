@@ -280,12 +280,12 @@ impl<S: Db> VmState<S> {
 
     /// Tries to read the action with the given index for the currently active contract
     pub fn read_action(&self, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
-        read_action(&self.db, cid, idx)
+        ActionLog::new(&self.db, *cid).get(idx)
     }
 
     /// Returns the length of all actions
-    pub fn len_actions(&self, cid: &ContractId) -> Result<Option<u64>> {
-        len_actions(&self.db, cid)
+    pub fn len_actions(&self, cid: &ContractId) -> Result<u64> {
+        ActionLog::new(&self.db, *cid).len()
     }
 }
 
@@ -615,33 +615,4 @@ impl StorageOp {
             StorageOp::Write { key, .. } | StorageOp::Remove { key } => key.is_user_key(),
         }
     }
-}
-
-// TODO: Remove
-/// Reads an action from the database
-pub fn read_action(db: &impl Db, cid: &ContractId, idx: usize) -> Result<Option<ActionRecord>> {
-    let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, idx as u64);
-    let db_ptr = db.open_sub_db(CONTRACT_SUB_DB)?;
-    let txn = db.begin_ro_txn()?;
-    let value = if let Some(bytes) = txn.read(&db_ptr, &storage_key)? {
-        Some(from_postcard_bytes(bytes)?)
-    } else {
-        None
-    };
-    txn.commit()?;
-    Ok(value)
-}
-
-// TODO: Remove
-/// Returns the length of all actions
-pub fn len_actions(db: &impl Db, cid: &ContractId) -> Result<Option<u64>> {
-    let storage_key = StorageKey::system_key(cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN);
-    let db_ptr = db.open_sub_db(CONTRACT_SUB_DB)?;
-    let txn = db.begin_ro_txn()?;
-    let value = if let Some(bytes) = txn.read(&db_ptr, &storage_key)? {
-        Some(from_postcard_bytes(bytes)?)
-    } else {
-        None
-    };
-    Ok(value)
 }

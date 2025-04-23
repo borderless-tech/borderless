@@ -105,7 +105,7 @@ pub fn generate_tx_ctx(
     cid: &ContractId,
 ) -> Result<TxCtx> {
     // We now have to provide additional context when executing the contract
-    let n_actions = rt.len_actions(cid)?.unwrap_or_default();
+    let n_actions = rt.len_actions(cid)?;
     let tx_hash = Hash256::digest(&n_actions.to_be_bytes());
     let tx_ctx = TxCtx {
         tx_id: TxIdentifier::new(0, n_actions, tx_hash),
