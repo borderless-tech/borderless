@@ -65,6 +65,7 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
 pub async fn start_contract_server(db: impl Db + 'static) -> Result<()> {
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
     let rt = Runtime::new(&db, NonZeroUsize::new(10).unwrap())?.into_shared();
+    rt.lock().set_executor(writer)?;
     let action_writer = ActionApplier {
         rt: rt.clone(),
         writer,

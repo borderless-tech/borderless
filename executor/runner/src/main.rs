@@ -165,9 +165,10 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
 
             info!("Run contract {cid}");
             let start = Instant::now();
-            rt.process_transaction(&cid, action, &writer, tx_ctx.clone())?;
+            let events = rt.process_transaction(&cid, action, &writer, tx_ctx.clone())?;
             let elapsed = start.elapsed();
             info!("Time elapsed: {elapsed:?}");
+            dbg!(events);
 
             // Print log
             info!("--- Contract-Log:");
