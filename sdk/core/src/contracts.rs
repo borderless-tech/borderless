@@ -1,11 +1,11 @@
 use std::{collections::BTreeMap, fmt::Display, str::FromStr};
 
 use borderless_hash::Hash256;
-use borderless_id_types::{AgentId, BlockIdentifier, TxIdentifier, Uuid};
+use borderless_id_types::{BlockIdentifier, TxIdentifier, Uuid};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{BorderlessId, ContractId};
+use crate::{events::Sink, BorderlessId, ContractId};
 
 /// Contract Environment
 pub mod env {
@@ -149,95 +149,6 @@ pub struct Role {
  * We should add a "MethodOrId" to each sink; then we are able to build the CallAction struct for the corresponding
  * contract or agent.
  */
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Sink {
-    Contract {
-        contract_id: ContractId,
-        alias: String,
-        restrict_to_users: Vec<BorderlessId>,
-    },
-    Process {
-        process_id: AgentId,
-        alias: String,
-        owner: BorderlessId,
-    },
-}
-
-impl Sink {
-    /// Creates a new Sink for a SmartProcess
-    pub fn process(process_id: AgentId, alias: String, owner: BorderlessId) -> Sink {
-        Sink::Process {
-            process_id,
-            alias: alias.to_ascii_uppercase(),
-            owner,
-        }
-    }
-
-    /// Creates a new Sink for a SmartContract
-    pub fn contract(
-        contract_id: ContractId,
-        alias: String,
-        restrict_to_users: Vec<BorderlessId>,
-    ) -> Sink {
-        Sink::Contract {
-            contract_id,
-            alias: alias.to_ascii_uppercase(),
-            restrict_to_users,
-        }
-    }
-
-    /// Consumes the sink and returns the same sink,
-    /// but with alias converted to ascii-uppercase.
-    pub fn ensure_uppercase_alias(self) -> Self {
-        match self {
-            Sink::Contract {
-                contract_id,
-                alias,
-                restrict_to_users,
-            } => Sink::Contract {
-                contract_id,
-                alias: alias.to_ascii_uppercase(),
-                restrict_to_users,
-            },
-            Sink::Process {
-                process_id,
-                alias,
-                owner,
-            } => Sink::Process {
-                process_id,
-                alias: alias.to_ascii_uppercase(),
-                owner,
-            },
-        }
-    }
-
-    /// Checks weather or not the given user has access to this sink
-    pub fn has_access(&self, user: BorderlessId) -> bool {
-        match self {
-            Sink::Process { owner, .. } => *owner == user,
-            Sink::Contract {
-                restrict_to_users, ..
-            } => {
-                // If the vector is empty, everyone has access
-                restrict_to_users.is_empty() || restrict_to_users.iter().any(|u| *u == user)
-            }
-        }
-    }
-
-    pub fn alias(&self) -> String {
-        match self {
-            Sink::Process { alias, .. } => alias.to_ascii_uppercase(),
-            Sink::Contract { alias, .. } => alias.to_ascii_uppercase(),
-        }
-    }
-
-    pub fn is_process(&self) -> bool {
-        match self {
-            Sink::Process { .. } => true,
-            Sink::Contract { .. } => false,
-        }
-    }
-}
 
 /// High level description and information about the contract itself
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -523,10 +434,6 @@ impl Display for BlockCtx {
             self.block_id, self.timestamp
         )
     }
-}
-
-pub struct ActionOutput {
-    // events: Vec<Box>
 }
 
 /// Generated symbols of a contract

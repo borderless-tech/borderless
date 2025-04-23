@@ -18,16 +18,11 @@ pub mod flipper {
         history: LazyVec<History>,
     }
 
-    pub enum Roles {
-        Flipper,
-        Observer,
-    }
-
     use self::actions::Actions;
 
     #[derive(NamedSink)]
-    pub enum Sinks {
-        OtherFlipper(Actions),
+    pub enum Other {
+        Flipper(Actions),
     }
 
     impl Flipper {
