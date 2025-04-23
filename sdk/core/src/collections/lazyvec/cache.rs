@@ -24,7 +24,7 @@ pub struct Cache<V> {
 
 impl<V> Cache<V>
 where
-    V: Serialize + DeserializeOwned + Clone,
+    V: Serialize + DeserializeOwned,
 {
     pub(crate) fn new(base_key: u64, init: bool) -> Self {
         let mut cache = Cache {
@@ -86,6 +86,14 @@ where
 
     pub(crate) fn flag_write(&mut self, key: u64) {
         self.operations.insert(key, Update);
+    }
+
+    pub(crate) fn replace(&mut self, old_key: u64, new_key: u64, cell: Rc<RefCell<Node<V>>>) {
+        // Move cell to a new slot
+        self.operations.insert(new_key, Update);
+        self.map.borrow_mut().insert(new_key, cell);
+        // Remove cell from the former slot
+        self.remove(old_key);
     }
 
     /// Writes a new node to the cache
