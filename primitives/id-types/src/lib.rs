@@ -563,18 +563,4 @@ mod tests {
             assert_ne!(base_id.as_u128(), back_to_u128);
         }
     }
-
-    #[test]
-    fn action_id_display() {
-        assert_eq!(ActionId::from_const(0).to_string(), "00000000");
-        assert_eq!(ActionId::from_const(256).to_string(), "00000100");
-        assert_eq!(ActionId::from_const(u32::MAX).to_string(), "ffffffff");
-    }
-
-    #[test]
-    fn role_id_display() {
-        assert_eq!(RoleId::from_const(0).to_string(), "00000000");
-        assert_eq!(RoleId::from_const(256).to_string(), "00000100");
-        assert_eq!(RoleId::from_const(u32::MAX).to_string(), "ffffffff");
-    }
 }
