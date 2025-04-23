@@ -2,6 +2,7 @@ mod basics;
 mod product;
 
 use borderless::{error, info, new_error, warn, Context, Result};
+use serde_json::json;
 
 #[no_mangle]
 pub extern "C" fn process_transaction() {
@@ -86,27 +87,25 @@ fn exec_introduction() -> Result<()> {
     info!("{s}");
 
     let storage_key = make_user_key(TEST_PRODUCT_BASE_KEY);
-    let mut lazy_vec: LazyVec<product::Product> = LazyVec::open(storage_key);
+    let mut lazy_vec: LazyVec<product::Product> = LazyVec::decode(storage_key);
     if lazy_vec.exists() {
         warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
         lazy_vec.clear();
-        lazy_vec.commit(storage_key);
     } else {
         info!("Create new LazyVec for the product test");
-        let lazy_vec: LazyVec<product::Product> = LazyVec::new(storage_key);
-        lazy_vec.commit(storage_key);
+        lazy_vec = LazyVec::parse_value(json!([]), storage_key)?;
     }
+    lazy_vec.commit(storage_key);
 
     let storage_key = make_user_key(TEST_INTEGRITY_BASE_KEY);
-    let mut lazy_vec: LazyVec<u64> = LazyVec::open(storage_key);
+    let mut lazy_vec: LazyVec<u64> = LazyVec::decode(storage_key);
     if lazy_vec.exists() {
         warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
         lazy_vec.clear();
-        lazy_vec.commit(storage_key);
     } else {
         info!("Create new LazyVec for the integrity test");
-        let lazy_vec: LazyVec<u64> = LazyVec::new(storage_key);
-        lazy_vec.commit(storage_key);
+        lazy_vec = LazyVec::parse_value(json!([]), storage_key)?;
     }
+    lazy_vec.commit(storage_key);
     Ok(())
 }

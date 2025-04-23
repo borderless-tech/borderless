@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Node<V> {
     pub(crate) keys: Vec<usize>,   // Used by Internal nodes
     pub(crate) children: Vec<u64>, // DB keys of the child nodes (used by Internal nodes)
@@ -66,12 +66,7 @@ impl<V> Node<V> {
             next: None,
         }
     }
-}
 
-impl<V> Node<V>
-where
-    V: Serialize + for<'de> Deserialize<'de> + Clone,
-{
     pub(crate) fn empty_leaf(order: usize) -> Self {
         Node {
             keys: vec![],

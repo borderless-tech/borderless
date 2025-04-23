@@ -62,7 +62,7 @@ impl Display for Product {
 pub fn test_product() -> Result<()> {
     // Load LazyVec from DB
     let storage_key = make_user_key(TEST_PRODUCT_BASE_KEY);
-    let mut lazy_vec = LazyVec::open(storage_key);
+    let mut lazy_vec = LazyVec::decode(storage_key);
 
     info!("Number of products BEFORE: {}", lazy_vec.len());
     if lazy_vec.len() > 100000 {
@@ -86,7 +86,6 @@ pub fn test_product() -> Result<()> {
         }
     }
     info!("Number of products AFTER: {}", lazy_vec.len());
-    // Commit state
     lazy_vec.commit(storage_key);
     Ok(())
 }

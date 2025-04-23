@@ -4,12 +4,12 @@ use std::rc::Rc;
 use super::cache::CacheOp::{Remove, Update};
 use super::node::Node;
 use super::{ORDER, ROOT_KEY};
-use nohash_hasher::IntMap;
-use serde::{Deserialize, Serialize};
-
 use crate::__private::{
     read_field, storage_gen_sub_key, storage_has_key, storage_remove, write_field,
 };
+use nohash_hasher::IntMap;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 enum CacheOp {
     Update,
@@ -24,7 +24,7 @@ pub struct Cache<V> {
 
 impl<V> Cache<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
+    V: Serialize + DeserializeOwned,
 {
     pub(crate) fn new(base_key: u64, init: bool) -> Self {
         let mut cache = Cache {
@@ -88,6 +88,14 @@ where
         self.operations.insert(key, Update);
     }
 
+    pub(crate) fn replace(&mut self, old_key: u64, new_key: u64, cell: Rc<RefCell<Node<V>>>) {
+        // Move cell to a new slot
+        self.operations.insert(new_key, Update);
+        self.map.borrow_mut().insert(new_key, cell);
+        // Remove cell from the former slot
+        self.remove(old_key);
+    }
+
     /// Writes a new node to the cache
     pub(crate) fn write(&mut self, key: u64, node: Node<V>) {
         self.operations.insert(key, Update);
@@ -117,7 +125,5 @@ where
                 Remove => storage_remove(self.base_key, *key),
             }
         }
-        // Clears and deallocates the used resources    // TODO Make sure we really want to move self
-        //self.operations = IntMap::default();
     }
 }

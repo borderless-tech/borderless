@@ -10,7 +10,8 @@ use cache::Cache;
 use iterator::LazyVecIt;
 use node::Node;
 use proxy::{Proxy, ProxyMut};
-use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
@@ -38,7 +39,7 @@ pub struct LazyVec<V> {
 
 impl<V: Serialize> Debug for LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
+    V: Serialize + DeserializeOwned + Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if self.fmt_internal(ROOT_KEY, 0, f).is_ok() {
@@ -50,7 +51,7 @@ where
 
 impl<V> LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
+    V: Serialize + DeserializeOwned + Debug,
 {
     fn fmt_internal(&self, node_key: u64, depth: usize, f: &mut Formatter<'_>) -> std::fmt::Result {
         let indent = "  ".repeat(depth);
@@ -71,14 +72,39 @@ where
     }
 }
 
-impl<V> Sealed for LazyVec<V> where
-    V: Clone + Debug + PartialEq + Serialize + for<'de> Deserialize<'de>
+impl<V> LazyVec<V>
+where
+    V: Serialize + DeserializeOwned + PartialEq,
 {
+    pub fn contains(&self, value: V) -> bool {
+        let mut node = self.cache.read(ROOT_KEY);
+
+        // Traverse down to the first leaf of the tree
+        while !node.borrow().is_leaf() {
+            // Invariant: internal nodes will always contain at least 1 child
+            let child_key = node.borrow().children[0];
+            node = self.cache.read(child_key);
+        }
+
+        // Traverse through the linked leaf nodes
+        loop {
+            if node.borrow().values.contains(&value) {
+                return true;
+            }
+            let next = node.borrow().next;
+            match next {
+                None => return false,
+                Some(key) => node = self.cache.read(key),
+            }
+        }
+    }
 }
+
+impl<V> Sealed for LazyVec<V> where V: Serialize + DeserializeOwned {}
 
 impl<V> storage_traits::Storeable for LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
+    V: Serialize + DeserializeOwned,
 {
     fn decode(base_key: u64) -> Self {
         LazyVec::open(base_key)
@@ -100,7 +126,7 @@ where
 
 impl<V> storage_traits::ToPayload for LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
+    V: Serialize + DeserializeOwned,
 {
     fn to_payload(&self, path: &str) -> anyhow::Result<Option<String>> {
         // As this is a vector, there is no further nesting
@@ -140,7 +166,7 @@ where
 // // TODO
 // impl<V> Index<usize> for LazyVec<V>
 // where
-//     V: Clone + PartialEq + Serialize + for<'de> Deserialize<'de>,
+//     V: Serialize + DeserializeOwned,
 // {
 //     type Output = Proxy<'a, V>;
 
@@ -151,7 +177,7 @@ where
 
 // impl<V> IndexMut<usize> for LazyVec<V>
 // where
-//     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
+//     V: Serialize + DeserializeOwned,
 // {
 //     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 //         self.get_mut(index).expect("Index out of bounds")
@@ -160,7 +186,7 @@ where
 
 impl<V> LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
+    V: Serialize + DeserializeOwned,
 {
     fn get_node_rank(&self, key: u64) -> usize {
         self.cache.read(key).borrow().rank()
@@ -179,15 +205,13 @@ where
         }
     }
 
-    // TODO: pub(crate)
-    pub fn new(base_key: u64) -> Self {
+    pub(crate) fn new(base_key: u64) -> Self {
         Self {
             cache: Cache::new(base_key, true),
         }
     }
 
-    // TODO: pub(crate)
-    pub fn open(base_key: u64) -> Self {
+    pub(crate) fn open(base_key: u64) -> Self {
         Self {
             cache: Cache::new(base_key, false),
         }
@@ -211,29 +235,6 @@ where
         // Loads all the nodes to the cache
         self.load(ROOT_KEY);
         self.cache.clear();
-    }
-
-    pub fn contains(&self, value: V) -> bool {
-        let mut node = self.cache.read(ROOT_KEY);
-
-        // Traverse down to the first leaf of the tree
-        while !node.borrow().is_leaf() {
-            // Invariant: internal nodes will always contain at least 1 child
-            let child_key = node.borrow().children[0];
-            node = self.cache.read(child_key);
-        }
-
-        // Traverse through the linked leaf nodes
-        loop {
-            if node.borrow().values.contains(&value) {
-                return true;
-            }
-            let next = node.borrow().next;
-            match next {
-                None => return false,
-                Some(key) => node = self.cache.read(key),
-            }
-        }
     }
 
     pub fn get_mut(&mut self, index: usize) -> Option<ProxyMut<'_, V>> {
@@ -543,25 +544,23 @@ where
 
     fn update_root(&mut self, child_key: u64) {
         let former_root = self.cache.read(ROOT_KEY);
-        let former_root = former_root.borrow();
+        let node = former_root.borrow();
 
         // Generate a new key for the former root
         let key_old_root = self.new_key();
 
         // Create the new root node
         let new_root = Node {
-            keys: vec![former_root.rank(), self.get_node_rank(child_key)],
-            level: former_root.level().saturating_add(1),
+            keys: vec![node.rank(), self.get_node_rank(child_key)],
+            level: node.level().saturating_add(1),
             children: vec![key_old_root, child_key],
             values: vec![],
             next: None,
         };
-
+        drop(node);
         // Store the former root in a new position in the DB
-        // TODO Can we avoid copying?
-        self.cache.write(key_old_root, former_root.clone());
-
-        // Replace the old root with the new one
+        self.cache.replace(ROOT_KEY, key_old_root, former_root);
+        // Update the new root
         self.cache.write(ROOT_KEY, new_root);
     }
 
@@ -686,9 +685,7 @@ where
                 let child_key = root.children[0];
                 let child = self.cache.read(child_key);
                 // Replace root with its only child
-                self.cache.write(ROOT_KEY, child.borrow().clone());
-                // TODO Check this in depth
-                self.cache.remove(child_key);
+                self.cache.replace(child_key, ROOT_KEY, child);
             }
         }
     }
@@ -718,11 +715,13 @@ where
     }
 
     fn create_subtree(&mut self, tgt_level: usize, node_key: u64) -> u64 {
-        // TODO: Is this correct - creating a copy here ?
-        let mut current_node = self.cache.read(node_key).as_ref().borrow().clone();
         let mut current_key = node_key;
         // Create a whole subtree with the new leaf up until the root level
         for level in 1..=tgt_level {
+            // Read current node
+            let current_node = self.cache.read(current_key);
+            let current_node = current_node.borrow();
+            // Create a new internal node
             let new_int = Node {
                 keys: vec![current_node.rank()],
                 children: vec![current_key],
@@ -732,9 +731,8 @@ where
             };
             // Store the newly created internal node into the DB
             let new_key = self.new_key();
-            self.cache.write(new_key, new_int.clone());
-
-            current_node = new_int;
+            self.cache.write(new_key, new_int);
+            // Update the control key
             current_key = new_key;
         }
         // Return the top level new internal node key

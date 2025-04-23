@@ -1231,6 +1231,7 @@ version = "0.1.0"
 dependencies = [
  "borderless",
  "serde",
+ "serde_json",
  "xxhash-rust",
 ]
 
