@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use borderless::__private::http::to_payload;
-use borderless::contract::Introduction;
+use borderless::contracts::Introduction;
 use borderless::{error, info, new_error, Context, Result};
 
 #[no_mangle]
@@ -147,7 +147,7 @@ fn exec_revocation() -> Result<()> {
 
 // Test out, if the "environment variables" work as expected
 fn test_env() {
-    use borderless::contract::env;
+    use borderless::contracts::env;
     info!("Contract-ID: {}", env::contract_id());
     info!("Participants: {:#?}", env::participants());
     info!("Roles: {:#?}", env::roles());

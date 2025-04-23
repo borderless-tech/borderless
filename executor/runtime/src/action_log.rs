@@ -7,7 +7,7 @@ use borderless_kv_store::{Db, RawRead, Tx};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use borderless::{contract::TxCtx, events::CallAction};
+use borderless::{contracts::TxCtx, events::CallAction};
 
 use borderless::__private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG};
 

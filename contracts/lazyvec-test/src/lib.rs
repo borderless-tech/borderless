@@ -74,7 +74,7 @@ fn exec_run() -> Result<()> {
 
 use crate::basics::{test_integrity, TEST_INTEGRITY_BASE_KEY};
 use crate::product::{test_product, TEST_PRODUCT_BASE_KEY};
-use borderless::contract::Introduction;
+use borderless::contracts::Introduction;
 
 fn exec_introduction() -> Result<()> {
     // Read action

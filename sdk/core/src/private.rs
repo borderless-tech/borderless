@@ -19,7 +19,7 @@ use serde::{de::DeserializeOwned, Serialize};
 
 pub use postcard::from_bytes as from_postcard_bytes;
 
-use crate::{contract::Introduction, error};
+use crate::{contracts::Introduction, error};
 
 // NOTE: Maybe we can use conditional compilation, to guard all functions that must only be called from the webassembly code:
 //

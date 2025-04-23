@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use borderless::{
-    contract::{Introduction, Revocation, TxCtx},
+    contracts::{Introduction, Revocation, TxCtx},
     events::CallAction,
     hash::Hash256,
     BlockIdentifier, ContractId, TxIdentifier,

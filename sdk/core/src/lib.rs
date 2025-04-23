@@ -1,5 +1,5 @@
 pub mod collections;
-pub mod contract;
+pub mod contracts;
 pub mod lazy;
 pub mod log;
 
@@ -35,7 +35,7 @@ pub use borderless_hash as hash;
 pub mod http;
 
 pub mod prelude {
-    pub use crate::contract::*;
+    pub use crate::contracts::*;
     pub use crate::events::*;
 }
 

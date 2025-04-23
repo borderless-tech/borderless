@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use action_log::ActionRecord;
 use borderless::__private::registers::*;
-use borderless::contract::{BlockCtx, Introduction, Revocation, Symbols, TxCtx};
+use borderless::contracts::{BlockCtx, Introduction, Revocation, Symbols, TxCtx};
 use borderless::{events::CallAction, ContractId};
 use borderless::{BlockIdentifier, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;

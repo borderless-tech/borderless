@@ -143,9 +143,9 @@ impl ActionFn {
         } else {
             let fn_name = self.ident.to_string();
             quote! {
-                let writer_roles = ::borderless::contract::env::writer_roles();
+                let writer_roles = ::borderless::contracts::env::writer_roles();
                 if !writer_roles.iter().any(|role| #( role.eq_ignore_ascii_case(#roles) )||* ) {
-                    let writer = ::borderless::contract::env::writer();
+                    let writer = ::borderless::contracts::env::writer();
                     return Err(new_error!("writer {} has no access to action '{}'", writer, #fn_name));
                 }
             }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{contract::TxCtx, debug};
+use crate::{contracts::TxCtx, debug};
 
 use super::{
     read_field, storage_has_key, storage_keys::BASE_KEY_ACTION_LOG, storage_remove, write_field,

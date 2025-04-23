@@ -1,5 +1,5 @@
 use borderless::{
-    contract::{Description, Info, Introduction, Metadata, Revocation, TxCtx},
+    contracts::{Description, Info, Introduction, Metadata, Revocation, TxCtx},
     BorderlessId, ContractId,
     __private::storage_keys::*,
     hash::Hash256,

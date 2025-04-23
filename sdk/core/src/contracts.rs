@@ -336,7 +336,7 @@ pub struct Metadata {
 
     // NOTE: This ensures compatibility with old versions
     #[serde(default)]
-    #[serde(with = "crate::contract::semver_as_string")]
+    #[serde(with = "crate::contracts::semver_as_string")]
     /// SemVer compatible version string
     pub version: SemVer,
 
