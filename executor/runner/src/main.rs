@@ -8,16 +8,17 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use borderless::{
+    contract::{Introduction, Revocation, TxCtx},
+    events::CallAction,
+    hash::Hash256,
+    BlockIdentifier, ContractId, TxIdentifier,
+};
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_runtime::{
     controller::Controller,
     logger::{print_log_line, Logger},
     Runtime,
-};
-use borderless::{
-    contract::{CallAction, Introduction, Revocation, TxCtx},
-    hash::Hash256,
-    BlockIdentifier, ContractId, TxIdentifier,
 };
 use clap::{Parser, Subcommand};
 

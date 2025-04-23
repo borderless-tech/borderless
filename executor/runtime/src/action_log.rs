@@ -1,13 +1,13 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use borderless_kv_store::{Db, RawRead, Tx};
 use borderless::http::queries::Pagination;
 use borderless::http::{PaginatedElements, TxAction};
 use borderless::ContractId;
+use borderless_kv_store::{Db, RawRead, Tx};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use borderless::contract::{CallAction, TxCtx};
+use borderless::{contract::TxCtx, events::CallAction};
 
 use borderless::__private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG};
 

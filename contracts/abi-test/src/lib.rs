@@ -63,7 +63,7 @@ use borderless::__private::{
     dev, read_field, read_register, read_string_from_register, registers::*,
     storage_keys::make_user_key, write_field, write_register, write_string_to_register,
 };
-use borderless::{contract::CallAction, serialize::from_value};
+use borderless::{events::CallAction, serialize::from_value};
 
 use serde::{Deserialize, Serialize};
 use xxhash_rust::const_xxh3::xxh3_64;

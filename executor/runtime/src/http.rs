@@ -1,4 +1,4 @@
-use borderless::contract::CallAction;
+use borderless::events::CallAction;
 use borderless::hash::Hash256;
 use borderless::BorderlessId;
 use borderless::{http::queries::Pagination, ContractId};

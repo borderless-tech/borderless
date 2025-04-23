@@ -45,7 +45,7 @@ pub extern "C" fn http_post_action() {}
 use borderless::__private::storage_traits::Storeable;
 use borderless::__private::{dev, read_register, registers::*, storage_keys::make_user_key};
 use borderless::collections::lazyvec::LazyVec;
-use borderless::contract::CallAction;
+use borderless::events::CallAction;
 
 fn exec_run() -> Result<()> {
     // Read action

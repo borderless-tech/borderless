@@ -4,7 +4,8 @@ use borderless_id_types::TxIdentifier;
 use queries::Pagination;
 use serde::Serialize;
 
-use crate::contract::{CallAction, Description, Info, Metadata};
+use crate::contract::{Description, Info, Metadata};
+use crate::events::CallAction;
 
 /// Default return type for all routes that return lists.
 ///

@@ -11,7 +11,8 @@ use borderless::{
         from_postcard_bytes,
         storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
     },
-    contract::{CallAction, Introduction, Metadata, Revocation, TxCtx},
+    contract::{Introduction, Metadata, Revocation, TxCtx},
+    events::CallAction,
     log::LogLine,
     ContractId,
 };

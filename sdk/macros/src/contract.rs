@@ -167,12 +167,11 @@ pub fn parse_module_content(
         #[automatically_derived]
         pub(super) mod __derived {
             use super::*;
-            use ::borderless::*;
+            use ::borderless::prelude::*;
             use ::borderless::__private::{
                 read_field, read_register, read_string_from_register, registers::*,
                 storage_keys::make_user_key, write_field, write_register, write_string_to_register,
             };
-            use ::borderless::contract::*;
             #action_symbols
             #(#action_types)*
             #exec_post
@@ -303,10 +302,10 @@ fn impl_actions_enum(actions: &[ActionFn]) -> TokenStream2 {
         }
 
         #[automatically_derived]
-        impl TryFrom<Actions> for ::borderless::contract::CallAction {
+        impl TryFrom<Actions> for ::borderless::events::CallAction {
             type Error = ::borderless::serialize::Error;
 
-            fn try_from(value: Actions) -> ::std::result::Result<::borderless::contract::CallAction, Self::Error> {
+            fn try_from(value: Actions) -> ::std::result::Result<::borderless::events::CallAction, Self::Error> {
                 let action = match value {
                     #(
                     #match_items

@@ -52,7 +52,7 @@ impl ActionFn {
             Actions::#field_ident { #(#fields),* } => {
                 let args = #args_ident { #(#fields),* };
                 let args_value = ::borderless::serialize::to_value(&args)?;
-                ::borderless::contract::CallAction::by_method(#method_name, args_value)
+                ::borderless::events::CallAction::by_method(#method_name, args_value)
             }
         }
     }
