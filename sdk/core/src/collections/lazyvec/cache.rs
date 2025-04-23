@@ -125,7 +125,5 @@ where
                 Remove => storage_remove(self.base_key, *key),
             }
         }
-        // Clears and deallocates the used resources    // TODO Make sure we really want to move self
-        //self.operations = IntMap::default();
     }
 }
