@@ -263,38 +263,66 @@ pub mod events {
         }
     }
 
-    pub fn convert_out_events(caller: BorderlessId, out: ActionOutput, sinks: &[Sink]) -> Events {
-        let mut contracts = Vec::new();
-        let mut local = Vec::new();
+    /// Trait that indicates that a return type can be used as an output of an action function.
+    pub trait ActionOutEvent: private::Sealed {
+        fn convert_out_events(self, caller: BorderlessId, sinks: &[Sink]) -> crate::Result<Events>;
+    }
 
-        for (sink, action) in out.actions {
-            match sink {
-                SinkType::Named(alias) => {
-                    if let Some(sink) = sinks.iter().find(|s| s.has_alias(&alias)) {
-                        if !sink.has_access(caller) {
-                            debug!("caller {caller} does not have access to sink {alias}");
-                            continue;
-                        }
-                        match sink {
-                            Sink::Contract { contract_id, .. } => contracts.push(ContractCall {
-                                contract_id: *contract_id,
-                                action,
-                            }),
-                            Sink::Agent { agent_id, .. } => local.push(ProcessCall {
-                                agent_id: *agent_id,
-                                action,
-                            }),
+    mod private {
+        pub trait Sealed {}
+    }
+
+    impl private::Sealed for ActionOutput {}
+    impl ActionOutEvent for ActionOutput {
+        fn convert_out_events(self, caller: BorderlessId, sinks: &[Sink]) -> crate::Result<Events> {
+            let mut contracts = Vec::new();
+            let mut local = Vec::new();
+
+            for (sink, action) in self.actions {
+                match sink {
+                    SinkType::Named(alias) => {
+                        if let Some(sink) = sinks.iter().find(|s| s.has_alias(&alias)) {
+                            if !sink.has_access(caller) {
+                                debug!("caller {caller} does not have access to sink {alias}");
+                                continue;
+                            }
+                            match sink {
+                                Sink::Contract { contract_id, .. } => {
+                                    contracts.push(ContractCall {
+                                        contract_id: *contract_id,
+                                        action,
+                                    })
+                                }
+                                Sink::Agent { agent_id, .. } => local.push(ProcessCall {
+                                    agent_id: *agent_id,
+                                    action,
+                                }),
+                            }
                         }
                     }
+                    SinkType::Agent(agent_id) => local.push(ProcessCall { agent_id, action }),
+                    SinkType::Contract(contract_id) => contracts.push(ContractCall {
+                        contract_id,
+                        action,
+                    }),
                 }
-                SinkType::Agent(agent_id) => local.push(ProcessCall { agent_id, action }),
-                SinkType::Contract(contract_id) => contracts.push(ContractCall {
-                    contract_id,
-                    action,
-                }),
             }
+            Ok(Events { contracts, local })
         }
-        Events { contracts, local }
+    }
+
+    impl<E> private::Sealed for Result<ActionOutput, E> where
+        E: std::error::Error + Send + Sync + 'static
+    {
+    }
+    impl<E> ActionOutEvent for Result<ActionOutput, E>
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        fn convert_out_events(self, caller: BorderlessId, sinks: &[Sink]) -> crate::Result<Events> {
+            let inner = self?;
+            inner.convert_out_events(caller, sinks)
+        }
     }
 
     /// An event Sink for either a contract or sw-agent
