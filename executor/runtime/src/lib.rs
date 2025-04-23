@@ -28,12 +28,21 @@ pub mod logger;
 mod vm;
 
 /// Sub-Database for all contract related data
-const CONTRACT_SUB_DB: &str = "contract-db";
+pub const CONTRACT_SUB_DB: &str = "contract-db";
 
 /// Sub-Database, where the wasm code is stored
-const WASM_CODE_SUB_DB: &str = "wasm-code-db";
+pub const WASM_CODE_SUB_DB: &str = "wasm-code-db";
 
 pub type SharedRuntime<S> = Arc<Mutex<Runtime<S>>>;
+
+// NOTE: I think we have to use a different runtime for Contracts and SW-Agents;
+//
+// the linker should provide different host functions, and SW-Agents require async support, so everything will be async.
+//
+// There is however a big chunk, that is identical in both runtimes; so the question is, how to generalize over this.
+// Also: In the real world, we may want to embed the process runtimes (aswell as HTTP-contract-runtimes ??) in a sort of
+// executor pool, where we have a fixed list of wasm runtimes ready to execute the request.
+// This executor pool should itself be threadsafe, so it can be shared among threads safely.
 
 pub struct Runtime<S = Lmdb>
 where
@@ -46,12 +55,10 @@ where
 }
 
 impl<S: Db> Runtime<S> {
-    pub fn new(storage: &S, cache_size: NonZeroUsize) -> Result<Self> {
+    pub fn new(storage: &S, contract_store: CodeStore<S>) -> Result<Self> {
         let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
         let start = Instant::now();
         let state = VmState::new(storage.clone(), db_ptr);
-
-        let contract_store = CodeStore::new(storage.clone(), cache_size)?;
 
         let mut config = Config::new();
         config.cranelift_opt_level(wasmtime::OptLevel::Speed);
@@ -479,17 +486,22 @@ impl<S: Db> Runtime<S> {
 }
 
 /// Storage for our webassembly code
-struct CodeStore<S: Db> {
+#[derive(Clone)]
+pub struct CodeStore<S: Db> {
     db: S,
     db_ptr: S::Handle,
-    cache: LruCache<ContractId, Instance, ahash::RandomState>,
+    cache: Arc<Mutex<LruCache<ContractId, Instance, ahash::RandomState>>>,
 }
 
 impl<S: Db> CodeStore<S> {
-    pub fn new(db: S, cache_size: NonZeroUsize) -> Result<Self> {
+    pub fn new(db: &S, cache_size: NonZeroUsize) -> Result<Self> {
         let db_ptr = db.create_sub_db(WASM_CODE_SUB_DB)?;
         let cache = LruCache::with_hasher(cache_size, ahash::RandomState::default());
-        Ok(Self { db, db_ptr, cache })
+        Ok(Self {
+            db: db.clone(),
+            db_ptr,
+            cache: Arc::new(Mutex::new(cache)),
+        })
     }
 
     pub fn insert_contract(&self, cid: ContractId, module: Module) -> Result<()> {
@@ -507,7 +519,7 @@ impl<S: Db> CodeStore<S> {
         store: &mut Store<VmState<S>>,
         linker: &mut Linker<VmState<S>>,
     ) -> Result<Option<Instance>> {
-        if let Some(instance) = self.cache.get(cid) {
+        if let Some(instance) = self.cache.lock().get(cid) {
             return Ok(Some(*instance));
         }
         let txn = self.db.begin_ro_txn()?;
@@ -518,7 +530,7 @@ impl<S: Db> CodeStore<S> {
         };
         txn.commit()?;
         let instance = linker.instantiate(store, &module)?;
-        self.cache.push(*cid, instance);
+        self.cache.lock().push(*cid, instance);
         Ok(Some(instance))
     }
 

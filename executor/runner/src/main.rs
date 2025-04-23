@@ -18,7 +18,7 @@ use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_runtime::{
     controller::Controller,
     logger::{print_log_line, Logger},
-    Runtime,
+    CodeStore, Runtime,
 };
 use clap::{Parser, Subcommand};
 
@@ -124,7 +124,8 @@ pub fn generate_tx_ctx(
 
 async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
     // Create runtime
-    let mut rt = Runtime::new(&db, NonZeroUsize::new(10).unwrap())?;
+    let code_store = CodeStore::new(&db, NonZeroUsize::new(10).unwrap())?;
+    let mut rt = Runtime::new(&db, code_store)?;
 
     let cid: ContractId = if let Some(cid) = command.contract_id {
         cid
