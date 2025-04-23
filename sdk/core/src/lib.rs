@@ -46,9 +46,9 @@ pub mod prelude {
 /// which will be used to generate the output transaction.
 pub trait NamedSink {
     /// Splits the sink into its alias and the encoded CallAction object.
-    fn into_action(
-        self,
-    ) -> std::result::Result<(&'static str, events::CallAction), serde_json::Error>;
+    ///
+    /// Errors while converting the action should be converted into a wasm trap.
+    fn into_action(self) -> (&'static str, events::CallAction);
 }
 
 pub mod events {

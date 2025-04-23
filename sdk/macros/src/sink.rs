@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{spanned::Spanned, Data, DataStruct, DeriveInput, Error, Fields, Result};
 
 pub fn impl_named_sink(input: DeriveInput) -> Result<TokenStream2> {
@@ -41,6 +41,9 @@ pub fn impl_named_sink(input: DeriveInput) -> Result<TokenStream2> {
             }
 
             let sink_names = var_idents.iter().map(|i| i.to_string());
+            let ty_names = inner_types
+                .iter()
+                .map(|ty| ty.to_token_stream().to_string());
 
             let trait_impl = quote! {
 
@@ -58,12 +61,17 @@ pub fn impl_named_sink(input: DeriveInput) -> Result<TokenStream2> {
 
                     #[automatically_derived]
                     impl _borderless::NamedSink for #ident {
-                        fn into_action(self) -> ::std::result::Result<(&'static str, _borderless::events::CallAction), _borderless::serialize::Error> {
+                        fn into_action(self) -> (&'static str, _borderless::events::CallAction) {
                             match self {
                                 #(
                                 #ident::#var_idents(inner) => {
-                                    let action: _borderless::events::CallAction = inner.try_into()?;
-                                    Ok((#sink_names, action))
+                                    match inner.try_into() {
+                                        Ok(a) => (#sink_names, a),
+                                        Err(e) => {
+                                            _borderless::error!("critical error while converting '{}' of sink '{}' into an action", #ty_names, #sink_names);
+                                            _borderless::__private::abort();
+                                        }
+                                    }
                                 }
                                 )*
                             }
