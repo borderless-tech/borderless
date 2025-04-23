@@ -38,7 +38,7 @@ pub struct LazyVec<V> {
 
 impl<V: Serialize> Debug for LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
+    V: Serialize + for<'de> Deserialize<'de> + Debug + Clone,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if self.fmt_internal(ROOT_KEY, 0, f).is_ok() {
@@ -50,7 +50,7 @@ where
 
 impl<V> LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
+    V: Serialize + for<'de> Deserialize<'de> + Debug + Clone,
 {
     fn fmt_internal(&self, node_key: u64, depth: usize, f: &mut Formatter<'_>) -> std::fmt::Result {
         let indent = "  ".repeat(depth);
@@ -71,14 +71,39 @@ where
     }
 }
 
-impl<V> Sealed for LazyVec<V> where
-    V: Clone + Debug + PartialEq + Serialize + for<'de> Deserialize<'de>
+impl<V> LazyVec<V>
+where
+    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
 {
+    pub fn contains(&self, value: V) -> bool {
+        let mut node = self.cache.read(ROOT_KEY);
+
+        // Traverse down to the first leaf of the tree
+        while !node.borrow().is_leaf() {
+            // Invariant: internal nodes will always contain at least 1 child
+            let child_key = node.borrow().children[0];
+            node = self.cache.read(child_key);
+        }
+
+        // Traverse through the linked leaf nodes
+        loop {
+            if node.borrow().values.contains(&value) {
+                return true;
+            }
+            let next = node.borrow().next;
+            match next {
+                None => return false,
+                Some(key) => node = self.cache.read(key),
+            }
+        }
+    }
 }
+
+impl<V> Sealed for LazyVec<V> where V: Clone + Debug + Serialize + for<'de> Deserialize<'de> {}
 
 impl<V> storage_traits::Storeable for LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
+    V: Serialize + for<'de> Deserialize<'de> + Debug + Clone,
 {
     fn decode(base_key: u64) -> Self {
         LazyVec::open(base_key)
@@ -100,7 +125,7 @@ where
 
 impl<V> storage_traits::ToPayload for LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + Clone,
+    V: Serialize + for<'de> Deserialize<'de> + Debug + Clone,
 {
     fn to_payload(&self, path: &str) -> anyhow::Result<Option<String>> {
         // As this is a vector, there is no further nesting
@@ -140,7 +165,7 @@ where
 // // TODO
 // impl<V> Index<usize> for LazyVec<V>
 // where
-//     V: Clone + PartialEq + Serialize + for<'de> Deserialize<'de>,
+//     V: Clone + Serialize + for<'de> Deserialize<'de>,
 // {
 //     type Output = Proxy<'a, V>;
 
@@ -151,7 +176,7 @@ where
 
 // impl<V> IndexMut<usize> for LazyVec<V>
 // where
-//     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
+//     V: Serialize + for<'de> Deserialize<'de> + Clone,
 // {
 //     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 //         self.get_mut(index).expect("Index out of bounds")
@@ -160,7 +185,7 @@ where
 
 impl<V> LazyVec<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
+    V: Serialize + for<'de> Deserialize<'de> + Clone,
 {
     fn get_node_rank(&self, key: u64) -> usize {
         self.cache.read(key).borrow().rank()
@@ -211,29 +236,6 @@ where
         // Loads all the nodes to the cache
         self.load(ROOT_KEY);
         self.cache.clear();
-    }
-
-    pub fn contains(&self, value: V) -> bool {
-        let mut node = self.cache.read(ROOT_KEY);
-
-        // Traverse down to the first leaf of the tree
-        while !node.borrow().is_leaf() {
-            // Invariant: internal nodes will always contain at least 1 child
-            let child_key = node.borrow().children[0];
-            node = self.cache.read(child_key);
-        }
-
-        // Traverse through the linked leaf nodes
-        loop {
-            if node.borrow().values.contains(&value) {
-                return true;
-            }
-            let next = node.borrow().next;
-            match next {
-                None => return false,
-                Some(key) => node = self.cache.read(key),
-            }
-        }
     }
 
     pub fn get_mut(&mut self, index: usize) -> Option<ProxyMut<'_, V>> {

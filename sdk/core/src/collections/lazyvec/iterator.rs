@@ -11,7 +11,7 @@ pub struct LazyVecIt<'a, V> {
 
 impl<'a, V> Iterator for LazyVecIt<'a, V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
+    V: Serialize + for<'de> Deserialize<'de> + Clone,
 {
     type Item = Proxy<'a, V>;
 
@@ -24,7 +24,7 @@ where
 
 impl<'a, V> LazyVecIt<'a, V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
+    V: Serialize + for<'de> Deserialize<'de> + Clone,
 {
     pub(crate) fn new(tree: &'a LazyVec<V>) -> Self {
         LazyVecIt {
@@ -42,7 +42,7 @@ where
 
 // impl<'a, V> Iterator for LazyVecItMut<'a, V>
 // where
-//     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
+//     V: Serialize + for<'de> Deserialize<'de> + Clone,
 // {
 //     type Item = ProxyMut<'a, V>;
 
@@ -55,7 +55,7 @@ where
 
 // impl<'a, V> LazyVecItMut<'a, V>
 // where
-//     V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
+//     V: Serialize + for<'de> Deserialize<'de> + Clone,
 // {
 //     pub(crate) fn new(tree: &'a mut LazyVec<V>) -> Self {
 //         LazyVecItMut {

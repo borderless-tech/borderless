@@ -24,7 +24,7 @@ pub struct Cache<V> {
 
 impl<V> Cache<V>
 where
-    V: Serialize + for<'de> Deserialize<'de> + PartialEq + Clone,
+    V: Serialize + for<'de> Deserialize<'de> + Clone,
 {
     pub(crate) fn new(base_key: u64, init: bool) -> Self {
         let mut cache = Cache {
