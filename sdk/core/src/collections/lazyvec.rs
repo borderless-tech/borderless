@@ -205,15 +205,13 @@ where
         }
     }
 
-    // TODO: pub(crate)
-    pub fn new(base_key: u64) -> Self {
+    pub(crate) fn new(base_key: u64) -> Self {
         Self {
             cache: Cache::new(base_key, true),
         }
     }
 
-    // TODO: pub(crate)
-    pub fn open(base_key: u64) -> Self {
+    pub(crate) fn open(base_key: u64) -> Self {
         Self {
             cache: Cache::new(base_key, false),
         }

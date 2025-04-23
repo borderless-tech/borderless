@@ -10,12 +10,12 @@ const N: usize = 5000;
 
 fn load_vec() -> LazyVec<u64> {
     let storage_key = make_user_key(TEST_INTEGRITY_BASE_KEY);
-    LazyVec::open(storage_key)
+    LazyVec::decode(storage_key)
 }
 
 pub(crate) fn test_integrity() -> Result<()> {
     let storage_key = make_user_key(TEST_INTEGRITY_BASE_KEY);
-    let mut lazy_vec: LazyVec<product::Product> = LazyVec::open(storage_key);
+    let mut lazy_vec: LazyVec<product::Product> = LazyVec::decode(storage_key);
 
     if lazy_vec.exists() && !lazy_vec.is_empty() {
         warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
