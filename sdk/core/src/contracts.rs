@@ -1,11 +1,11 @@
 use std::{collections::BTreeMap, fmt::Display, str::FromStr};
 
 use borderless_hash::Hash256;
-use borderless_id_types::{AgentId, BlockIdentifier, TxIdentifier, Uuid};
+use borderless_id_types::{BlockIdentifier, TxIdentifier, Uuid};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{BorderlessId, ContractId, RoleId};
+use crate::{events::Sink, BorderlessId, ContractId};
 
 /// Contract Environment
 pub mod env {
@@ -15,7 +15,7 @@ pub mod env {
         BorderlessId, ContractId,
         __private::{
             read_field, read_register,
-            registers::{REGISTER_BLOCK_CTX, REGISTER_TX_CTX, REGISTER_WRITER},
+            registers::{REGISTER_BLOCK_CTX, REGISTER_EXECUTOR, REGISTER_TX_CTX, REGISTER_WRITER},
             storage_keys::*,
         },
     };
@@ -28,37 +28,61 @@ pub mod env {
             .expect("contract-id not in metadata")
     }
 
+    /// Returns the contract participants
     pub fn participants() -> Vec<BorderlessId> {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS)
             .expect("participants not in metadata")
     }
 
+    /// Returns the roles that are assigned in this contract
     pub fn roles() -> Vec<Role> {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_ROLES).expect("roles not in metadata")
     }
 
+    /// Returns the available sinks of this contract
     pub fn sinks() -> Vec<Sink> {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS).expect("sinks not in metadata")
     }
 
+    /// Returns the [`Description`] of a contract
     pub fn desc() -> Description {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_DESC).expect("description not in metadata")
     }
 
+    /// Returns the [`Metadata`] of a contract
     pub fn meta() -> Metadata {
         read_field(BASE_KEY_METADATA, META_SUB_KEY_META).expect("meta not in metadata")
     }
 
+    /// Returns the writer of the current transaction
     pub fn writer() -> BorderlessId {
         let bytes = read_register(REGISTER_WRITER).expect("caller not present");
         BorderlessId::from_bytes(bytes.try_into().expect("caller must be a borderless-id"))
     }
 
+    /// Returns the writer of the current transaction
+    pub(crate) fn executor() -> BorderlessId {
+        let bytes = read_register(REGISTER_EXECUTOR).expect("executor not present");
+        BorderlessId::from_bytes(bytes.try_into().expect("executor must be a borderless-id"))
+    }
+
+    /// Returns the roles that are assigned to the writer of the current transaction
+    pub fn writer_roles() -> Vec<String> {
+        let writer = writer();
+        roles()
+            .into_iter()
+            .filter(|r| r.participant_id == writer)
+            .map(|r| r.role)
+            .collect()
+    }
+
+    /// Returns the [`TxCtx`] for the current transaction
     pub fn tx_ctx() -> TxCtx {
         let bytes = read_register(REGISTER_TX_CTX).expect("tx-id not present");
         TxCtx::from_bytes(&bytes).expect("invalid data-model in tx-id register")
     }
 
+    /// Returns the [`TxId`] for the current transaction
     pub fn tx_id() -> TxIdentifier {
         let bytes = read_register(REGISTER_TX_CTX).expect("tx-id not present");
         TxCtx::from_bytes(&bytes)
@@ -66,6 +90,7 @@ pub mod env {
             .tx_id
     }
 
+    /// Returns the transaction-index (index inside the block) for the current transaction
     pub fn tx_index() -> u64 {
         let bytes = read_register(REGISTER_TX_CTX).expect("tx-id not present");
         TxCtx::from_bytes(&bytes)
@@ -73,11 +98,13 @@ pub mod env {
             .index
     }
 
+    /// Returns the [`BlockCtx`] for the block for the current transaction
     pub fn block_ctx() -> BlockCtx {
         let bytes = read_register(REGISTER_BLOCK_CTX).expect("block-id not present");
         BlockCtx::from_bytes(&bytes).expect("invalid data-model in block-ctx register")
     }
 
+    /// Returns the [`BlockId`] of the block for the current transaction
     pub fn block_id() -> BlockIdentifier {
         let bytes = read_register(REGISTER_BLOCK_CTX).expect("block-id not present");
         BlockCtx::from_bytes(&bytes)
@@ -85,6 +112,7 @@ pub mod env {
             .block_id
     }
 
+    /// Returns the timestamp of the block for the current transaction
     pub fn block_timestamp() -> u64 {
         let bytes = read_register(REGISTER_BLOCK_CTX).expect("block-timestamp not present");
         BlockCtx::from_bytes(&bytes)
@@ -93,78 +121,29 @@ pub mod env {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum MethodOrId {
-    ByName { method: String },
-    ById { method_id: u32 }, // < TODO Use first bit for blinding here, to distinguish user and system actions ?
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CallAction {
-    #[serde(flatten)]
-    pub method: MethodOrId,
-    pub params: Value,
-}
-
-impl FromStr for CallAction {
-    type Err = serde_json::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        serde_json::from_str(s)
-    }
-}
-
-impl CallAction {
-    pub fn by_method(method_name: impl AsRef<str>, params: Value) -> Self {
-        Self {
-            method: MethodOrId::ByName {
-                method: method_name.as_ref().to_string(),
-            },
-            params,
-        }
-    }
-
-    pub fn by_method_id(method_id: u32, params: Value) -> Self {
-        Self {
-            method: MethodOrId::ById { method_id },
-            params,
-        }
-    }
-
-    pub fn method_name(&self) -> Option<&str> {
-        match &self.method {
-            MethodOrId::ByName { method } => Some(method.as_str()),
-            MethodOrId::ById { .. } => None,
-        }
-    }
-
-    pub fn method_id(&self) -> Option<u32> {
-        match self.method {
-            MethodOrId::ByName { .. } => None,
-            MethodOrId::ById { method_id } => Some(method_id),
-        }
-    }
-
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
-        serde_json::from_slice(bytes)
-    }
-
-    pub fn pretty_print(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string_pretty(&self)
-    }
-
-    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
-        serde_json::to_vec(&self)
-    }
-}
-
-/// Connects a Borderless-ID and Role-ID
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Maps a `BorderlessId` to a role in a smart-contract
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Role {
+    /// Borderless-ID of the contract-participant that we assign the role to
     pub participant_id: BorderlessId,
-    pub role_id: RoleId,
+
+    /// Alias of the role that is assigned
+    ///
+    /// Roles are defined as enums and usually represented as strings to the outside world.
+    pub role: String,
 }
+
+// NOTE: We could re-write the participant logic like this
+//
+// But that's maybe something for later.
+//
+// pub struct Participant {
+//     pub borderless_id: BorderlessId,
+//     pub alias: String,
+//     pub roles: Vec<String>,
+//     pub sinks: Vec<String>,
+// }
+// { "borderless-id": "4bec7f8e-5074-49a5-9b94-620fb13f12c0", "alias": null, roles": [ "Flipper" ], "sinks": [ "OTHERFLIPPER" ] },
 
 /*
  * Ok, spitballing here:
@@ -176,95 +155,6 @@ pub struct Role {
  * We should add a "MethodOrId" to each sink; then we are able to build the CallAction struct for the corresponding
  * contract or agent.
  */
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Sink {
-    Contract {
-        contract_id: ContractId,
-        alias: String,
-        restrict_to_users: Vec<BorderlessId>,
-    },
-    Process {
-        process_id: AgentId,
-        alias: String,
-        owner: BorderlessId,
-    },
-}
-
-impl Sink {
-    /// Creates a new Sink for a SmartProcess
-    pub fn process(process_id: AgentId, alias: String, owner: BorderlessId) -> Sink {
-        Sink::Process {
-            process_id,
-            alias: alias.to_ascii_uppercase(),
-            owner,
-        }
-    }
-
-    /// Creates a new Sink for a SmartContract
-    pub fn contract(
-        contract_id: ContractId,
-        alias: String,
-        restrict_to_users: Vec<BorderlessId>,
-    ) -> Sink {
-        Sink::Contract {
-            contract_id,
-            alias: alias.to_ascii_uppercase(),
-            restrict_to_users,
-        }
-    }
-
-    /// Consumes the sink and returns the same sink,
-    /// but with alias converted to ascii-uppercase.
-    pub fn ensure_uppercase_alias(self) -> Self {
-        match self {
-            Sink::Contract {
-                contract_id,
-                alias,
-                restrict_to_users,
-            } => Sink::Contract {
-                contract_id,
-                alias: alias.to_ascii_uppercase(),
-                restrict_to_users,
-            },
-            Sink::Process {
-                process_id,
-                alias,
-                owner,
-            } => Sink::Process {
-                process_id,
-                alias: alias.to_ascii_uppercase(),
-                owner,
-            },
-        }
-    }
-
-    /// Checks weather or not the given user has access to this sink
-    pub fn has_access(&self, user: BorderlessId) -> bool {
-        match self {
-            Sink::Process { owner, .. } => *owner == user,
-            Sink::Contract {
-                restrict_to_users, ..
-            } => {
-                // If the vector is empty, everyone has access
-                restrict_to_users.is_empty() || restrict_to_users.iter().any(|u| *u == user)
-            }
-        }
-    }
-
-    pub fn alias(&self) -> String {
-        match self {
-            Sink::Process { alias, .. } => alias.to_ascii_uppercase(),
-            Sink::Contract { alias, .. } => alias.to_ascii_uppercase(),
-        }
-    }
-
-    pub fn is_process(&self) -> bool {
-        match self {
-            Sink::Process { .. } => true,
-            Sink::Contract { .. } => false,
-        }
-    }
-}
 
 /// High level description and information about the contract itself
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -363,7 +253,7 @@ pub struct Metadata {
 
     // NOTE: This ensures compatibility with old versions
     #[serde(default)]
-    #[serde(with = "crate::contract::semver_as_string")]
+    #[serde(with = "crate::contracts::semver_as_string")]
     /// SemVer compatible version string
     pub version: SemVer,
 
@@ -550,16 +440,6 @@ impl Display for BlockCtx {
             self.block_id, self.timestamp
         )
     }
-}
-
-/// Holds transaction data that shall be send "outwards" to the p2p network.
-///
-/// The receiver of an `OutTx` can use the contract-id and data fields
-/// to generate a transaction for the p2p network.
-#[derive(Debug, Clone)]
-pub struct OutTx {
-    pub contract_id: ContractId,
-    pub action: CallAction,
 }
 
 /// Generated symbols of a contract

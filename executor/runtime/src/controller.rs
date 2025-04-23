@@ -1,5 +1,5 @@
 use borderless::{
-    contract::{Description, Info, Introduction, Metadata, Revocation, TxCtx},
+    contracts::{Description, Info, Introduction, Metadata, Revocation, TxCtx},
     BorderlessId, ContractId,
     __private::storage_keys::*,
     hash::Hash256,
@@ -49,7 +49,7 @@ impl<'a, S: Db> Controller<'a, S> {
 
     /// Returns the timestamp, when the contract has been revoked.
     pub fn contract_revoked_ts(&self, cid: &ContractId) -> Result<Option<u64>> {
-        Ok(self.read_value::<u64>(cid, BASE_KEY_METADATA, META_SUB_KEY_REVOKED_TS)?)
+        self.read_value::<u64>(cid, BASE_KEY_METADATA, META_SUB_KEY_REVOKED_TS)
     }
 
     /// Returns the hash of the last-tx that was executed by the contract
@@ -79,12 +79,12 @@ impl<'a, S: Db> Controller<'a, S> {
 
     /// Returns the [`Description`] of the contract
     pub fn contract_desc(&self, cid: &ContractId) -> Result<Option<Description>> {
-        Ok(self.read_value(cid, BASE_KEY_METADATA, META_SUB_KEY_DESC)?)
+        self.read_value(cid, BASE_KEY_METADATA, META_SUB_KEY_DESC)
     }
 
     /// Returns the [`Metadata`] of the contract
     pub fn contract_meta(&self, cid: &ContractId) -> Result<Option<Metadata>> {
-        Ok(self.read_value(cid, BASE_KEY_METADATA, META_SUB_KEY_META)?)
+        self.read_value(cid, BASE_KEY_METADATA, META_SUB_KEY_META)
     }
 
     /// Returns the full [`ContractInfo`], which bundles info, description and metadata.

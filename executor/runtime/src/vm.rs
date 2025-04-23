@@ -11,7 +11,8 @@ use borderless::{
         from_postcard_bytes,
         storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
     },
-    contract::{CallAction, Introduction, Metadata, Revocation, TxCtx},
+    contracts::{Introduction, Metadata, Revocation, TxCtx},
+    events::CallAction,
     log::LogLine,
     ContractId,
 };
@@ -107,6 +108,11 @@ impl<S: Db> VmState<S> {
         let buf = std::mem::take(&mut self.db_acid_txn_buffer).unwrap_or_default();
         let mut txn = self.db.begin_rw_txn()?;
         for op in buf.into_iter() {
+            // Check, that all keys are user-keys - ignore system-keys.
+            if !op.is_userspace() {
+                warn!("Contract tried to write or remove a value with a storage-key that is not in user-space");
+                continue;
+            }
             match op {
                 StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
                 StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
@@ -158,6 +164,52 @@ impl<S: Db> VmState<S> {
         Ok(())
     }
 
+    // /// Aborts a mutable contract execution - use this in case of an error.
+    // ///
+    // /// In contrast to [`finish_mutable_exec`], this function does not commit the state back to the database,
+    // /// but nonetheless will log the action and write the log-buffer to the database.
+    // ///
+    // /// # Errors
+    // ///
+    // /// Calling this function while the `VmState` has no active contract results in an error.
+    // pub fn abort_mutable_exec(&mut self, commit: Commit) -> Result<()> {
+    //     let cid = match self.active_contract {
+    //         ActiveContract::Mutable(cid) => cid,
+    //         ActiveContract::Immutable(_) => {
+    //             return Err(Error::msg("Contract execution was marked as immutable"));
+    //         }
+    //         ActiveContract::None => {
+    //             return Err(Error::msg("Must start contract execution before commiting"));
+    //         }
+    //     };
+    //     let mut txn = self.db.begin_rw_txn()?;
+
+    //     // Flush log
+    //     let logger = Logger::new(&self.db, cid);
+    //     logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
+
+    //     // Commit external item (introduction, action or revocation)
+    //     match commit {
+    //         Commit::Action { action, tx_ctx } => {
+    //             let action_log = ActionLog::new(&self.db, cid);
+    //             action_log.commit(&self.db_ptr, &mut txn, &action, tx_ctx)?;
+    //         }
+    //         _ => {
+    //             txn.commit(); // commit the logs
+    //             return Err(Error::msg("failed to commit introduction/revocation"));
+    //         }
+    //     }
+
+    //     // Commit txn
+    //     txn.commit();
+
+    //     // Reset everything
+    //     self.active_contract = ActiveContract::None;
+    //     self.log_buffer.clear();
+
+    //     Ok(())
+    // }
+
     /// Sets an contract as active and marks it as immutable
     ///
     /// This is used for handling http-requests (as they never modify the state)
@@ -175,6 +227,8 @@ impl<S: Db> VmState<S> {
     }
 
     /// Marks the end of an immutable contract execution.
+    ///
+    /// Can also be called to clear the `VmState` in case a mutable execution produced an error.
     ///
     /// Internally, this function does the following things:
     /// 1. Reset the contract-id for the next execution
@@ -201,7 +255,7 @@ impl<S: Db> VmState<S> {
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
         self.active_contract
             .as_opt()
-            .map(|cid| StorageKey::user_key(cid, base_key, sub_key))
+            .map(|cid| StorageKey::new(cid, base_key, sub_key))
             .ok_or_else(|| wasmtime::Error::msg("no contract has been activated"))
     }
 
@@ -549,6 +603,12 @@ impl StorageOp {
 
     pub fn remove(key: StorageKey) -> Self {
         Self::Remove { key }
+    }
+
+    pub fn is_userspace(&self) -> bool {
+        match self {
+            StorageOp::Write { key, .. } | StorageOp::Remove { key } => key.is_user_key(),
+        }
     }
 }
 

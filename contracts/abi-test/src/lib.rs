@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use borderless::__private::http::to_payload;
-use borderless::contract::Introduction;
+use borderless::contracts::Introduction;
 use borderless::{error, info, new_error, Context, Result};
 
 #[no_mangle]
@@ -63,7 +63,7 @@ use borderless::__private::{
     dev, read_field, read_register, read_string_from_register, registers::*,
     storage_keys::make_user_key, write_field, write_register, write_string_to_register,
 };
-use borderless::{contract::CallAction, serialize::from_value};
+use borderless::{events::CallAction, serialize::from_value};
 
 use serde::{Deserialize, Serialize};
 use xxhash_rust::const_xxh3::xxh3_64;
@@ -147,7 +147,7 @@ fn exec_revocation() -> Result<()> {
 
 // Test out, if the "environment variables" work as expected
 fn test_env() {
-    use borderless::contract::env;
+    use borderless::contracts::env;
     info!("Contract-ID: {}", env::contract_id());
     info!("Participants: {:#?}", env::participants());
     info!("Roles: {:#?}", env::roles());

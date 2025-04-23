@@ -3,6 +3,8 @@ use quote::quote;
 use syn::{Data, DataStruct, DeriveInput, Error, Field, Fields, Ident, Result, Type};
 use xxhash_rust::const_xxh3::xxh3_64;
 
+// TODO: Add option to hide fields from API access
+
 pub fn impl_state(input: DeriveInput) -> Result<TokenStream2> {
     let DeriveInput { ident, data, .. } = input;
 

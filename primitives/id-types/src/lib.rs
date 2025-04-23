@@ -131,29 +131,6 @@ macro_rules! impl_uuid {
     };
 }
 
-/// Generic macro to define wrapper types around u128 and uuid.
-macro_rules! impl_u32id {
-    ($type:ident) => {
-        impl From<u32> for $type {
-            fn from(value: u32) -> Self {
-                $type(value)
-            }
-        }
-
-        impl $type {
-            pub const fn from_const(value: u32) -> $type {
-                $type(value)
-            }
-        }
-
-        impl std::fmt::Display for $type {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{:08x}", self.0)
-            }
-        }
-    };
-}
-
 /// An agent-id used to identify software-agents in the borderless-ecosystem.
 ///
 /// These ids are version 8 [uuids](https://en.wikipedia.org/wiki/Universally_unique_identifier), where
@@ -233,20 +210,6 @@ impl_uuid!(ContractId, 0xcf, 0xc0);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct Did(uuid::Uuid);
 impl_uuid!(Did, 0xdf, 0xd0);
-
-/// A role-id.
-///
-/// Wraps an u32 to indicate its usage as a role-identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RoleId(u32);
-impl_u32id!(RoleId);
-
-/// An action-id.
-///
-/// Wraps an u32 to indicate its usage as a action-identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ActionId(u32);
-impl_u32id!(ActionId);
 
 /// Type used to identify blocks.
 ///

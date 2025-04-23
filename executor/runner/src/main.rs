@@ -8,16 +8,17 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use borderless::{
+    contracts::{Introduction, Revocation, TxCtx},
+    events::CallAction,
+    hash::Hash256,
+    BlockIdentifier, ContractId, TxIdentifier,
+};
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_runtime::{
     controller::Controller,
     logger::{print_log_line, Logger},
     Runtime,
-};
-use borderless::{
-    contract::{CallAction, Introduction, Revocation, TxCtx},
-    hash::Hash256,
-    BlockIdentifier, ContractId, TxIdentifier,
 };
 use clap::{Parser, Subcommand};
 
@@ -134,6 +135,9 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
     rt.instantiate_contract(cid, command.contract)?;
 
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
+
+    // The writer is also the executor
+    rt.set_executor(writer)?;
 
     // Parse command
     match command.action {

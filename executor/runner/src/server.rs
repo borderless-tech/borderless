@@ -1,4 +1,4 @@
-use std::num::NonZeroUsize;
+use std::{future::Future, num::NonZeroUsize};
 
 use anyhow::Result;
 use axum::{
@@ -7,7 +7,7 @@ use axum::{
     http::{Request, Response},
     Router,
 };
-use borderless::{BorderlessId, ContractId};
+use borderless::{events::CallAction, hash::Hash256, BorderlessId, ContractId};
 use borderless_kv_store::Db;
 use borderless_runtime::{
     http::{ActionWriter, ContractService, Service},
@@ -45,9 +45,8 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
     fn write_action(
         &self,
         cid: ContractId,
-        action: borderless::contract::CallAction,
-    ) -> impl std::future::Future<Output = Result<borderless::hash::Hash256, Self::Error>> + Send
-    {
+        action: CallAction,
+    ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send {
         let rt = self.rt.lock();
         let tx_ctx = generate_tx_ctx(rt, &cid).unwrap();
         let hash = tx_ctx.tx_id.hash;

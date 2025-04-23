@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 borderless.workspace = true
-borderless-kv-store = { path = "../../kv-store" }
+borderless-kv-store.workspace = true
 nohash = "0.2.0"
 log.workspace = true
 postcard.workspace = true

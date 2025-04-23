@@ -1,6 +1,6 @@
 #[borderless::contract]
 pub mod flipper {
-    use borderless::*;
+    use borderless::{Result, *};
     use collections::lazyvec::LazyVec;
     use serde::{Deserialize, Serialize};
 
@@ -18,20 +18,21 @@ pub mod flipper {
         history: LazyVec<History>,
     }
 
-    pub enum Roles {
-        Flipper,
-        Observer,
+    use self::actions::Actions;
+
+    #[derive(NamedSink)]
+    pub enum Other {
+        Flipper(Actions),
     }
 
     impl Flipper {
         #[action]
-        pub fn flip_switch(&mut self) {
-            info!("hello");
+        fn flip_switch(&mut self) {
             self.set_switch(!self.switch);
         }
 
-        #[action(web-api = true)]
-        pub fn set_switch(&mut self, switch: bool) {
+        #[action(web_api = true, roles = "Flipper")]
+        fn set_switch(&mut self, switch: bool) {
             self.history.push(History {
                 switch: self.switch,
                 counter: self.counter,
@@ -39,5 +40,10 @@ pub mod flipper {
             self.counter += 1;
             self.switch = switch;
         }
+
+        // pub fn set_other(&self, switch: bool) -> Result<Events> {
+        //     Events::default().push(Sinks::)
+        //     todo!()
+        // }
     }
 }
