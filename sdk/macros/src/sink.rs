@@ -54,7 +54,11 @@ pub fn impl_named_sink(input: DeriveInput) -> Result<TokenStream2> {
 
                     #[doc(hidden)]
                     #[automatically_derived]
-                    const fn __check_into_action<T: TryInto<_borderless::events::CallAction>>() {}
+                    const fn __check_into_action<IntoAction>()
+                    where
+                        IntoAction: TryInto<_borderless::events::CallAction>,
+                        <IntoAction as TryInto<_borderless::events::CallAction>>::Error: std::fmt::Display,
+                    {}
                     #(
                     __check_into_action::<#inner_types>();
                     )*
@@ -68,7 +72,7 @@ pub fn impl_named_sink(input: DeriveInput) -> Result<TokenStream2> {
                                     match inner.try_into() {
                                         Ok(a) => (#sink_names, a),
                                         Err(e) => {
-                                            _borderless::error!("critical error while converting '{}' of sink '{}' into an action", #ty_names, #sink_names);
+                                            _borderless::error!("critical error while converting '{}' of sink '{}' into an action: {e}", #ty_names, #sink_names);
                                             _borderless::__private::abort();
                                         }
                                     }
