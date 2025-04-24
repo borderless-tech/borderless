@@ -49,7 +49,7 @@ where
 
 impl<V> HashMap<V>
 where
-    V: Serialize + DeserializeOwned + Clone,
+    V: Serialize + DeserializeOwned,
 {
     pub fn new(base_key: u64) -> Self {
         HashMap {
@@ -66,26 +66,12 @@ where
     }
 
     pub fn insert(&mut self, key: u64, value: V) -> Option<V> {
-        let old_value = match self.cache.read(key) {
-            None => None,
-            Some(cell) => {
-                let value = cell.borrow().value.clone();
-                Some(value)
-            }
-        };
-        self.cache.write(key, KeyValue::new(key, value));
-        old_value
+        let kv = KeyValue::new(key, value);
+        self.cache.insert(key, kv)
     }
 
     pub fn remove(&mut self, key: u64) -> Option<V> {
-        match self.cache.read(key) {
-            None => None,
-            Some(cell) => {
-                let value = cell.borrow().value.clone();
-                self.cache.remove(key);
-                Some(value)
-            }
-        }
+        self.cache.remove(key)
     }
 
     pub fn get(&self, key: u64) -> Option<Proxy<'_, V>> {

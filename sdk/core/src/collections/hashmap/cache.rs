@@ -76,20 +76,41 @@ where
         }
     }
 
-    pub(crate) fn remove(&mut self, key: u64) {
+    pub(crate) fn remove(&mut self, key: u64) -> Option<V> {
+        // Flag key as removed
         self.operations.insert(key, CacheOp::Remove);
-        self.map.borrow_mut().remove(&key);
+        // Remove value from cache
+        let old_rc = self.map.borrow_mut().remove(&key);
+        // Handle old value
+        match old_rc {
+            None => None,
+            Some(old_rc) => {
+                let old_cell = Rc::try_unwrap(old_rc).ok().expect("Rc strong counter > 1");
+                Some(old_cell.into_inner().value)
+            }
+        }
     }
 
     pub(crate) fn flag_write(&mut self, key: u64) {
         self.operations.insert(key, CacheOp::Update);
     }
 
-    pub(crate) fn write(&mut self, key: u64, node: KeyValue<V>) {
+    pub(crate) fn insert(&mut self, key: u64, node: KeyValue<V>) -> Option<V> {
+        // Flag key as modified
         self.operations.insert(key, CacheOp::Update);
-        self.map
+        // Insert new value
+        let old_rc = self
+            .map
             .borrow_mut()
             .insert(key, Rc::new(RefCell::new(node)));
+        // Handle old value
+        match old_rc {
+            None => None,
+            Some(old_rc) => {
+                let old_cell = Rc::try_unwrap(old_rc).ok().expect("Rc strong counter > 1");
+                Some(old_cell.into_inner().value)
+            }
+        }
     }
 
     pub(crate) fn clear(&mut self) {
