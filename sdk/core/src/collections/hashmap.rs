@@ -30,7 +30,10 @@ pub struct HashMap<V> {
 
 impl<V> Sealed for HashMap<V> {}
 
-impl<V> storage_traits::Storeable for HashMap<V> {
+impl<V> storage_traits::Storeable for HashMap<V>
+where
+    V: Serialize + DeserializeOwned,
+{
     fn decode(base_key: u64) -> Self {
         todo!()
     }
@@ -40,7 +43,7 @@ impl<V> storage_traits::Storeable for HashMap<V> {
     }
 
     fn commit(self, _base_key: u64) {
-        todo!()
+        self.cache.commit()
     }
 }
 
