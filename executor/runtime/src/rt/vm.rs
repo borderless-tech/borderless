@@ -13,7 +13,7 @@ use borderless::{
     contracts::{Introduction, Revocation, TxCtx},
     events::CallAction,
     log::LogLine,
-    ContractId,
+    AgentId, ContractId,
 };
 use wasmtime::{Caller, Extern, Memory};
 
@@ -70,7 +70,7 @@ impl<S: Db> VmState<S> {
     pub fn begin_mutable_exec(&mut self, cid: ContractId) -> Result<()> {
         if self.active_item.is_some() {
             return Err(Error::msg(
-                "Must finish contract execution before starting new one",
+                "Cannot start a new execution while something else is still active",
             ));
         }
         if Controller::new(&self.db).contract_revoked(&cid)? {
@@ -111,8 +111,13 @@ impl<S: Db> VmState<S> {
                 }
                 cid
             }
+            ActiveItem::Agent { .. } => {
+                return Err(Error::msg(
+                    "Cannot finish a contract while a sw-agent is active",
+                ));
+            }
             ActiveItem::None => {
-                return Err(Error::msg("Must start contract execution before commiting"));
+                return Err(Error::msg("No active contract"));
             }
         };
         let now = Instant::now();
@@ -188,6 +193,8 @@ impl<S: Db> VmState<S> {
             cid,
             mutable: false,
         };
+        self.log_buffer.clear();
+        self.db_acid_txn_buffer = None;
         Ok(())
     }
 
@@ -206,12 +213,46 @@ impl<S: Db> VmState<S> {
     /// Calling this function while the `VmState` has no active contract results in an error.
     pub fn finish_immutable_exec(&mut self) -> Result<Vec<LogLine>> {
         if self.active_item.is_none() {
-            return Err(Error::msg("Cannot clear non existing contract"));
+            return Err(Error::msg("Cannot clear non existing contract or sw-agent"));
         }
         self.active_item = ActiveItem::None;
         self.db_acid_txn_buffer = None;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
+    }
+
+    pub fn begin_agent_exec(&mut self, aid: AgentId, mutable: bool) -> Result<()> {
+        if self.active_item.is_some() {
+            return Err(Error::msg(
+                "Cannot start a new execution while something else is still active",
+            ));
+        }
+        self.active_item = ActiveItem::Agent { aid, mutable };
+        self.log_buffer.clear();
+        self.db_acid_txn_buffer = None;
+        Ok(())
+    }
+
+    pub fn finish_agent_exec(&mut self, commit_state: bool) -> Result<()> {
+        match self.active_item {
+            ActiveItem::Contract { .. } => {
+                return Err(Error::msg(
+                    "cannot finish an agent while a contract is still running",
+                ))
+            }
+            ActiveItem::Agent { mutable, .. } => {
+                if !mutable && commit_state {
+                    return Err(Error::msg("Agent execution was marked as immutable"));
+                }
+            }
+            ActiveItem::None => {
+                return Err(Error::msg("No active sw-agent"));
+            }
+        }
+        self.active_item = ActiveItem::None;
+        self.log_buffer.clear();
+        self.db_acid_txn_buffer = None;
+        Ok(())
     }
 
     /// Generates the storage key based on the currently active contract.
@@ -527,6 +568,7 @@ pub enum Commit {
 /// In such a case, calls to `storage_write` will result in an error.
 enum ActiveItem {
     Contract { cid: ContractId, mutable: bool },
+    Agent { aid: AgentId, mutable: bool },
     None,
 }
 
@@ -542,20 +584,14 @@ impl ActiveItem {
     pub fn storage_key(&self, base_key: u64, sub_key: u64) -> Option<StorageKey> {
         match self {
             ActiveItem::Contract { cid, .. } => Some(StorageKey::new(&cid, base_key, sub_key)),
-            ActiveItem::None => None,
-        }
-    }
-
-    pub fn as_key(&self) -> Option<&[u8; 16]> {
-        match self {
-            ActiveItem::Contract { cid, .. } => Some(cid.as_bytes()),
+            ActiveItem::Agent { aid, .. } => Some(StorageKey::new(&aid, base_key, sub_key)),
             ActiveItem::None => None,
         }
     }
 
     pub fn is_immutable(&self) -> bool {
         match self {
-            ActiveItem::Contract { mutable, .. } => *mutable,
+            ActiveItem::Contract { mutable, .. } | ActiveItem::Agent { mutable, .. } => *mutable,
             ActiveItem::None => false,
         }
     }

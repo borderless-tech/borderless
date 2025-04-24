@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use borderless::__private::registers::*;
 use borderless::contracts::{Introduction, Revocation, Symbols};
+use borderless::events::Events;
 use borderless::{events::CallAction, AgentId, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
@@ -160,46 +161,37 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
-    // pub fn process_action(&mut self, aid: &AgentId, action: CallAction) -> Result<Option<Events>> {
-    //     let input = action.to_bytes()?;
+    // OK; Just to get some stuff going; I want to just simply call an action, and execute an http-request with it.
+    // That's more than enough to test stuff out.
+    pub fn process_action(&mut self, aid: &AgentId, action: CallAction) -> Result<Option<Events>> {
+        let input = action.to_bytes()?;
 
-    //     self.store.data_mut().begin_mutable_exec(*aid)?;
-    //     let instance = self
-    //         .contract_store
-    //         .get_contract(&aid, &self.engine, &mut self.store, &mut self.linker)?
-    //         .ok_or_else(|| ErrorKind::MissingAgent { aid })?;
+        let instance = self
+            .contract_store
+            .get_agent(&aid, &self.engine, &mut self.store, &mut self.linker)?
+            .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
-    //     // Prepare registers
-    //     self.store.data_mut().set_register(REGISTER_INPUT, input);
-    //     self.store
-    //         .data_mut()
-    //         .set_register(REGISTER_TX_CTX, tx_ctx.to_bytes()?);
-    //     self.store
-    //         .data_mut()
-    //         .set_register(REGISTER_WRITER, writer.into_bytes().into());
+        // Prepare registers
+        self.store.data_mut().set_register(REGISTER_INPUT, input);
 
-    //     // Call the actual function on the wasm side
-    //     if let Err(e) = instance
-    //         .get_typed_func::<(), ()>(&mut self.store, contract_method)
-    //         .and_then(|func| func.call(&mut self.store, ()))
-    //     {
-    //         warn!("{contract_method} failed with error: {e}");
-    //         // NOTE: It is okay to abort the execution here with the finish_immutable_exec function,
-    //         // because we only get here, if the wasm execution has failed. Therefore there are no
-    //         // logs or actions to be commited to the database. We simply need this line to 'reset' the VmState for the next execution.
-    //         self.store.data_mut().finish_immutable_exec()?;
-    //     }
-
-    //     // Return output events
-    //     match self.store.data().get_register(REGISTER_OUTPUT) {
-    //         Some(bytes) => Ok(Some(Events::from_bytes(&bytes)?)),
-    //         None => Ok(None),
-    //     }
-    //     self.store
-    //         .data_mut()
-    //         .finish_mutable_exec(Commit::Action { action, tx_ctx })?;
-    //     Ok(events)
-    // }
+        // Call the actual function on the wasm side
+        self.store.data_mut().begin_agent_exec(*aid, true)?;
+        match instance
+            .get_typed_func::<(), ()>(&mut self.store, "process_action")
+            .and_then(|func| func.call(&mut self.store, ()))
+        {
+            Ok(()) => self.store.data_mut().finish_agent_exec(true)?,
+            Err(e) => {
+                warn!("process_action failed with error: {e}");
+                self.store.data_mut().finish_agent_exec(false)?;
+            }
+        }
+        // Return output events
+        match self.store.data().get_register(REGISTER_OUTPUT) {
+            Some(bytes) => Ok(Some(Events::from_bytes(&bytes)?)),
+            None => Ok(None),
+        }
+    }
 
     // pub fn process_introduction(
     //     &mut self,
