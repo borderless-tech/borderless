@@ -173,6 +173,7 @@ impl<S: Db> VmState<S> {
         txn.commit()?;
 
         let elapsed = now.elapsed();
+        self.log_buffer.clear();
         debug!("commit-acid-txn: {elapsed:?}");
         Ok(())
     }
@@ -234,21 +235,30 @@ impl<S: Db> VmState<S> {
     }
 
     pub fn finish_agent_exec(&mut self, commit_state: bool) -> Result<Vec<LogLine>> {
-        match self.active_item {
+        let aid = match self.active_item {
             ActiveItem::Contract { .. } => {
                 return Err(Error::msg(
                     "cannot finish an agent while a contract is still running",
                 ))
             }
-            ActiveItem::Agent { mutable, .. } => {
+            ActiveItem::Agent { mutable, aid } => {
                 if !mutable && commit_state {
                     return Err(Error::msg("Agent execution was marked as immutable"));
                 }
+                aid
             }
             ActiveItem::None => {
                 return Err(Error::msg("No active sw-agent"));
             }
+        };
+        if commit_state {
+            let mut txn = self.db.begin_rw_txn()?;
+            // Flush log
+            let logger = Logger::new(&self.db, aid);
+            logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
+            txn.commit()?;
         }
+
         self.active_item = ActiveItem::None;
         self.db_acid_txn_buffer = None;
         let log_output = std::mem::take(&mut self.log_buffer);
@@ -539,6 +549,13 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
     let mut rng = rand::rng();
     let value: u64 = rng.random_range(min..max);
     Ok(value)
+}
+
+pub mod async_abi {
+    use super::*;
+    pub async fn send_http_rq(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<()> {
+        Ok(())
+    }
 }
 
 /// External data that must be commited in the contract
