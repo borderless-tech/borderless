@@ -26,7 +26,11 @@ pub struct CodeStore<S: Db> {
 }
 
 impl<S: Db> CodeStore<S> {
-    pub fn new(db: &S, cache_size: NonZeroUsize) -> Result<Self> {
+    pub fn new(db: &S) -> Result<Self> {
+        Self::with_cache_size(db, NonZeroUsize::new(16).unwrap())
+    }
+
+    pub fn with_cache_size(db: &S, cache_size: NonZeroUsize) -> Result<Self> {
         let db_ptr = db.create_sub_db(WASM_CODE_SUB_DB)?;
         let cache = LruCache::with_hasher(cache_size, ahash::RandomState::default());
         Ok(Self {
