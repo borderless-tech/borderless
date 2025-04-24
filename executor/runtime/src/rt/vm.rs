@@ -45,8 +45,8 @@ pub struct VmState<S: Db> {
     /// Current buffer of log output for the given contract
     log_buffer: Vec<LogLine>,
 
-    // Currently active contract
-    active_contract: ActiveContract,
+    // Currently active contract or sw-agent
+    active_item: ActiveItem,
 }
 
 impl<S: Db> VmState<S> {
@@ -58,7 +58,7 @@ impl<S: Db> VmState<S> {
             db_acid_txn_buffer: None,
             last_timer: None,
             log_buffer: Vec::new(),
-            active_contract: ActiveContract::None,
+            active_item: ActiveItem::None,
         }
     }
 
@@ -68,7 +68,7 @@ impl<S: Db> VmState<S> {
     ///
     /// Calling this function while the `VmState` already has an active contract results in an error.
     pub fn begin_mutable_exec(&mut self, cid: ContractId) -> Result<()> {
-        if self.active_contract.is_some() {
+        if self.active_item.is_some() {
             return Err(Error::msg(
                 "Must finish contract execution before starting new one",
             ));
@@ -76,7 +76,7 @@ impl<S: Db> VmState<S> {
         if Controller::new(&self.db).contract_revoked(&cid)? {
             return Err(ErrorKind::RevokedContract { cid }.into());
         }
-        self.active_contract = ActiveContract::Mutable(cid);
+        self.active_item = ActiveItem::Contract { cid, mutable: true };
         self.log_buffer.clear();
         self.db_acid_txn_buffer = Some(Vec::new());
         Ok(())
@@ -96,7 +96,7 @@ impl<S: Db> VmState<S> {
         let result = self.finish_mut_exec_inner(commit);
 
         // Reset everything
-        self.active_contract = ActiveContract::None;
+        self.active_item = ActiveItem::None;
         self.log_buffer.clear();
 
         result
@@ -104,12 +104,14 @@ impl<S: Db> VmState<S> {
 
     // Inner wrapper, so we can return the result, but also perform the cleanup afterwards in case of an error
     fn finish_mut_exec_inner(&mut self, commit: Commit) -> Result<()> {
-        let cid = match self.active_contract {
-            ActiveContract::Mutable(cid) => cid,
-            ActiveContract::Immutable(_) => {
-                return Err(Error::msg("Contract execution was marked as immutable"));
+        let cid = match self.active_item {
+            ActiveItem::Contract { cid, mutable } => {
+                if !mutable {
+                    return Err(Error::msg("Contract execution was marked as immutable"));
+                }
+                cid
             }
-            ActiveContract::None => {
+            ActiveItem::None => {
                 return Err(Error::msg("Must start contract execution before commiting"));
             }
         };
@@ -179,10 +181,13 @@ impl<S: Db> VmState<S> {
     ///
     /// Calling this function while the `VmState` already has an active contract results in an error.
     pub fn begin_immutable_exec(&mut self, cid: ContractId) -> Result<()> {
-        if self.active_contract.is_some() {
+        if self.active_item.is_some() {
             return Err(Error::msg("Cannot overwrite active contract"));
         }
-        self.active_contract = ActiveContract::Immutable(cid);
+        self.active_item = ActiveItem::Contract {
+            cid,
+            mutable: false,
+        };
         Ok(())
     }
 
@@ -200,10 +205,10 @@ impl<S: Db> VmState<S> {
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
     pub fn finish_immutable_exec(&mut self) -> Result<Vec<LogLine>> {
-        if self.active_contract.is_none() {
+        if self.active_item.is_none() {
             return Err(Error::msg("Cannot clear non existing contract"));
         }
-        self.active_contract = ActiveContract::None;
+        self.active_item = ActiveItem::None;
         self.db_acid_txn_buffer = None;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
@@ -213,9 +218,8 @@ impl<S: Db> VmState<S> {
     ///
     /// Note: This function only generates user-keys, as values with system-keys must be commited by the host.
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
-        self.active_contract
-            .as_opt()
-            .map(|cid| StorageKey::new(cid, base_key, sub_key))
+        self.active_item
+            .storage_key(base_key, sub_key)
             .ok_or_else(|| wasmtime::Error::msg("no contract has been activated"))
     }
 
@@ -395,7 +399,7 @@ pub fn storage_write(
     value_ptr: u64,
     value_len: u64,
 ) -> wasmtime::Result<()> {
-    if caller.data().active_contract.is_immutable() {
+    if caller.data().active_item.is_immutable() {
         return Ok(());
     }
     // Get memory
@@ -450,7 +454,7 @@ pub fn storage_remove(
     base_key: u64,
     sub_key: u64,
 ) -> wasmtime::Result<()> {
-    if caller.data().active_contract.is_immutable() {
+    if caller.data().active_item.is_immutable() {
         return Ok(());
     }
 
@@ -521,30 +525,39 @@ pub enum Commit {
 ///
 /// An immutable contract execution is e.g. required for handling http-requests or performing dry-runs.
 /// In such a case, calls to `storage_write` will result in an error.
-enum ActiveContract {
-    Mutable(ContractId),
-    Immutable(ContractId),
+enum ActiveItem {
+    Contract { cid: ContractId, mutable: bool },
     None,
 }
 
-impl ActiveContract {
+impl ActiveItem {
     pub fn is_some(&self) -> bool {
         !self.is_none()
     }
 
     pub fn is_none(&self) -> bool {
-        matches!(self, ActiveContract::None)
+        matches!(self, ActiveItem::None)
     }
 
-    pub fn as_opt(&self) -> Option<&ContractId> {
+    pub fn storage_key(&self, base_key: u64, sub_key: u64) -> Option<StorageKey> {
         match self {
-            ActiveContract::Mutable(cid) | ActiveContract::Immutable(cid) => Some(cid),
-            ActiveContract::None => None,
+            ActiveItem::Contract { cid, .. } => Some(StorageKey::new(&cid, base_key, sub_key)),
+            ActiveItem::None => None,
+        }
+    }
+
+    pub fn as_key(&self) -> Option<&[u8; 16]> {
+        match self {
+            ActiveItem::Contract { cid, .. } => Some(cid.as_bytes()),
+            ActiveItem::None => None,
         }
     }
 
     pub fn is_immutable(&self) -> bool {
-        matches!(self, ActiveContract::Immutable(_))
+        match self {
+            ActiveItem::Contract { mutable, .. } => *mutable,
+            ActiveItem::None => false,
+        }
     }
 }
 
