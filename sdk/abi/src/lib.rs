@@ -30,6 +30,30 @@ extern "C" {
 
     // Testing
     pub fn rand(min: u64, max: u64) -> u64;
+
+    // --- SW-Agent API ( async host functions ? )
+    //
+    // Let's brainstorm a little bit, what is going on here.
+
+    // Create a new schedule that should be called regularly
+    pub fn register_schedule();
+
+    // Open a websocket connection and register a message-hook
+    //
+    // -> NOTE: This may require some more complex interaction,
+    // like fetching something via API first, then opening the websocket or so.
+    // Maybe we can avoid this by offloading the work to the implementor, so that e.g.
+    // a special function is called in case of failure, and the retry / reopen has to be implemented manually.
+    pub fn open_ws_connection();
+
+    // Sends a http-request to some remote entity and returns the result
+    pub fn send_http_rq();
+
+    // Sends a batch of http-requests to some remote entities in parallel and returns the results
+    pub fn batch_http_rqs();
+
+    // Maybe something that executes, everytime a contract finished its execution ?
+    pub fn register_hook();
 }
 
 #[repr(u32)]

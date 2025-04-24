@@ -26,12 +26,12 @@ use rand::{random, Rng};
 use borderless_kv_store::*;
 
 use crate::{
-    action_log::{ActionLog, ActionRecord, SUB_KEY_LOG_LEN},
     controller::{
         read_system_value, write_introduction, write_revocation, write_system_value, Controller,
     },
     error::ErrorKind,
-    logger::Logger,
+    rt::action_log::{ActionLog, ActionRecord, SUB_KEY_LOG_LEN},
+    rt::logger::Logger,
     Error, Result, CONTRACT_SUB_DB,
 };
 

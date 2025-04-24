@@ -8,7 +8,7 @@ use borderless::{
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{action_log::ActionLog, logger::Logger, Result, CONTRACT_SUB_DB};
+use crate::{rt::action_log::ActionLog, rt::logger::Logger, Result, CONTRACT_SUB_DB};
 
 /// Model-controller to retrive information about a contract from the key-value storage.
 pub struct Controller<'a, S: Db> {
