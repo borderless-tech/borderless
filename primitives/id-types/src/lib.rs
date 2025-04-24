@@ -27,7 +27,11 @@ macro_rules! impl_uuid {
                 self.0
             }
 
-            pub fn from_bytes(bytes: [u8; 16]) -> Self {
+            // NOTE: I am not sure; we have two options here. Either we just construct a uuid based on the bytes,
+            // but then it may not be a valid $type. Or, we enforce our bit-pattern here, so we know, that we have a valid $type,
+            // BUT this changes the roundtrip encoding (bytes -> $type -> bytes), because we modified the array here.
+            pub fn from_bytes(mut bytes: [u8; 16]) -> Self {
+                bytes[0] = bytes[0] & $prefix_upper | $prefix_lower;
                 $type(uuid::Uuid::new_v8(bytes))
             }
 
@@ -56,8 +60,6 @@ macro_rules! impl_uuid {
         impl From<uuid::Uuid> for $type {
             fn from(value: uuid::Uuid) -> Self {
                 let mut bytes = value.into_bytes();
-                // enforce a v8 uuid here (maybe just use new_v8 here, so that this work is delegated)
-                // -> Find out, how we set the first 4 bit easily in this macro by specifying 0xcF and 0xc0
                 bytes[0] = bytes[0] & $prefix_upper | $prefix_lower;
                 $type(uuid::Uuid::new_v8(bytes))
             }

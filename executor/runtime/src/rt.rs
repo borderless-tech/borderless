@@ -1,4 +1,4 @@
-use borderless::ContractId;
+use borderless::{aid_prefix, cid_prefix, AgentId, ContractId};
 use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
 use lru::LruCache;
 use parking_lot::Mutex;
@@ -14,12 +14,15 @@ pub mod logger;
 pub mod swagent;
 mod vm;
 
+/// Generalized ID - this is either a Contract-ID or an Agent-ID
+type Id = [u8; 16];
+
 /// Storage for our webassembly code
 #[derive(Clone)]
 pub struct CodeStore<S: Db> {
     db: S,
     db_ptr: S::Handle,
-    cache: Arc<Mutex<LruCache<ContractId, Instance, ahash::RandomState>>>,
+    cache: Arc<Mutex<LruCache<Id, Instance, ahash::RandomState>>>,
 }
 
 impl<S: Db> CodeStore<S> {
@@ -41,6 +44,14 @@ impl<S: Db> CodeStore<S> {
         Ok(())
     }
 
+    pub fn insert_swagent(&self, aid: AgentId, module: Module) -> Result<()> {
+        let module_bytes = module.serialize()?;
+        let mut txn = self.db.begin_rw_txn()?;
+        txn.write(&self.db_ptr, &aid, &module_bytes)?;
+        txn.commit()?;
+        Ok(())
+    }
+
     pub fn get_contract(
         &mut self,
         cid: &ContractId,
@@ -48,18 +59,39 @@ impl<S: Db> CodeStore<S> {
         store: &mut Store<VmState<S>>,
         linker: &mut Linker<VmState<S>>,
     ) -> Result<Option<Instance>> {
-        if let Some(instance) = self.cache.lock().get(cid) {
+        self.get_item(cid.as_bytes(), engine, store, linker)
+    }
+
+    pub fn get_agent(
+        &mut self,
+        aid: &AgentId,
+        engine: &Engine,
+        store: &mut Store<VmState<S>>,
+        linker: &mut Linker<VmState<S>>,
+    ) -> Result<Option<Instance>> {
+        self.get_item(aid.as_bytes(), engine, store, linker)
+    }
+
+    /// Generalized function to get some module with an ID.
+    fn get_item(
+        &mut self,
+        id: &Id,
+        engine: &Engine,
+        store: &mut Store<VmState<S>>,
+        linker: &mut Linker<VmState<S>>,
+    ) -> Result<Option<Instance>> {
+        if let Some(instance) = self.cache.lock().get(id) {
             return Ok(Some(*instance));
         }
         let txn = self.db.begin_ro_txn()?;
-        let module_bytes = txn.read(&self.db_ptr, cid)?;
+        let module_bytes = txn.read(&self.db_ptr, id)?;
         let module = match module_bytes {
             Some(bytes) => unsafe { Module::deserialize(engine, bytes)? },
             None => return Ok(None),
         };
         txn.commit()?;
         let instance = linker.instantiate(store, &module)?;
-        self.cache.lock().push(*cid, instance);
+        self.cache.lock().push(*id, instance);
         Ok(Some(instance))
     }
 
@@ -69,13 +101,32 @@ impl<S: Db> CodeStore<S> {
         let mut out = Vec::new();
         let txn = self.db.begin_ro_txn()?;
         let mut cursor = txn.ro_cursor(&self.db_ptr)?;
-        // TODO: if we store contracts and agents in the same db, we have to change the logic here
-        for (key, _value) in cursor.iter() {
+        // NOTE: We have to filter out all keys without the cid prefix
+        for (key, _value) in cursor.iter().filter(|(key, _)| cid_prefix(key)) {
             let cid = ContractId::from_bytes(
                 key.try_into()
                     .map_err(|_| crate::Error::msg("failed to parse contract-id from storage"))?,
             );
             out.push(cid);
+        }
+        drop(cursor);
+        txn.commit()?;
+        Ok(out)
+    }
+
+    pub fn available_swagents(&self) -> Result<Vec<AgentId>> {
+        use borderless_kv_store::*;
+
+        let mut out = Vec::new();
+        let txn = self.db.begin_ro_txn()?;
+        let mut cursor = txn.ro_cursor(&self.db_ptr)?;
+        // NOTE: We have to filter out all keys without the aid prefix
+        for (key, _value) in cursor.iter().filter(|(key, _)| aid_prefix(key)) {
+            let aid = AgentId::from_bytes(
+                key.try_into()
+                    .map_err(|_| crate::Error::msg("failed to parse agent-id from storage"))?,
+            );
+            out.push(aid);
         }
         drop(cursor);
         txn.commit()?;
