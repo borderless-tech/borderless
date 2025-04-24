@@ -1,5 +1,6 @@
 use super::ROOT_KEY;
 use crate::__private::{read_field, storage_has_key, storage_remove, write_field};
+use crate::collections::hashmap::metadata::Metadata;
 use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,7 @@ pub struct Cache<V> {
     base_key: u64,
     map: RefCell<IntMap<u64, Rc<RefCell<KeyValue<V>>>>>,
     operations: IntMap<u64, CacheOp>,
+    metadata: Metadata<u64>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -42,11 +44,21 @@ where
             base_key,
             map: RefCell::default(),
             operations: IntMap::default(),
+            metadata: Metadata::new(base_key),
         }
     }
 
     pub(crate) fn open(base_key: u64) -> Self {
-        todo!()
+        Cache {
+            base_key,
+            map: RefCell::default(),
+            operations: IntMap::default(),
+            metadata: Metadata::open(base_key),
+        }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.metadata.len()
     }
 
     pub(crate) fn exists(&self) -> bool {

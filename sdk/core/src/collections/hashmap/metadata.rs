@@ -59,4 +59,6 @@ where
     pub(crate) fn len(&self) -> usize {
         self.len
     }
+
+    pub(crate) fn insert(&self, key: K) {}
 }
