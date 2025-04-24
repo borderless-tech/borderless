@@ -553,8 +553,33 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
 
 pub mod async_abi {
     use super::*;
-    pub async fn send_http_rq(mut caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<()> {
-        Ok(())
+
+    pub async fn send_http_rq(
+        mut caller: Caller<'_, VmState<impl Db>>,
+        method: u32,
+        uri_ptr: u64,
+        uri_len: u64,
+        payload_ptr: u64,
+        payload_len: u64,
+        register_id: u64,
+    ) -> wasmtime::Result<u64> {
+        let memory = get_memory(&mut caller)?;
+
+        // Read memory
+        let uri_bytes = memory
+            .data(&mut caller)
+            .get(uri_ptr as usize..(uri_ptr + uri_len) as usize)
+            .ok_or_else(|| wasmtime::Error::msg("Memory access out of bounds"))?;
+
+        // Construct message
+        let uri_str = String::from_utf8(uri_bytes.to_vec())
+            .unwrap_or_else(|e| format!("Invalid UTF-8 sequence: {e}"));
+
+        let result = reqwest::get(uri_str).await?.bytes().await?;
+
+        caller.data_mut().set_register(register_id, result.into());
+
+        Ok(0)
     }
 }
 

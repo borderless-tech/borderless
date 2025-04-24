@@ -124,6 +124,24 @@ impl<S: Db> Runtime<S> {
         })?;
         linker.func_wrap("env", "rand", vm::rand)?;
 
+        // --- TODO: Playground for the new async api
+        linker.func_wrap_async(
+            "env",
+            "send_http_rq",
+            |caller: Caller<'_, VmState<S>>,
+             (method, uri_ptr, uri_len, payload_ptr, payload_len, register_id)| {
+                Box::new(vm::async_abi::send_http_rq(
+                    caller,
+                    method,
+                    uri_ptr,
+                    uri_len,
+                    payload_ptr,
+                    payload_len,
+                    register_id,
+                ))
+            },
+        )?;
+
         let store = Store::new(&engine, state);
 
         log::info!("Initialized runtime in: {:?}", start.elapsed());

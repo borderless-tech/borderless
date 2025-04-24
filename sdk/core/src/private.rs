@@ -31,6 +31,30 @@ use crate::{contracts::Introduction, error};
 //
 // Maybe we can utilize this in a way, that makes our wasm code testable ?
 // Because without links to the abi, we cannot really test all this..
+//
+
+// --- PLAYGROUND FOR NEW ABI STUFF
+
+pub use abi::HttpMethod;
+pub fn send_http_rq(
+    method: abi::HttpMethod,
+    uri: impl AsRef<str>,
+    payload: impl AsRef<[u8]>,
+) -> Option<Vec<u8>> {
+    let _result = unsafe {
+        abi::send_http_rq(
+            method as u32,
+            uri.as_ref().as_ptr() as _,
+            uri.as_ref().len() as _,
+            payload.as_ref().as_ptr() as _,
+            payload.as_ref().len() as _,
+            REGISTER_ATOMIC_OP,
+        )
+    };
+    read_register(REGISTER_ATOMIC_OP)
+}
+
+// ---
 
 pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
     unsafe {

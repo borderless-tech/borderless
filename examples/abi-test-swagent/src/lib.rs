@@ -26,6 +26,14 @@ fn exec_run() -> Result<()> {
         .method_name()
         .context("missing required method-name")?;
 
+    let result = send_http_rq(
+        HttpMethod::Get,
+        "https://jsonplaceholder.typicode.com/users",
+        &[],
+    );
+    let value: borderless::serialize::Value = borderless::serialize::from_slice(&result.unwrap())?;
+    info!("{}", value.to_string());
+
     match method {
         "asdf" => {
             info!(" hello my friend ");

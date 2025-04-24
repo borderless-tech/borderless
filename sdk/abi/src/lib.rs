@@ -47,7 +47,14 @@ extern "C" {
     pub fn open_ws_connection();
 
     // Sends a http-request to some remote entity and returns the result
-    pub fn send_http_rq();
+    pub fn send_http_rq(
+        method: u32,
+        uri_ptr: u64,
+        uri_len: u64,
+        payload_ptr: u64,
+        payload_len: u64,
+        register_id: u64,
+    ) -> u64;
 
     // Sends a batch of http-requests to some remote entities in parallel and returns the results
     pub fn batch_http_rqs();
@@ -63,4 +70,12 @@ pub enum LogLevel {
     Info = 2,
     Warn = 3,
     Error = 4,
+}
+
+#[repr(u32)]
+pub enum HttpMethod {
+    Get = 0,
+    Post = 1,
+    Put = 2,
+    Delete = 3,
 }
