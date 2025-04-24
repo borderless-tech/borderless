@@ -184,12 +184,13 @@ impl<S: Db> Runtime<S> {
         tx_ctx: TxCtx,
     ) -> Result<Option<Events>> {
         let input = action.to_bytes()?;
-
-        self.store.data_mut().begin_mutable_exec(*cid)?;
-        let events = self.process_chain_tx("process_transaction", *cid, input, *writer, &tx_ctx)?;
-        self.store
-            .data_mut()
-            .finish_mutable_exec(Commit::Action { action, tx_ctx })?;
+        let events = self.process_chain_tx(
+            *cid,
+            input,
+            *writer,
+            tx_ctx.to_bytes()?,
+            Commit::Action { action, tx_ctx },
+        )?;
         Ok(events)
     }
 
@@ -200,22 +201,16 @@ impl<S: Db> Runtime<S> {
         tx_ctx: TxCtx,
     ) -> Result<()> {
         let input = introduction.to_bytes()?;
-        self.store
-            .data_mut()
-            .begin_mutable_exec(introduction.contract_id)?;
         self.process_chain_tx(
-            "process_introduction",
             introduction.contract_id,
             input,
             *writer,
-            &tx_ctx,
-        )?;
-        self.store
-            .data_mut()
-            .finish_mutable_exec(Commit::Introduction {
+            tx_ctx.to_bytes()?,
+            Commit::Introduction {
                 introduction,
                 tx_ctx,
-            })?;
+            },
+        )?;
         Ok(())
     }
 
@@ -226,20 +221,13 @@ impl<S: Db> Runtime<S> {
         tx_ctx: TxCtx,
     ) -> Result<()> {
         let input = revocation.to_bytes()?;
-
-        self.store
-            .data_mut()
-            .begin_mutable_exec(revocation.contract_id)?;
         self.process_chain_tx(
-            "process_revocation",
             revocation.contract_id,
             input,
             *writer,
-            &tx_ctx,
+            tx_ctx.to_bytes()?,
+            Commit::Revocation { revocation, tx_ctx },
         )?;
-        self.store
-            .data_mut()
-            .finish_mutable_exec(Commit::Revocation { revocation, tx_ctx })?;
         Ok(())
     }
 
@@ -249,36 +237,46 @@ impl<S: Db> Runtime<S> {
     /// In case of an error, the `VmState` is reset by this function.
     fn process_chain_tx(
         &mut self,
-        contract_method: &str,
         cid: ContractId,
         input: Vec<u8>,
         writer: BorderlessId,
-        tx_ctx: &TxCtx,
+        tx_ctx_bytes: Vec<u8>,
+        commit: Commit,
     ) -> Result<Option<Events>> {
         let instance = self
             .contract_store
             .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
             .ok_or_else(|| ErrorKind::MissingContract { cid })?;
 
+        let contract_method = match &commit {
+            Commit::Action { .. } => "process_transaction",
+            Commit::Introduction { .. } => "process_introduction",
+            Commit::Revocation { .. } => "process_revocation",
+        };
+
         // Prepare registers
         self.store.data_mut().set_register(REGISTER_INPUT, input);
         self.store
             .data_mut()
-            .set_register(REGISTER_TX_CTX, tx_ctx.to_bytes()?);
+            .set_register(REGISTER_TX_CTX, tx_ctx_bytes);
         self.store
             .data_mut()
             .set_register(REGISTER_WRITER, writer.into_bytes().into());
 
         // Call the actual function on the wasm side
-        if let Err(e) = instance
+        self.store.data_mut().begin_mutable_exec(cid)?;
+        match instance
             .get_typed_func::<(), ()>(&mut self.store, contract_method)
             .and_then(|func| func.call(&mut self.store, ()))
         {
-            warn!("{contract_method} failed with error: {e}");
-            // NOTE: It is okay to abort the execution here with the finish_immutable_exec function,
-            // because we only get here, if the wasm execution has failed. Therefore there are no
-            // logs or actions to be commited to the database. We simply need this line to 'reset' the VmState for the next execution.
-            self.store.data_mut().finish_immutable_exec()?;
+            Ok(()) => self.store.data_mut().finish_mutable_exec(commit)?,
+            Err(e) => {
+                warn!("{contract_method} failed with error: {e}");
+                // NOTE: It is okay to abort the execution here with the finish_immutable_exec function,
+                // because we only get here, if the wasm execution has failed. Therefore there are no
+                // logs or actions to be commited to the database. We simply need this line to 'reset' the VmState for the next execution.
+                self.store.data_mut().finish_immutable_exec()?;
+            }
         }
 
         // Return output events

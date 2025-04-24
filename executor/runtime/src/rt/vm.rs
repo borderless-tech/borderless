@@ -1,4 +1,7 @@
-//! Contains the implementation of the ABI
+//! WASM Virtual Machine
+//!
+//! This module contains the state of the virtual machine, that is shared across host function invocations,
+//! and the concrete implementation of the ABI host functions, that are linked to the webassembly module by the runtime.
 
 use std::{
     cell::RefCell,
@@ -90,6 +93,17 @@ impl<S: Db> VmState<S> {
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
     pub fn finish_mutable_exec(&mut self, commit: Commit) -> Result<()> {
+        let result = self.finish_mut_exec_inner(commit);
+
+        // Reset everything
+        self.active_contract = ActiveContract::None;
+        self.log_buffer.clear();
+
+        result
+    }
+
+    // Inner wrapper, so we can return the result, but also perform the cleanup afterwards in case of an error
+    fn finish_mut_exec_inner(&mut self, commit: Commit) -> Result<()> {
         let cid = match self.active_contract {
             ActiveContract::Mutable(cid) => cid,
             ActiveContract::Immutable(_) => {
@@ -153,11 +167,6 @@ impl<S: Db> VmState<S> {
 
         let elapsed = now.elapsed();
         debug!("commit-acid-txn: {elapsed:?}");
-
-        // Reset everything
-        self.active_contract = ActiveContract::None;
-        self.log_buffer.clear();
-
         Ok(())
     }
 

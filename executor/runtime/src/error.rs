@@ -1,4 +1,4 @@
-use borderless::ContractId;
+use borderless::{AgentId, ContractId};
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -81,6 +81,9 @@ pub(crate) enum ErrorKind {
     // --- Runtime errors
     #[error("contract is not instantiated cid={cid}")]
     MissingContract { cid: ContractId },
+
+    #[error("contract is not instantiated aid={aid}")]
+    MissingAgent { aid: AgentId },
 
     #[error("contract is revoked and cannot process transactions cid={cid}")]
     RevokedContract { cid: ContractId },

@@ -10,6 +10,8 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{rt::action_log::ActionLog, rt::logger::Logger, Result, CONTRACT_SUB_DB};
 
+// TODO: Add agent related functions aswell
+
 /// Model-controller to retrive information about a contract from the key-value storage.
 pub struct Controller<'a, S: Db> {
     db: &'a S,
