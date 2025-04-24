@@ -1,7 +1,7 @@
 use crate::__private::storage_traits::Storeable;
 use crate::collections::lazyvec::LazyVec;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::marker::PhantomData;
 
@@ -9,11 +9,9 @@ type Key = u64;
 
 const SHARDS: usize = 16;
 
-#[derive(Serialize, Deserialize)]
 pub(crate) struct Metadata<K> {
     base_key: Key,
-    shards: [Key; SHARDS],
-    len: usize,
+    shards: [LazyVec<K>; SHARDS],
     _ref: PhantomData<K>,
 }
 
@@ -22,43 +20,35 @@ where
     K: Serialize + DeserializeOwned,
 {
     pub(crate) fn new(base_key: Key) -> Self {
-        // LazyVec base keys are metadata base_key + [1,16]
-        let indices: [Key; SHARDS] = std::array::from_fn(|i| (i as Key) + 1 + base_key);
-        // Init and commit each LazyVec in memory
-        for idx in indices {
-            let vec = LazyVec::<K>::new(idx);
-            vec.commit(idx);
-        }
+        // Init each shard
+        let shards: [LazyVec<K>; SHARDS] = std::array::from_fn(|i| {
+            let shard_key = base_key.saturating_add(i as Key);
+            LazyVec::new(shard_key)
+        });
         // Create Metadata object
         Metadata {
             base_key,
-            shards: indices,
-            len: 0,
+            shards,
             _ref: PhantomData,
         }
     }
 
     pub(crate) fn open(base_key: Key) -> Self {
-        let mut total_len: usize = 0;
-        // LazyVec base keys are metadata base_key + [1,16]
-        let indices: [Key; SHARDS] = std::array::from_fn(|i| (i as Key) + 1 + base_key);
-        // Load each LazyVec into memory
-        for idx in indices {
-            let vec = LazyVec::<K>::decode(idx);
-            total_len = total_len.saturating_add(vec.len());
-            vec.commit(idx);
-        }
+        // Load each shard
+        let shards: [LazyVec<K>; SHARDS] = std::array::from_fn(|i| {
+            let shard_key = base_key.saturating_add(i as Key);
+            LazyVec::decode(shard_key)
+        });
         // Create Metadata object
         Metadata {
             base_key,
-            shards: indices,
-            len: total_len,
+            shards,
             _ref: PhantomData,
         }
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.len
+        todo!()
     }
 
     pub(crate) fn keys(&self) -> Vec<Key> {
@@ -83,23 +73,18 @@ where
         (hash & 0xF) as usize
     }
 
-    pub(crate) fn insert(&self, key: K) {
+    pub(crate) fn insert(&mut self, key: K) {
+        // Select the right shard
         let index = Self::shard_from_key(&key);
-        // Get the shard base key
-        let shard_base_key = self.shards[index];
-        // Load the corresponding LazyVec
-        let mut vec: LazyVec<K> = LazyVec::decode(shard_base_key);
         // Push the new key
-        vec.push(key)
+        self.shards[index].push(key);
     }
 
     pub(crate) fn remove(&self, key: K) {
-        let index = Self::shard_from_key(&key);
-        // Get the shard base key
-        let shard_base_key = self.shards[index];
-        // Load the corresponding LazyVec
-        let _vec: LazyVec<K> = LazyVec::decode(shard_base_key);
-        //vec.remove_elem();
+        // Select the right shard
+        let _index = Self::shard_from_key(&key);
+        // Remove the key
+        //self.shards[index].remove_elem()
         todo!()
     }
 }
