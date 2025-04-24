@@ -23,7 +23,7 @@
             # Override the Rust toolchain to include llvm-tools-preview
             (rust-bin.stable.latest.default.override {
               extensions = [ "llvm-tools-preview" ];
-              targets = [ "wasm32-unknown-unknown" ];
+              targets = [ "wasm32-unknown-unknown" "wasm32-wasip1" "wasm32-wasip2" ];
             })
             rustc
             cargo
