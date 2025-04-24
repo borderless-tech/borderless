@@ -70,6 +70,10 @@ where
         }
     }
 
+    pub fn exists(&self) -> bool {
+        self.cache.exists()
+    }
+
     pub fn len(&self) -> usize {
         todo!()
     }
