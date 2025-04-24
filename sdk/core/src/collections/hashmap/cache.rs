@@ -61,18 +61,16 @@ where
         self.metadata.len()
     }
 
+    pub(crate) fn keys(&self) -> Vec<u64> {
+        self.metadata.keys()
+    }
+
     pub(crate) fn exists(&self) -> bool {
         storage_has_key(self.base_key, ROOT_KEY)
     }
 
     pub(crate) fn contains_key(&self, sub_key: u64) -> bool {
         self.read(sub_key).is_some()
-    }
-
-    pub(crate) fn reset(&mut self) {
-        // Clear the in-memory map, deallocating the used resources
-        self.map = RefCell::default();
-        self.operations = IntMap::default();
     }
 
     pub(crate) fn read(&self, key: u64) -> Option<Rc<RefCell<KeyValue<V>>>> {
@@ -130,13 +128,16 @@ where
     }
 
     pub(crate) fn clear(&mut self) {
-        // Flag all cells for deletion
-        for key in self.map.borrow().keys() {
-            self.operations.insert(*key, CacheOp::Remove);
-        }
-        self.map.borrow_mut().clear();
+        // Clear the in-memory map, deallocating the used resources
+        self.map = RefCell::default();
+        self.operations = IntMap::default();
 
-        // TODO Update metadata?
+        // Flag all cells for deletion
+        for key in self.metadata.keys() {
+            self.operations.insert(key, CacheOp::Remove);
+        }
+        // Clear metadata
+        self.metadata.clear();
     }
 
     pub(crate) fn commit(self) {

@@ -125,19 +125,15 @@ where
     }
 
     pub fn clear(&mut self) {
-        // Discard the local changes
-        self.cache.reset();
-        // Loads all the nodes to the cache
-        self.load(ROOT_KEY);
+        // Discard the local changes and clear its content
         self.cache.clear();
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.cache.keys()
     }
 
     // TODO Implement the following methods (they are eager methods instead of lazy)
     // keys()
     // value()
-
-    // Fetches all the nodes from the DB, loading them in the cache
-    fn load(&mut self, key: u64) {
-        todo!()
-    }
 }
