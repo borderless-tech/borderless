@@ -25,13 +25,13 @@
 //! ```rust
 //! # use borderless::__private::storage_keys::*;
 //! # use borderless::ContractId;
-//! # let cid = "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse().unwrap();
+//! # let cid: ContractId = "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse().unwrap();
 //! let base = 42;
 //! let sub = 99;
 //! let user_key = StorageKey::user_key(&cid, base, sub);
 //!
 //! assert!(user_key.is_user_key());
-//! assert_eq!(user_key.contract_id(), cid);
+//! assert_eq!(user_key.contract_id().unwrap(), cid);
 //! assert_eq!(user_key.sub_key(), sub);
 //! ```
 //!
@@ -43,7 +43,7 @@
 //! ```rust
 //! # use borderless::__private::storage_keys::*;
 //! # use borderless::ContractId;
-//! # let cid = "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse().unwrap();
+//! # let cid: ContractId = "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse().unwrap();
 //! // This is definetely a system-key
 //! let key = BASE_KEY_METADATA;
 //! assert!(is_system_key(key));
@@ -55,6 +55,8 @@
 //! let storage_key = StorageKey::user_key(&cid, key, 0);
 //! assert!(storage_key.is_user_key());
 //! ```
+
+use borderless_id_types::{aid_prefix, cid_prefix, AgentId};
 
 use crate::ContractId;
 
@@ -147,8 +149,8 @@ impl StorageKey {
     /// Creates a new storage key
     ///
     /// Does not set the high-bits of the key to either the user  or system key-space.
-    pub fn new(cid: &ContractId, base_key: u64, sub_key: u64) -> Self {
-        let key = calc_storage_key(cid, base_key, sub_key);
+    pub fn new(id: impl AsRef<[u8; 16]>, base_key: u64, sub_key: u64) -> Self {
+        let key = calc_storage_key(id.as_ref(), base_key, sub_key);
         Self(key)
     }
 
@@ -158,13 +160,13 @@ impl StorageKey {
     ///
     /// # Panics
     /// Panics in debug mode if the result is not in the user space.
-    pub fn user_key(cid: &ContractId, base_key: u64, sub_key: u64) -> Self {
+    pub fn user_key(id: impl AsRef<[u8; 16]>, base_key: u64, sub_key: u64) -> Self {
         let base_key = make_user_key(base_key);
         debug_assert!(
             is_user_key(base_key) && !is_system_key(base_key),
             "blinded base_key must be in user-space"
         );
-        let key = calc_storage_key(cid, base_key, sub_key);
+        let key = calc_storage_key(id.as_ref(), base_key, sub_key);
         Self(key)
     }
 
@@ -174,13 +176,13 @@ impl StorageKey {
     ///
     /// # Panics
     /// Panics in debug mode if the result is not in system space.
-    pub fn system_key(cid: &ContractId, base_key: u64, sub_key: u64) -> Self {
+    pub fn system_key(id: impl AsRef<[u8; 16]>, base_key: u64, sub_key: u64) -> Self {
         let base_key = base_key & !(1 << 63);
         debug_assert!(
             !is_user_key(base_key) && is_system_key(base_key),
             "system base_key must be in system-space"
         );
-        let key = calc_storage_key(cid, base_key, sub_key);
+        let key = calc_storage_key(id.as_ref(), base_key, sub_key);
         Self(key)
     }
 
@@ -198,11 +200,35 @@ impl StorageKey {
         })
     }
 
-    /// Extracts the contract ID from the key.
-    pub fn contract_id(&self) -> ContractId {
-        let mut cid = [0u8; 16];
-        cid.copy_from_slice(&self.0[0..16]);
-        ContractId::from_bytes(cid)
+    /// Extracts the Contract-ID from the key
+    ///
+    /// Returns `None`, if the key does not belong to a contract.
+    pub fn contract_id(&self) -> Option<ContractId> {
+        if self.is_contract_key() {
+            let id = self.get_id_prefix();
+            Some(ContractId::from_bytes(id))
+        } else {
+            None
+        }
+    }
+
+    /// Extracts the Agent-ID from the key
+    ///
+    /// Returns `None`, if the key does not belong to a contract.
+    pub fn agent_id(&self) -> Option<AgentId> {
+        if self.is_agent_key() {
+            let id = self.get_id_prefix();
+            Some(AgentId::from_bytes(id))
+        } else {
+            None
+        }
+    }
+
+    /// Extracts the ID prefix from the key
+    pub fn get_id_prefix(&self) -> [u8; 16] {
+        let mut id = [0u8; 16];
+        id.copy_from_slice(&self.0[0..16]);
+        id
     }
 
     /// Extracts the base key (u64) from the key.
@@ -224,6 +250,16 @@ impl StorageKey {
     pub fn is_system_key(&self) -> bool {
         is_system_key(self.base_key())
     }
+
+    /// Returns `true` if the key belongs to a contract
+    pub fn is_contract_key(&self) -> bool {
+        cid_prefix(&self.0)
+    }
+
+    /// Returns `true` if the key belongs to a sw-agent
+    pub fn is_agent_key(&self) -> bool {
+        aid_prefix(&self.0)
+    }
 }
 
 impl AsRef<[u8]> for StorageKey {
@@ -233,9 +269,9 @@ impl AsRef<[u8]> for StorageKey {
 }
 
 /// Calculates a storage key from a contract ID, base key, and sub key.
-pub fn calc_storage_key(cid: &ContractId, base_key: u64, sub_key: u64) -> [u8; 32] {
+pub fn calc_storage_key(id: &[u8; 16], base_key: u64, sub_key: u64) -> [u8; 32] {
     let mut out = [0u8; 32];
-    out[0..16].copy_from_slice(cid.as_bytes());
+    out[0..16].copy_from_slice(id);
     out[16..24].copy_from_slice(&base_key.to_be_bytes());
     out[24..32].copy_from_slice(&sub_key.to_be_bytes());
     out
@@ -270,7 +306,8 @@ mod tests {
         let sub = 99;
         let key = StorageKey::user_key(&cid, base, sub);
 
-        assert_eq!(key.contract_id(), cid);
+        assert!(key.contract_id().is_some());
+        assert_eq!(key.contract_id().unwrap(), cid);
         assert_eq!(key.base_key(), make_user_key(base));
         assert_eq!(key.sub_key(), sub);
         assert!(key.is_user_key());
@@ -284,7 +321,8 @@ mod tests {
         let sub = 0;
         let key = StorageKey::system_key(&cid, base, sub);
 
-        assert_eq!(key.contract_id(), cid);
+        assert!(key.contract_id().is_some());
+        assert_eq!(key.contract_id().unwrap(), cid);
         assert_eq!(key.base_key(), base);
         assert_eq!(key.sub_key(), sub);
         assert!(!key.is_user_key());
@@ -292,8 +330,42 @@ mod tests {
     }
 
     #[test]
+    fn disjunct_id_prefix() {
+        let aid = AgentId::generate();
+        let cid = ContractId::generate();
+        let base = 42;
+        let sub = 99;
+        let aid_key = StorageKey::user_key(&aid, base, sub);
+        let cid_key = StorageKey::user_key(&cid, base, sub);
+        // Keys must not be equal
+        assert_ne!(aid_key.0, cid_key.0);
+        // Check that storage keys use the correct prefix
+        assert!(aid_prefix(&aid_key.0));
+        assert!(!aid_prefix(&cid_key.0));
+        assert!(!cid_prefix(&aid_key.0));
+        assert!(cid_prefix(&cid_key.0));
+    }
+
+    #[test]
+    fn return_correct_id_type() {
+        let aid = AgentId::generate();
+        let cid = ContractId::generate();
+        let base = 42;
+        let sub = 99;
+        let aid_key = StorageKey::user_key(&aid, base, sub);
+        let cid_key = StorageKey::user_key(&cid, base, sub);
+        // Check, that the correct ID-type is returned
+        assert!(aid_key.contract_id().is_none());
+        assert!(aid_key.agent_id().is_some());
+        assert_eq!(aid_key.agent_id().unwrap(), aid);
+        assert!(cid_key.contract_id().is_some());
+        assert!(cid_key.agent_id().is_none());
+        assert_eq!(cid_key.contract_id().unwrap(), cid);
+    }
+
+    #[test]
     fn to_hex_format() {
-        let cid = "cc8ca79c-3bbb-89d2-bb28-29636c170387"
+        let cid: ContractId = "cc8ca79c-3bbb-89d2-bb28-29636c170387"
             .parse()
             .expect("valid contract-id");
         let base = 123;
@@ -367,7 +439,7 @@ mod tests {
         // If two keys would have the same value,
         // the vector lengths would differ after deduplication
         keys.sort();
-        keys.dedup(); // required sorting
+        keys.dedup(); // requires sorting
         assert_eq!(n_keys, keys.len());
     }
 }
