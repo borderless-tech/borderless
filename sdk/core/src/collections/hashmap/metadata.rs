@@ -21,9 +21,8 @@ where
     K: Serialize + DeserializeOwned,
 {
     pub(crate) fn new(base_key: Key) -> Self {
-        // Metadata base key is 0
-        // LazyVec base keys are in range [1,16]
-        let indices: [Key; SHARDS] = std::array::from_fn(|i| (i as Key) + 1);
+        // LazyVec base keys are metadata base_key + [1,16]
+        let indices: [Key; SHARDS] = std::array::from_fn(|i| (i as Key) + 1 + base_key);
         // Init and commit each LazyVec in memory
         for idx in indices {
             let vec = LazyVec::<K>::new(idx);
@@ -40,8 +39,8 @@ where
 
     pub(crate) fn open(base_key: Key) -> Self {
         let mut total_len: usize = 0;
-        // LazyVec base keys are in range [1,16]
-        let indices: [Key; SHARDS] = std::array::from_fn(|i| (i as Key) + 1);
+        // LazyVec base keys are metadata base_key + [1,16]
+        let indices: [Key; SHARDS] = std::array::from_fn(|i| (i as Key) + 1 + base_key);
         // Load each LazyVec into memory
         for idx in indices {
             let vec = LazyVec::<K>::decode(idx);
