@@ -163,29 +163,34 @@ impl<S: Db> Runtime<S> {
 
     // OK; Just to get some stuff going; I want to just simply call an action, and execute an http-request with it.
     // That's more than enough to test stuff out.
-    pub fn process_action(&mut self, aid: &AgentId, action: CallAction) -> Result<Option<Events>> {
+    pub async fn process_action(
+        &mut self,
+        aid: &AgentId,
+        action: CallAction,
+    ) -> Result<Option<Events>> {
         let input = action.to_bytes()?;
 
         let instance = self
             .contract_store
-            .get_agent(&aid, &self.engine, &mut self.store, &mut self.linker)?
+            .get_agent(&aid, &self.engine, &mut self.store, &mut self.linker)
+            .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
         // Prepare registers
         self.store.data_mut().set_register(REGISTER_INPUT, input);
 
         // Call the actual function on the wasm side
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_action")?;
         self.store.data_mut().begin_agent_exec(*aid, true)?;
-        match instance
-            .get_typed_func::<(), ()>(&mut self.store, "process_action")
-            .and_then(|func| func.call(&mut self.store, ()))
-        {
+
+        match func.call_async(&mut self.store, ()).await {
             Ok(()) => self.store.data_mut().finish_agent_exec(true)?,
             Err(e) => {
                 warn!("process_action failed with error: {e}");
-                self.store.data_mut().finish_agent_exec(false)?;
+                self.store.data_mut().finish_agent_exec(false)?
             }
-        }
+        }; // TODO
+
         // Return output events
         match self.store.data().get_register(REGISTER_OUTPUT) {
             Some(bytes) => Ok(Some(Events::from_bytes(&bytes)?)),
@@ -289,27 +294,29 @@ impl<S: Db> Runtime<S> {
 
     // --- NOTE: Maybe we should create a separate runtime for the HTTP handling ?
 
-    pub fn http_get_state(&mut self, aid: &AgentId, path: String) -> Result<(u16, Vec<u8>)> {
+    pub async fn http_get_state(&mut self, aid: &AgentId, path: String) -> Result<(u16, Vec<u8>)> {
+        // Get instance
         let instance = self
             .contract_store
-            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)?
+            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
+            .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
-        // TODO
-        // self.store.data_mut().begin_immutable_exec(*aid)?;
-
+        // Prepare registers
         self.store
             .data_mut()
             .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());
 
-        if let Err(e) = instance
-            .get_typed_func::<(), ()>(&mut self.store, "http_get_state")
-            .and_then(|func| func.call(&mut self.store, ()))
-        {
+        // Get function
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "http_get_state")?;
+
+        // Call the function
+        self.store.data_mut().begin_agent_exec(*aid, false)?;
+        if let Err(e) = func.call_async(&mut self.store, ()).await {
             warn!("http_get_state failed with error: {e}");
         }
         // Finish the execution
-        let log = self.store.data_mut().finish_immutable_exec()?;
+        let log = self.store.data_mut().finish_agent_exec(false)?;
 
         let status = self
             .store
@@ -337,7 +344,7 @@ impl<S: Db> Runtime<S> {
     /// The return type is a nested result. The outer result type should convert to a server error,
     /// as it represents errors in the runtime itself.
     /// The inner error type comes from the wasm code and contains the error status and message.
-    pub fn http_post_action(
+    pub async fn http_post_action(
         &mut self,
         aid: &AgentId,
         path: String,
@@ -346,11 +353,9 @@ impl<S: Db> Runtime<S> {
     ) -> Result<std::result::Result<CallAction, (u16, String)>> {
         let instance = self
             .contract_store
-            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)?
+            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
+            .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
-
-        // TODO
-        // self.store.data_mut().begin_immutable_exec(*aid)?;
 
         self.store
             .data_mut()
@@ -364,14 +369,17 @@ impl<S: Db> Runtime<S> {
             .data_mut()
             .set_register(REGISTER_WRITER, writer.into_bytes().into());
 
-        if let Err(e) = instance
-            .get_typed_func::<(), ()>(&mut self.store, "http_post_action")
-            .and_then(|func| func.call(&mut self.store, ()))
-        {
-            error!("http_post_action failed with error: {e}");
+        // Get function
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "http_post_action")?;
+
+        // TODO: This function can modify the state
+        // Call the function
+        self.store.data_mut().begin_agent_exec(*aid, false)?;
+        if let Err(e) = func.call_async(&mut self.store, ()).await {
+            warn!("http_get_state failed with error: {e}");
         }
         // Finish the execution
-        let log = self.store.data_mut().finish_immutable_exec()?;
+        let log = self.store.data_mut().finish_agent_exec(false)?;
 
         let status = self
             .store
@@ -404,23 +412,23 @@ impl<S: Db> Runtime<S> {
     }
 
     /// Returns the symbols of the contract
-    pub fn get_symbols(&mut self, aid: &AgentId) -> Result<Option<Symbols>> {
+    pub async fn get_symbols(&mut self, aid: &AgentId) -> Result<Option<Symbols>> {
         let instance = self
             .contract_store
-            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)?
+            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
+            .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
-        // TODO:
-        // self.store.data_mut().begin_immutable_exec(*aid)?;
+        // Get function
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "get_symbols")?;
 
-        // In case the contract does not export any symbols, just return 'None'
-        if let Err(e) = instance
-            .get_typed_func::<(), ()>(&mut self.store, "get_symbols")
-            .and_then(|func| func.call(&mut self.store, ()))
-        {
-            error!("get_symbols failed with error: {e}");
+        // Call the function
+        self.store.data_mut().begin_agent_exec(*aid, false)?;
+        if let Err(e) = func.call_async(&mut self.store, ()).await {
+            warn!("http_get_state failed with error: {e}");
         }
-        self.store.data_mut().finish_immutable_exec()?;
+        // Finish the execution
+        self.store.data_mut().finish_agent_exec(false)?;
 
         let bytes = match self.store.data().get_register(REGISTER_OUTPUT) {
             Some(b) => b,

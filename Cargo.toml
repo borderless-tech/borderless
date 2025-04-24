@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "examples/abi-test",
+  "examples/abi-test-swagent",
   "examples/lazyvec-test",
   "examples/flipper",
   "executor/runner",

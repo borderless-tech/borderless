@@ -233,7 +233,7 @@ impl<S: Db> VmState<S> {
         Ok(())
     }
 
-    pub fn finish_agent_exec(&mut self, commit_state: bool) -> Result<()> {
+    pub fn finish_agent_exec(&mut self, commit_state: bool) -> Result<Vec<LogLine>> {
         match self.active_item {
             ActiveItem::Contract { .. } => {
                 return Err(Error::msg(
@@ -250,9 +250,9 @@ impl<S: Db> VmState<S> {
             }
         }
         self.active_item = ActiveItem::None;
-        self.log_buffer.clear();
         self.db_acid_txn_buffer = None;
-        Ok(())
+        let log_output = std::mem::take(&mut self.log_buffer);
+        Ok(log_output)
     }
 
     /// Generates the storage key based on the currently active contract.

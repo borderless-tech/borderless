@@ -63,39 +63,40 @@ impl<S: Db> CodeStore<S> {
         store: &mut Store<VmState<S>>,
         linker: &mut Linker<VmState<S>>,
     ) -> Result<Option<Instance>> {
-        self.get_item(cid.as_bytes(), engine, store, linker)
-    }
-
-    pub fn get_agent(
-        &mut self,
-        aid: &AgentId,
-        engine: &Engine,
-        store: &mut Store<VmState<S>>,
-        linker: &mut Linker<VmState<S>>,
-    ) -> Result<Option<Instance>> {
-        self.get_item(aid.as_bytes(), engine, store, linker)
-    }
-
-    /// Generalized function to get some module with an ID.
-    fn get_item(
-        &mut self,
-        id: &Id,
-        engine: &Engine,
-        store: &mut Store<VmState<S>>,
-        linker: &mut Linker<VmState<S>>,
-    ) -> Result<Option<Instance>> {
-        if let Some(instance) = self.cache.lock().get(id) {
+        if let Some(instance) = self.cache.lock().get(cid.as_bytes()) {
             return Ok(Some(*instance));
         }
         let txn = self.db.begin_ro_txn()?;
-        let module_bytes = txn.read(&self.db_ptr, id)?;
+        let module_bytes = txn.read(&self.db_ptr, cid)?;
         let module = match module_bytes {
             Some(bytes) => unsafe { Module::deserialize(engine, bytes)? },
             None => return Ok(None),
         };
         txn.commit()?;
         let instance = linker.instantiate(store, &module)?;
-        self.cache.lock().push(*id, instance);
+        self.cache.lock().push(*cid.as_bytes(), instance);
+        Ok(Some(instance))
+    }
+
+    pub async fn get_agent(
+        &mut self,
+        aid: &AgentId,
+        engine: &Engine,
+        store: &mut Store<VmState<S>>,
+        linker: &mut Linker<VmState<S>>,
+    ) -> Result<Option<Instance>> {
+        if let Some(instance) = self.cache.lock().get(aid.as_bytes()) {
+            return Ok(Some(*instance));
+        }
+        let txn = self.db.begin_ro_txn()?;
+        let module_bytes = txn.read(&self.db_ptr, aid)?;
+        let module = match module_bytes {
+            Some(bytes) => unsafe { Module::deserialize(engine, bytes)? },
+            None => return Ok(None),
+        };
+        txn.commit()?;
+        let instance = linker.instantiate_async(store, &module).await?;
+        self.cache.lock().push(*aid.as_bytes(), instance);
         Ok(Some(instance))
     }
 

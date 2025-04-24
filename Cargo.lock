@@ -12,6 +12,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "abi-test-swagent"
+version = "0.1.0"
+dependencies = [
+ "borderless",
+ "serde",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

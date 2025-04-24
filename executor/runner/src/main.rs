@@ -290,7 +290,7 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
             // Parse action
             let data = read_to_string(action)?;
             let action = CallAction::from_str(&data)?;
-            rt.process_action(&aid, action)?;
+            rt.process_action(&aid, action).await?;
 
             info!("--- Agent-Log:");
             let log = Logger::new(&db, aid).get_last_log()?;
