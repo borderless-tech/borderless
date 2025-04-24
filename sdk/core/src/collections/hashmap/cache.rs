@@ -20,7 +20,7 @@ pub struct Cache<V> {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct KeyValue<V> {
-    key: u64,
+    pub(crate) key: u64,
     pub(crate) value: V, // Proxy needs access to the field
 }
 
@@ -43,6 +43,10 @@ where
             map: RefCell::default(),
             operations: IntMap::default(),
         }
+    }
+
+    pub(crate) fn open(base_key: u64) -> Self {
+        todo!()
     }
 
     pub(crate) fn exists(&self) -> bool {

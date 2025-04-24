@@ -35,11 +35,18 @@ where
     V: Serialize + DeserializeOwned,
 {
     fn decode(base_key: u64) -> Self {
-        todo!()
+        Self::open(base_key)
     }
 
     fn parse_value(value: Value, base_key: u64) -> anyhow::Result<Self> {
-        todo!()
+        let values: Vec<KeyValue<V>> = serde_json::from_value(value)?;
+        let mut out = Self::new(base_key);
+        for v in values {
+            let key = v.key;
+            let value = v.value;
+            out.insert(key, value);
+        }
+        Ok(out)
     }
 
     fn commit(self, _base_key: u64) {
@@ -54,6 +61,12 @@ where
     pub(crate) fn new(base_key: u64) -> Self {
         HashMap {
             cache: Cache::new(base_key),
+        }
+    }
+
+    pub(crate) fn open(base_key: u64) -> Self {
+        HashMap {
+            cache: Cache::open(base_key),
         }
     }
 
