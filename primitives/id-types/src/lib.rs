@@ -211,6 +211,50 @@ impl_uuid!(ContractId, 0xcf, 0xc0);
 pub struct Did(uuid::Uuid);
 impl_uuid!(Did, 0xdf, 0xd0);
 
+/// Check weather or not an array of bytes contains the prefix of an [`AgentId`].
+///
+/// Useful for filtering in key-value storages, when multiple ID types are used as keys or key-prefixes.
+pub fn aid_prefix(bytes: impl AsRef<[u8]>) -> bool {
+    let bytes = bytes.as_ref();
+    if bytes.is_empty() {
+        return false;
+    }
+    bytes[0] | 0x0f == 0xaf
+}
+
+/// Check weather or not an array of bytes contains the prefix of a [`BorderlessId`].
+///
+/// Useful for filtering in key-value storages, when multiple ID types are used as keys or key-prefixes.
+pub fn bid_prefix(bytes: impl AsRef<[u8]>) -> bool {
+    let bytes = bytes.as_ref();
+    if bytes.is_empty() {
+        return false;
+    }
+    bytes[0] | 0x0f == 0xbf
+}
+
+/// Check weather or not an array of bytes contains the prefix of a [`ContractId`].
+///
+/// Useful for filtering in key-value storages, when multiple ID types are used as keys or key-prefixes.
+pub fn cid_prefix(bytes: impl AsRef<[u8]>) -> bool {
+    let bytes = bytes.as_ref();
+    if bytes.is_empty() {
+        return false;
+    }
+    bytes[0] | 0x0f == 0xcf
+}
+
+/// Check weather or not an array of bytes contains the prefix of a [`Did`].
+///
+/// Useful for filtering in key-value storages, when multiple ID types are used as keys or key-prefixes.
+pub fn did_prefix(bytes: impl AsRef<[u8]>) -> bool {
+    let bytes = bytes.as_ref();
+    if bytes.is_empty() {
+        return false;
+    }
+    bytes[0] | 0x0f == 0xdf
+}
+
 /// Type used to identify blocks.
 ///
 /// In principle a block is uniquely defined by its hash, however it may be useful to know where to find the block.
@@ -561,6 +605,61 @@ mod tests {
             assert_eq!(back_to_uuid.as_u128(), back_to_u128); // this is redundant - but let's stay paranoid
             assert_ne!(base_id, back_to_uuid);
             assert_ne!(base_id.as_u128(), back_to_u128);
+        }
+    }
+    #[test]
+    fn check_aid_prefix() {
+        for _ in 0..1_000_000 {
+            let aid = AgentId::generate();
+            let bid = BorderlessId::generate();
+            let cid = ContractId::generate();
+            let did = Did::generate();
+            assert!(aid_prefix(&aid));
+            assert!(!aid_prefix(&bid));
+            assert!(!aid_prefix(&cid));
+            assert!(!aid_prefix(&did));
+        }
+    }
+
+    #[test]
+    fn check_bid_prefix() {
+        for _ in 0..1_000_000 {
+            let aid = AgentId::generate();
+            let bid = BorderlessId::generate();
+            let cid = ContractId::generate();
+            let did = Did::generate();
+            assert!(!bid_prefix(&aid));
+            assert!(bid_prefix(&bid));
+            assert!(!bid_prefix(&cid));
+            assert!(!bid_prefix(&did));
+        }
+    }
+
+    #[test]
+    fn check_cid_prefix() {
+        for _ in 0..1_000_000 {
+            let aid = AgentId::generate();
+            let bid = BorderlessId::generate();
+            let cid = ContractId::generate();
+            let did = Did::generate();
+            assert!(!cid_prefix(&aid));
+            assert!(!cid_prefix(&bid));
+            assert!(cid_prefix(&cid));
+            assert!(!cid_prefix(&did));
+        }
+    }
+
+    #[test]
+    fn check_did_prefix() {
+        for _ in 0..1_000_000 {
+            let aid = AgentId::generate();
+            let bid = BorderlessId::generate();
+            let cid = ContractId::generate();
+            let did = Did::generate();
+            assert!(!super::did_prefix(&aid));
+            assert!(!super::did_prefix(&bid));
+            assert!(!super::did_prefix(&cid));
+            assert!(super::did_prefix(&did));
         }
     }
 }
