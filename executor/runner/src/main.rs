@@ -1,6 +1,5 @@
 use std::{
     fs::read_to_string,
-    num::NonZeroUsize,
     ops::DerefMut,
     path::PathBuf,
     str::FromStr,
@@ -124,7 +123,7 @@ pub fn generate_tx_ctx(
 
 async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
     // Create runtime
-    let code_store = CodeStore::new(&db, NonZeroUsize::new(10).unwrap())?;
+    let code_store = CodeStore::new(&db)?;
     let mut rt = Runtime::new(&db, code_store)?;
 
     let cid: ContractId = if let Some(cid) = command.contract_id {
