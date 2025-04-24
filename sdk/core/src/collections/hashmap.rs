@@ -51,7 +51,7 @@ impl<V> HashMap<V>
 where
     V: Serialize + DeserializeOwned,
 {
-    pub fn new(base_key: u64) -> Self {
+    pub(crate) fn new(base_key: u64) -> Self {
         HashMap {
             cache: Cache::new(base_key),
         }
