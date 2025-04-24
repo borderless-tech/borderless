@@ -11,12 +11,13 @@ use borderless::{
     contracts::{Introduction, Revocation, TxCtx},
     events::CallAction,
     hash::Hash256,
-    BlockIdentifier, ContractId, TxIdentifier,
+    AgentId, BlockIdentifier, ContractId, TxIdentifier,
 };
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_runtime::{
     controller::Controller,
     logger::{print_log_line, Logger},
+    swagent::Runtime as AgentRuntime,
     CodeStore, Runtime,
 };
 use clap::{Parser, Subcommand};
@@ -41,6 +42,7 @@ struct Cli {
 enum Commands {
     /// Contract related commands
     Contract(ContractCommand),
+    Agent(AgentCommand),
 }
 
 #[derive(Parser, Debug)]
@@ -54,6 +56,19 @@ struct ContractCommand {
 
     #[command(subcommand)]
     action: ContractAction,
+}
+
+#[derive(Parser, Debug)]
+struct AgentCommand {
+    /// Path to the contract file (positional)
+    code: PathBuf,
+
+    /// Contract-ID of the contract
+    #[arg(short, long)]
+    agent_id: Option<AgentId>,
+
+    #[command(subcommand)]
+    action: AgentAction,
 }
 
 #[derive(Subcommand, Debug)]
@@ -79,7 +94,34 @@ enum ContractAction {
     /// Prints out all logs for this contract
     Logs,
 
+    // TODO: Make this also a top-level command maybe ?
     /// Start a webserver which exposes the contract-api
+    Api,
+}
+
+#[derive(Subcommand, Debug)]
+enum AgentAction {
+    /// Introduce a new agent using the provided introduction
+    Introduce {
+        /// Input file containing introduction data
+        introduction: PathBuf,
+    },
+    /// Execute the given action on the contract
+    Process {
+        /// Input file containing action data
+        action: PathBuf,
+    },
+    /// Revoke the contract using the provided revocation data
+    Revoke {
+        /// Input file containing revocation data
+        revocation: PathBuf,
+    },
+
+    /// Prints out all logs for this agent
+    Logs,
+
+    // TODO: Make this also a top-level command maybe ?
+    /// Start a webserver which exposes the agent-api
     Api,
 }
 
@@ -94,6 +136,7 @@ async fn main() -> Result<()> {
 
     match args.command {
         Commands::Contract(cmd) => contract(cmd, db).await?,
+        Commands::Agent(cmd) => sw_agent(cmd, db).await?,
     }
     Ok(())
 }
@@ -217,6 +260,45 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             //     continue;
             // }
         }
+    }
+    Ok(())
+}
+
+#[allow(unused)]
+async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
+    // Create runtime
+    let code_store = CodeStore::new(&db)?;
+    let mut rt = AgentRuntime::new(&db, code_store)?;
+
+    let aid: AgentId = if let Some(aid) = command.agent_id {
+        aid
+    } else {
+        // Otherwise: Read from env
+        "a265e6fd-7f7a-85b5-aa24-a79305daf2a5".parse()?
+    };
+    rt.instantiate_sw_agent(aid, command.code)?;
+
+    let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
+
+    // The writer is also the executor
+    rt.set_executor(writer)?;
+
+    // Parse command
+    match command.action {
+        AgentAction::Introduce { introduction } => todo!(),
+        AgentAction::Process { action } => {
+            // Parse action
+            let data = read_to_string(action)?;
+            let action = CallAction::from_str(&data)?;
+            rt.process_action(&aid, action)?;
+
+            info!("--- Agent-Log:");
+            let log = Logger::new(&db, aid).get_last_log()?;
+            log.into_iter().for_each(print_log_line);
+        }
+        AgentAction::Revoke { revocation } => todo!(),
+        AgentAction::Logs => todo!(),
+        AgentAction::Api => todo!(),
     }
     Ok(())
 }

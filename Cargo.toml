@@ -1,7 +1,8 @@
 [workspace]
 members = [
-  "contracts/abi-test",
-  "contracts/lazyvec-test",
+  "examples/abi-test",
+  "examples/lazyvec-test",
+  "examples/flipper",
   "executor/runner",
   "executor/runtime",
   "json-proof",
@@ -10,8 +11,8 @@ members = [
   "sdk/macros",
   "kv-store",
   "primitives/hash",
-  "primitives/id-types"
-, "contracts/flipper"]
+  "primitives/id-types",
+]
 resolver = "2"
 
 [workspace.dependencies]
