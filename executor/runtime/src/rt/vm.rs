@@ -1,4 +1,3 @@
-#![allow(unused)]
 //! Contains the implementation of the ABI
 
 use std::{
@@ -7,32 +6,26 @@ use std::{
 };
 
 use borderless::{
-    __private::{
-        from_postcard_bytes,
-        storage_keys::{StorageKey, BASE_KEY_ACTION_LOG},
-    },
-    contracts::{Introduction, Metadata, Revocation, TxCtx},
+    __private::storage_keys::StorageKey,
+    contracts::{Introduction, Revocation, TxCtx},
     events::CallAction,
     log::LogLine,
     ContractId,
 };
-use serde::{de::DeserializeOwned, Serialize};
 use wasmtime::{Caller, Extern, Memory};
 
-use log::{debug, error, info, trace, warn};
+use log::{debug, warn};
 use nohash::IntMap;
-use rand::{random, Rng};
+use rand::Rng;
 
 use borderless_kv_store::*;
 
 use crate::{
-    controller::{
-        read_system_value, write_introduction, write_revocation, write_system_value, Controller,
-    },
+    controller::{write_introduction, write_revocation, Controller},
     error::ErrorKind,
-    rt::action_log::{ActionLog, ActionRecord, SUB_KEY_LOG_LEN},
+    rt::action_log::{ActionLog, ActionRecord},
     rt::logger::Logger,
-    Error, Result, CONTRACT_SUB_DB,
+    Error, Result,
 };
 
 // NOTE: I think this generalizes for both contracts and sw-agents;
@@ -156,7 +149,7 @@ impl<S: Db> VmState<S> {
         logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
 
         // Commit txn
-        txn.commit();
+        txn.commit()?;
 
         let elapsed = now.elapsed();
         debug!("commit-acid-txn: {elapsed:?}");
@@ -167,52 +160,6 @@ impl<S: Db> VmState<S> {
 
         Ok(())
     }
-
-    // /// Aborts a mutable contract execution - use this in case of an error.
-    // ///
-    // /// In contrast to [`finish_mutable_exec`], this function does not commit the state back to the database,
-    // /// but nonetheless will log the action and write the log-buffer to the database.
-    // ///
-    // /// # Errors
-    // ///
-    // /// Calling this function while the `VmState` has no active contract results in an error.
-    // pub fn abort_mutable_exec(&mut self, commit: Commit) -> Result<()> {
-    //     let cid = match self.active_contract {
-    //         ActiveContract::Mutable(cid) => cid,
-    //         ActiveContract::Immutable(_) => {
-    //             return Err(Error::msg("Contract execution was marked as immutable"));
-    //         }
-    //         ActiveContract::None => {
-    //             return Err(Error::msg("Must start contract execution before commiting"));
-    //         }
-    //     };
-    //     let mut txn = self.db.begin_rw_txn()?;
-
-    //     // Flush log
-    //     let logger = Logger::new(&self.db, cid);
-    //     logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
-
-    //     // Commit external item (introduction, action or revocation)
-    //     match commit {
-    //         Commit::Action { action, tx_ctx } => {
-    //             let action_log = ActionLog::new(&self.db, cid);
-    //             action_log.commit(&self.db_ptr, &mut txn, &action, tx_ctx)?;
-    //         }
-    //         _ => {
-    //             txn.commit(); // commit the logs
-    //             return Err(Error::msg("failed to commit introduction/revocation"));
-    //         }
-    //     }
-
-    //     // Commit txn
-    //     txn.commit();
-
-    //     // Reset everything
-    //     self.active_contract = ActiveContract::None;
-    //     self.log_buffer.clear();
-
-    //     Ok(())
-    // }
 
     /// Sets an contract as active and marks it as immutable
     ///
@@ -455,7 +402,7 @@ pub fn storage_write(
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
-    let mut caller_data = &mut caller.data_mut();
+    let caller_data = &mut caller.data_mut();
     if let Some(buf) = &mut caller_data.db_acid_txn_buffer {
         buf.push(StorageOp::write(key, value));
     }
@@ -472,7 +419,7 @@ pub fn storage_read(
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
-    let mut caller_data = &mut caller.data_mut();
+    let caller_data = &mut caller.data_mut();
     // If not, create a new transaction and instantly commit the changes
     let txn = caller_data.db.begin_ro_txn()?;
     let value = txn.read(&caller_data.db_ptr, &key)?.map(|v| v.to_vec());
@@ -502,7 +449,7 @@ pub fn storage_remove(
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
-    let mut caller_data = &mut caller.data_mut();
+    let caller_data = &mut caller.data_mut();
 
     // Write changes to storage-buffer
     if let Some(buf) = &mut caller_data.db_acid_txn_buffer {
@@ -521,7 +468,7 @@ pub fn storage_has_key(
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
-    let mut caller_data = &mut caller.data_mut();
+    let caller_data = &mut caller.data_mut();
     // If not, create a new transaction
     let txn = caller_data.db.begin_ro_txn()?;
     let result = txn.read(&caller_data.db_ptr, &key)?.is_some();
