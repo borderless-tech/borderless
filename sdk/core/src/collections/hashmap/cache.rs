@@ -151,5 +151,7 @@ where
                 CacheOp::Remove => storage_remove(self.base_key, *key),
             }
         }
+        // Commit metadata
+        self.metadata.commit();
     }
 }

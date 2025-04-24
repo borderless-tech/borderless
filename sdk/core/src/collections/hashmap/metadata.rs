@@ -58,6 +58,13 @@ where
     pub(crate) fn clear(&mut self) {
         self.shards.iter_mut().for_each(LazyVec::clear);
     }
+
+    pub(crate) fn commit(self) {
+        // Destructure to take ownership of the array
+        let Metadata { shards, .. } = self;
+        // Commit consumes each shard (the provided parameter is ignored)
+        shards.into_iter().for_each(|shard| shard.commit(0))
+    }
 }
 
 impl<K> Metadata<K>
