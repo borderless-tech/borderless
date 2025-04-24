@@ -60,24 +60,46 @@ where
     pub(crate) fn len(&self) -> usize {
         self.len
     }
+
+    pub(crate) fn keys(&self) -> Vec<Key> {
+        todo!()
+    }
+
+    pub(crate) fn clear(&mut self) {
+        todo!()
+    }
 }
 
 impl<K> Metadata<K>
 where
     K: Serialize + DeserializeOwned + Hash + Eq,
 {
-    pub(crate) fn insert(&self, key: K) {
+    fn shard_from_key(key: &K) -> usize {
         // Use the default Rust hasher, as it is very performant
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
         let hash = hasher.finish();
         // Extract the 4 less-significant bits out of the hash
-        let index: usize = (hash & 0xF) as usize;
+        (hash & 0xF) as usize
+    }
+
+    pub(crate) fn insert(&self, key: K) {
+        let index = Self::shard_from_key(&key);
         // Get the shard base key
         let shard_base_key = self.shards[index];
         // Load the corresponding LazyVec
         let mut vec: LazyVec<K> = LazyVec::decode(shard_base_key);
         // Push the new key
         vec.push(key)
+    }
+
+    pub(crate) fn remove(&self, key: K) {
+        let index = Self::shard_from_key(&key);
+        // Get the shard base key
+        let shard_base_key = self.shards[index];
+        // Load the corresponding LazyVec
+        let _vec: LazyVec<K> = LazyVec::decode(shard_base_key);
+        //vec.remove_elem();
+        todo!()
     }
 }
