@@ -10,7 +10,6 @@ type Key = u64;
 const SHARDS: usize = 16;
 
 pub(crate) struct Metadata<K> {
-    base_key: Key,
     shards: [LazyVec<K>; SHARDS],
     _ref: PhantomData<K>,
 }
@@ -27,7 +26,6 @@ where
         });
         // Create Metadata object
         Metadata {
-            base_key,
             shards,
             _ref: PhantomData,
         }
@@ -41,14 +39,16 @@ where
         });
         // Create Metadata object
         Metadata {
-            base_key,
             shards,
             _ref: PhantomData,
         }
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.shards.iter().map(|shard| shard.len()).fold(0, usize::saturating_add)
+        self.shards
+            .iter()
+            .map(|shard| shard.len())
+            .fold(0, usize::saturating_add)
     }
 
     pub(crate) fn keys(&self) -> Vec<Key> {
