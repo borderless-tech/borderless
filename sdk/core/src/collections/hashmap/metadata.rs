@@ -48,7 +48,7 @@ where
     }
 
     pub(crate) fn len(&self) -> usize {
-        todo!()
+        self.shards.iter().map(|shard| shard.len()).fold(0, usize::saturating_add)
     }
 
     pub(crate) fn keys(&self) -> Vec<Key> {
@@ -56,9 +56,7 @@ where
     }
 
     pub(crate) fn clear(&mut self) {
-        for i in 0..SHARDS {
-            self.shards[i].clear();
-        }
+        self.shards.iter_mut().for_each(LazyVec::clear);
     }
 }
 
