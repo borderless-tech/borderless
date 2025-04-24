@@ -6,7 +6,6 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
-// TODO Store metadata in it?
 
 enum CacheOp {
     Update,
