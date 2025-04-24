@@ -11,10 +11,12 @@
  *      sub-key   +-> ( key<String>, value<Product> )
  */
 mod cache;
+mod metadata;
 mod proxy;
 
 use crate::__private::storage_traits;
 use crate::__private::storage_traits::private::Sealed;
+use crate::collections::hashmap::metadata::Metadata;
 use cache::{Cache, KeyValue};
 use proxy::{Proxy, ProxyMut};
 use serde::de::DeserializeOwned;
@@ -26,6 +28,7 @@ pub(crate) const ROOT_KEY: u64 = 0;
 
 pub struct HashMap<V> {
     cache: Cache<V>,
+    metadata: Metadata<u64>,
 }
 
 impl<V> Sealed for HashMap<V> {}
@@ -61,12 +64,14 @@ where
     pub(crate) fn new(base_key: u64) -> Self {
         HashMap {
             cache: Cache::new(base_key),
+            metadata: Metadata::new(base_key),
         }
     }
 
     pub(crate) fn open(base_key: u64) -> Self {
         HashMap {
             cache: Cache::open(base_key),
+            metadata: Metadata::open(base_key),
         }
     }
 
@@ -75,7 +80,7 @@ where
     }
 
     pub fn len(&self) -> usize {
-        todo!()
+        self.metadata.len()
     }
 
     pub fn is_empty(&self) -> bool {
