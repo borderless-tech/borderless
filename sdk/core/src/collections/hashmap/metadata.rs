@@ -56,7 +56,9 @@ where
     }
 
     pub(crate) fn clear(&mut self) {
-        todo!()
+        for i in 0..SHARDS {
+            self.shards[i].clear();
+        }
     }
 }
 
