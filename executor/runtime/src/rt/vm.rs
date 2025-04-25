@@ -689,7 +689,7 @@ pub mod async_abi {
         Ok(rq)
     }
 
-    async fn serialize_response_for_ffi(resp: Response) -> Result<(String, Vec<u8>), String> {
+    fn serialize_response_head(resp: &Response) -> Result<String, String> {
         // Get status code and version
         let status = resp.status();
         let version = match resp.version() {
@@ -719,7 +719,11 @@ pub mod async_abi {
         }
 
         head.push_str("\r\n"); // End of headers
+        Ok(head)
+    }
 
+    async fn serialize_response_for_ffi(resp: Response) -> Result<(String, Vec<u8>), String> {
+        let head = serialize_response_head(&resp)?;
         // Get body as bytes
         let body = resp
             .bytes()
