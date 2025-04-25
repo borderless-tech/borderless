@@ -134,7 +134,7 @@ where
         self.cache.keys()
     }
 
-    // TODO Implement the following methods (they are eager methods instead of lazy)
-    // keys()
-    // value()
+    pub fn values(&self) {
+        todo!()
+    }
 }
