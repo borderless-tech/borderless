@@ -91,18 +91,15 @@ where
     }
 
     pub(crate) fn remove(&mut self, key: u64) -> Option<V> {
+        if self.read(key).is_some() {
+            // Remove key from metadata
+            self.metadata.remove(key);
+        }
         // Flag key as removed
         self.operations.insert(key, CacheOp::Remove);
         // Remove value from cache
-        let old_rc = self.map.borrow_mut().remove(&key);
-        // Handle old value
-        match old_rc {
-            None => None,
-            Some(old_rc) => {
-                let old_cell = Rc::try_unwrap(old_rc).ok().expect("Rc strong counter > 1");
-                Some(old_cell.into_inner().value)
-            }
-        }
+        let mut map = self.map.borrow_mut();
+        map.remove(&key).and_then(Self::extract_cell)
     }
 
     pub(crate) fn flag_write(&mut self, key: u64) {
@@ -110,21 +107,16 @@ where
     }
 
     pub(crate) fn insert(&mut self, key: u64, node: KeyValue<V>) -> Option<V> {
+        if self.read(key).is_none() {
+            // Add key to metadata
+            self.metadata.insert(key);
+        }
         // Flag key as modified
         self.operations.insert(key, CacheOp::Update);
         // Insert new value
-        let old_rc = self
-            .map
-            .borrow_mut()
-            .insert(key, Rc::new(RefCell::new(node)));
-        // Handle old value
-        match old_rc {
-            None => None,
-            Some(old_rc) => {
-                let old_cell = Rc::try_unwrap(old_rc).ok().expect("Rc strong counter > 1");
-                Some(old_cell.into_inner().value)
-            }
-        }
+        let mut map = self.map.borrow_mut();
+        let cell = Rc::new(RefCell::new(node));
+        map.insert(key, cell).and_then(Self::extract_cell)
     }
 
     pub(crate) fn clear(&mut self) {
@@ -154,5 +146,10 @@ where
         }
         // Commit metadata
         self.metadata.commit();
+    }
+
+    fn extract_cell(rc: Rc<RefCell<KeyValue<V>>>) -> Option<V> {
+        let old_cell = Rc::try_unwrap(rc).ok().expect("Rc strong counter > 1");
+        Some(old_cell.into_inner().value)
     }
 }
