@@ -1,3 +1,4 @@
+mod hashmap_basics;
 mod lazyvec_basics;
 mod lazyvec_product;
 
@@ -66,12 +67,15 @@ fn exec_run() -> Result<()> {
             lazyvec_basics()?;
             lazyvec_product()?;
         }
-        "hashmap_test" => {}
+        "hashmap_test" => {
+            hashmap_basics()?;
+        }
         other => return Err(new_error!("Unknown method: {other}")),
     }
     Ok(())
 }
 
+use crate::hashmap_basics::hashmap_basics;
 use crate::lazyvec_basics::{lazyvec_basics, TEST_INTEGRITY_BASE_KEY};
 use crate::lazyvec_product::{lazyvec_product, TEST_PRODUCT_BASE_KEY};
 use borderless::contracts::Introduction;
