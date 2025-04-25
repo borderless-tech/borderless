@@ -74,6 +74,11 @@ where
     }
 
     pub(crate) fn read(&self, key: u64) -> Option<Rc<RefCell<KeyValue<V>>>> {
+        // Deleted keys (but still not commited) must return None
+        // as the DB still contains them
+        if let Some(CacheOp::Remove) = self.operations.get(&key) {
+            return None;
+        }
         // Check first the in-memory copy
         if let Some(cell) = self.map.borrow().get(&key) {
             return Some(cell.clone());
