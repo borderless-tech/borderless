@@ -46,6 +46,7 @@ pub extern "C" fn http_post_action() {}
 
 use borderless::__private::storage_traits::Storeable;
 use borderless::__private::{dev, read_register, registers::*, storage_keys::make_user_key};
+use borderless::collections::hashmap::HashMap;
 use borderless::collections::lazyvec::LazyVec;
 use borderless::events::CallAction;
 
@@ -75,9 +76,9 @@ fn exec_run() -> Result<()> {
     Ok(())
 }
 
-use crate::hashmap_basics::hashmap_basics;
-use crate::lazyvec_basics::{lazyvec_basics, TEST_INTEGRITY_BASE_KEY};
-use crate::lazyvec_product::{lazyvec_product, TEST_PRODUCT_BASE_KEY};
+use crate::hashmap_basics::{hashmap_basics, HASHMAP_BASICS};
+use crate::lazyvec_basics::{lazyvec_basics, LAZYVEC_INTEGRITY};
+use crate::lazyvec_product::{lazyvec_product, LAZYVEC_PRODUCT};
 use borderless::contracts::Introduction;
 
 fn exec_introduction() -> Result<()> {
@@ -89,7 +90,15 @@ fn exec_introduction() -> Result<()> {
     let s = introduction.pretty_print()?;
     info!("{s}");
 
-    let storage_key = make_user_key(TEST_PRODUCT_BASE_KEY);
+    // Init collections
+    init_lazyvec()?;
+    init_hashmap()?;
+    Ok(())
+}
+
+fn init_lazyvec() -> Result<()> {
+    // Init LazyVec related to integrity tests
+    let storage_key = make_user_key(LAZYVEC_PRODUCT);
     let mut lazy_vec: LazyVec<lazyvec_product::Product> = LazyVec::decode(storage_key);
     if lazy_vec.exists() {
         warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
@@ -100,7 +109,8 @@ fn exec_introduction() -> Result<()> {
     }
     lazy_vec.commit(storage_key);
 
-    let storage_key = make_user_key(TEST_INTEGRITY_BASE_KEY);
+    // Init LazyVec related to product tests
+    let storage_key = make_user_key(LAZYVEC_INTEGRITY);
     let mut lazy_vec: LazyVec<u64> = LazyVec::decode(storage_key);
     if lazy_vec.exists() {
         warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
@@ -110,5 +120,19 @@ fn exec_introduction() -> Result<()> {
         lazy_vec = LazyVec::parse_value(json!([]), storage_key)?;
     }
     lazy_vec.commit(storage_key);
+    Ok(())
+}
+
+fn init_hashmap() -> Result<()> {
+    let storage_key = make_user_key(HASHMAP_BASICS);
+    let mut hashmap: HashMap<u64> = HashMap::decode(storage_key);
+    if hashmap.exists() {
+        warn!("HashMap with given storage key already exists in DB. Wipe it out...");
+        hashmap.clear();
+    } else {
+        info!("Create new HashMap for the integrity test");
+        hashmap = HashMap::parse_value(json!([]), storage_key)?;
+    }
+    hashmap.commit(storage_key);
     Ok(())
 }

@@ -5,16 +5,16 @@ use borderless::__private::storage_traits::Storeable;
 use borderless::collections::lazyvec::LazyVec;
 use borderless::{ensure, info, warn, Context, Result};
 
-pub(crate) const TEST_INTEGRITY_BASE_KEY: u64 = 20000;
+pub(crate) const LAZYVEC_INTEGRITY: u64 = 20000;
 const N: usize = 5000;
 
 fn load_vec() -> LazyVec<u64> {
-    let storage_key = make_user_key(TEST_INTEGRITY_BASE_KEY);
+    let storage_key = make_user_key(LAZYVEC_INTEGRITY);
     LazyVec::decode(storage_key)
 }
 
 pub(crate) fn lazyvec_basics() -> Result<()> {
-    let storage_key = make_user_key(TEST_INTEGRITY_BASE_KEY);
+    let storage_key = make_user_key(LAZYVEC_INTEGRITY);
     let mut lazy_vec: LazyVec<lazyvec_product::Product> = LazyVec::decode(storage_key);
 
     if lazy_vec.exists() && !lazy_vec.is_empty() {

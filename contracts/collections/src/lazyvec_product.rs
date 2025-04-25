@@ -6,7 +6,7 @@ use borderless::{info, new_error, warn, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-pub(crate) const TEST_PRODUCT_BASE_KEY: u64 = 10000;
+pub(crate) const LAZYVEC_PRODUCT: u64 = 10000;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Product {
@@ -61,7 +61,7 @@ impl Display for Product {
 
 pub fn lazyvec_product() -> Result<()> {
     // Load LazyVec from DB
-    let storage_key = make_user_key(TEST_PRODUCT_BASE_KEY);
+    let storage_key = make_user_key(LAZYVEC_PRODUCT);
     let mut lazy_vec = LazyVec::decode(storage_key);
 
     info!("Number of products BEFORE: {}", lazy_vec.len());

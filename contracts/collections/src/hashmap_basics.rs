@@ -5,16 +5,16 @@ use borderless::collections::hashmap::HashMap;
 use borderless::{ensure, info, warn, Context, Result};
 use std::collections::HashMap as StdHashMap;
 
-pub(crate) const TEST_INTEGRITY_BASE_KEY: u64 = 30000;
+pub(crate) const HASHMAP_BASICS: u64 = 30000;
 const N: u64 = 5000;
 
 fn load_map() -> HashMap<u64> {
-    let storage_key = make_user_key(TEST_INTEGRITY_BASE_KEY);
+    let storage_key = make_user_key(HASHMAP_BASICS);
     HashMap::decode(storage_key)
 }
 
 pub(crate) fn hashmap_basics() -> Result<()> {
-    let storage_key = make_user_key(TEST_INTEGRITY_BASE_KEY);
+    let storage_key = make_user_key(HASHMAP_BASICS);
     let mut hashmap: HashMap<u64> = HashMap::decode(storage_key);
 
     if hashmap.exists() && !hashmap.is_empty() {
