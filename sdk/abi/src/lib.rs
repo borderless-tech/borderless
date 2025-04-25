@@ -38,17 +38,6 @@ extern "C" {
     //
     // Let's brainstorm a little bit, what is going on here.
 
-    // Create a new schedule that should be called regularly
-    pub fn register_schedule();
-
-    // Open a websocket connection and register a message-hook
-    //
-    // -> NOTE: This may require some more complex interaction,
-    // like fetching something via API first, then opening the websocket or so.
-    // Maybe we can avoid this by offloading the work to the implementor, so that e.g.
-    // a special function is called in case of failure, and the retry / reopen has to be implemented manually.
-    pub fn open_ws_connection();
-
     // Sends a http-request to some remote entity and returns the result
     //
     // TODO: This is a weird design; usually you give pointers to wasm for reading
@@ -59,6 +48,20 @@ extern "C" {
         register_rs_body: u64,
         register_failure: u64,
     ) -> u64;
+
+    // Returns the current timestamp as milliseconds since epoch
+    pub fn timestamp() -> i64;
+
+    // Create a new schedule that should be called regularly
+    pub fn register_schedule();
+
+    // Open a websocket connection and register a message-hook
+    //
+    // -> NOTE: This may require some more complex interaction,
+    // like fetching something via API first, then opening the websocket or so.
+    // Maybe we can avoid this by offloading the work to the implementor, so that e.g.
+    // a special function is called in case of failure, and the retry / reopen has to be implemented manually.
+    pub fn open_ws_connection();
 
     // Sends a batch of http-requests to some remote entities in parallel and returns the results
     pub fn batch_http_rqs();

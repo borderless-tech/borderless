@@ -366,10 +366,7 @@ pub fn print(
     level: u32,
 ) -> wasmtime::Result<()> {
     // Get timestamp as early as possible
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("now > 1970")
-        .as_nanos();
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
 
     // Read string from WASM memory and print it
     // (Implementation details omitted for brevity)
@@ -560,6 +557,16 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
     let mut rng = rand::rng();
     let value: u64 = rng.random_range(min..max);
     Ok(value)
+}
+
+/// Returns the current timestamp as milliseconds since epoch
+pub fn timestamp() -> wasmtime::Result<i64> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)?
+        .as_millis()
+        .try_into()
+        .expect("i64 should fit for 292471208 years");
+    Ok(timestamp)
 }
 
 pub mod async_abi {

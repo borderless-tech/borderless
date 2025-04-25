@@ -135,6 +135,8 @@ impl<S: Db> Runtime<S> {
             },
         )?;
 
+        linker.func_wrap("env", "timestamp", vm::timestamp)?;
+
         let store = Store::new(&engine, state);
 
         log::info!("Initialized runtime in: {:?}", start.elapsed());
