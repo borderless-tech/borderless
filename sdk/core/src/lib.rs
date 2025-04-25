@@ -169,11 +169,13 @@ pub mod events {
 
         /// Decodes the `Events` with [`postcard`]
         pub fn from_bytes(bytes: &[u8]) -> Result<Self, postcard::Error> {
+            // TODO: Postcard or json ?
             postcard::from_bytes(bytes)
         }
 
         /// Encodes the `Events` with [`postcard`]
         pub fn to_bytes(&self) -> Result<Vec<u8>, postcard::Error> {
+            // TODO: Postcard or json ?
             postcard::to_allocvec(self)
         }
     }
