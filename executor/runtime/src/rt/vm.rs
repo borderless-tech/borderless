@@ -869,8 +869,8 @@ impl ActiveItem {
 
     pub fn storage_key(&self, base_key: u64, sub_key: u64) -> Option<StorageKey> {
         match self {
-            ActiveItem::Contract { cid, .. } => Some(StorageKey::new(&cid, base_key, sub_key)),
-            ActiveItem::Agent { aid, .. } => Some(StorageKey::new(&aid, base_key, sub_key)),
+            ActiveItem::Contract { cid, .. } => Some(StorageKey::new(cid, base_key, sub_key)),
+            ActiveItem::Agent { aid, .. } => Some(StorageKey::new(aid, base_key, sub_key)),
             ActiveItem::None => None,
         }
     }

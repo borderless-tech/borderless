@@ -253,12 +253,12 @@ impl StorageKey {
 
     /// Returns `true` if the key belongs to a contract
     pub fn is_contract_key(&self) -> bool {
-        cid_prefix(&self.0)
+        cid_prefix(self.0)
     }
 
     /// Returns `true` if the key belongs to a sw-agent
     pub fn is_agent_key(&self) -> bool {
-        aid_prefix(&self.0)
+        aid_prefix(self.0)
     }
 }
 

@@ -185,7 +185,7 @@ impl<S: Db> Runtime<S> {
 
         let instance = self
             .contract_store
-            .get_agent(&aid, &self.engine, &mut self.store, &mut self.linker)
+            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 

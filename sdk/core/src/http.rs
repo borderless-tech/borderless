@@ -144,7 +144,7 @@ where
     head.push_str("\r\n"); // End of headers
 
     // Perform the ABI call to actually send the request
-    let (rs_head, rs_body) = send_http_rq(head, body_bytes).map_err(|e| anyhow::Error::msg(e))?;
+    let (rs_head, rs_body) = send_http_rq(head, body_bytes).map_err(anyhow::Error::msg)?;
     let rs = build_response_from_parts(&rs_head, rs_body)?;
     Ok(rs)
 }
