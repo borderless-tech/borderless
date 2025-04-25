@@ -91,15 +91,18 @@ where
     }
 
     pub(crate) fn remove(&mut self, key: u64) -> Option<V> {
-        if self.read(key).is_some() {
-            // Remove key from metadata
-            self.metadata.remove(key);
+        match self.read(key) {
+            None => None,
+            Some(_) => {
+                // Remove key from metadata
+                self.metadata.remove(key);
+                // Flag key as removed
+                self.operations.insert(key, CacheOp::Remove);
+                // Remove value from cache
+                let mut map = self.map.borrow_mut();
+                map.remove(&key).and_then(Self::extract_cell)
+            }
         }
-        // Flag key as removed
-        self.operations.insert(key, CacheOp::Remove);
-        // Remove value from cache
-        let mut map = self.map.borrow_mut();
-        map.remove(&key).and_then(Self::extract_cell)
     }
 
     pub(crate) fn flag_write(&mut self, key: u64) {
