@@ -59,7 +59,7 @@ impl Display for Product {
     }
 }
 
-pub fn test_product() -> Result<()> {
+pub fn lazyvec_product() -> Result<()> {
     // Load LazyVec from DB
     let storage_key = make_user_key(TEST_PRODUCT_BASE_KEY);
     let mut lazy_vec = LazyVec::decode(storage_key);

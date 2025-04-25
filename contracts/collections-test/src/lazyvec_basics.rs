@@ -1,4 +1,4 @@
-use crate::product;
+use crate::lazyvec_product;
 use borderless::__private::dev::rand;
 use borderless::__private::storage_keys::make_user_key;
 use borderless::__private::storage_traits::Storeable;
@@ -13,9 +13,9 @@ fn load_vec() -> LazyVec<u64> {
     LazyVec::decode(storage_key)
 }
 
-pub(crate) fn test_integrity() -> Result<()> {
+pub(crate) fn lazyvec_basics() -> Result<()> {
     let storage_key = make_user_key(TEST_INTEGRITY_BASE_KEY);
-    let mut lazy_vec: LazyVec<product::Product> = LazyVec::decode(storage_key);
+    let mut lazy_vec: LazyVec<lazyvec_product::Product> = LazyVec::decode(storage_key);
 
     if lazy_vec.exists() && !lazy_vec.is_empty() {
         warn!("LazyVec with given storage key already exists in DB. Wipe it out...");

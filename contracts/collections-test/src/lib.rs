@@ -1,5 +1,5 @@
-mod basics;
-mod product;
+mod lazyvec_basics;
+mod lazyvec_product;
 
 use borderless::{error, info, new_error, warn, Context, Result};
 use serde_json::json;
@@ -62,19 +62,18 @@ fn exec_run() -> Result<()> {
         .context("missing required method-name")?;
 
     match method {
-        "test_product" => {
-            test_product()?;
+        "lazyvec_test" => {
+            lazyvec_basics()?;
+            lazyvec_product()?;
         }
-        "test_integrity" => {
-            test_integrity()?;
-        }
+        "hashmap_test" => {}
         other => return Err(new_error!("Unknown method: {other}")),
     }
     Ok(())
 }
 
-use crate::basics::{test_integrity, TEST_INTEGRITY_BASE_KEY};
-use crate::product::{test_product, TEST_PRODUCT_BASE_KEY};
+use crate::lazyvec_basics::{lazyvec_basics, TEST_INTEGRITY_BASE_KEY};
+use crate::lazyvec_product::{lazyvec_product, TEST_PRODUCT_BASE_KEY};
 use borderless::contracts::Introduction;
 
 fn exec_introduction() -> Result<()> {
@@ -87,7 +86,7 @@ fn exec_introduction() -> Result<()> {
     info!("{s}");
 
     let storage_key = make_user_key(TEST_PRODUCT_BASE_KEY);
-    let mut lazy_vec: LazyVec<product::Product> = LazyVec::decode(storage_key);
+    let mut lazy_vec: LazyVec<lazyvec_product::Product> = LazyVec::decode(storage_key);
     if lazy_vec.exists() {
         warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
         lazy_vec.clear();
