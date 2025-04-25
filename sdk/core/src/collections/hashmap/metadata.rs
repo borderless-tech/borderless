@@ -9,6 +9,8 @@ use std::marker::PhantomData;
 type Key = u64;
 
 const SHARDS: usize = 16;
+// Update the mask if SHARDS value is changed
+const MASK: u64 = 0xF;
 
 pub(crate) struct Metadata<K> {
     shards: [LazyVec<K>; SHARDS],
@@ -77,9 +79,8 @@ where
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
         let hash = hasher.finish();
-        // Extract the 4 less-significant bits out of the hash
-        // TODO Update the mask if SHARDS value is changed
-        (hash & 0xF) as usize
+        // Extract the less-significant bits out of the hash
+        (hash & MASK) as usize
     }
 
     pub(crate) fn insert(&mut self, key: K) {
