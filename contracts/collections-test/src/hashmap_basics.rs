@@ -25,9 +25,10 @@ pub(crate) fn hashmap_basics() -> Result<()> {
     info!("Executing the Hashmap integrity test suite...");
     is_empty()?;
     clear()?;
+    keys()?;
+    contains_key()?;
     insert()?;
     remove()?;
-    keys()?;
 
     info!("All integrity tests run successfully!");
     hashmap.commit(storage_key);
@@ -110,6 +111,33 @@ fn clear() -> Result<()> {
         hashmap.insert(i, random);
     }
     hashmap.clear();
+    // Check integrity
     ensure!(hashmap.is_empty(), "Test [clear] failed");
+    Ok(())
+}
+
+fn contains_key() -> Result<()> {
+    let mut hashmap = load_map();
+
+    for i in 0..N {
+        let random = rand(0, u64::MAX);
+        hashmap.insert(i, random);
+    }
+    // Check integrity
+    let target: u64 = 30000;
+    ensure!(
+        !hashmap.contains_key(target),
+        "Test [contains_key] failed with error 1"
+    );
+    hashmap.insert(target, 0);
+    ensure!(
+        hashmap.contains_key(target),
+        "Test [contains_key] failed with error 2"
+    );
+    hashmap.remove(target);
+    ensure!(
+        !hashmap.contains_key(target),
+        "Test [contains_key] failed with error 3"
+    );
     Ok(())
 }
