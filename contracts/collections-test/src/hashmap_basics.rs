@@ -24,6 +24,7 @@ pub(crate) fn hashmap_basics() -> Result<()> {
 
     info!("Executing the Hashmap integrity test suite...");
     is_empty()?;
+    clear()?;
     insert()?;
     remove()?;
     keys()?;
@@ -99,5 +100,16 @@ fn keys() -> Result<()> {
         let k = hashmap.get(i).context("Get({i}) must return some value")?;
         ensure!(*k == i, "Test [keys] failed with error 2")
     }
+    Ok(())
+}
+
+fn clear() -> Result<()> {
+    let mut hashmap = load_map();
+    for i in 0..N {
+        let random = rand(0, u64::MAX);
+        hashmap.insert(i, random);
+    }
+    hashmap.clear();
+    ensure!(hashmap.is_empty(), "Test [clear] failed");
     Ok(())
 }
