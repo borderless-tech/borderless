@@ -128,16 +128,9 @@ impl<S: Db> Runtime<S> {
         linker.func_wrap_async(
             "env",
             "send_http_rq",
-            |caller: Caller<'_, VmState<S>>,
-             (method, uri_ptr, uri_len, payload_ptr, payload_len, register_id)| {
+            |caller: Caller<'_, VmState<S>>, (rq_head, rq_body, rs_head, rs_body, err)| {
                 Box::new(vm::async_abi::send_http_rq(
-                    caller,
-                    method,
-                    uri_ptr,
-                    uri_len,
-                    payload_ptr,
-                    payload_len,
-                    register_id,
+                    caller, rq_head, rq_body, rs_head, rs_body, err,
                 ))
             },
         )?;

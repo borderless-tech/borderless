@@ -1,11 +1,179 @@
 //! Definition of generic models used throughout different APIs
 
+use std::str::FromStr;
+
 use borderless_id_types::TxIdentifier;
+use http::header::CONTENT_TYPE;
 use queries::Pagination;
 use serde::Serialize;
 
+use crate::__private::send_http_rq;
 use crate::contracts::{Description, Info, Metadata};
 use crate::events::CallAction;
+
+pub use http::{HeaderName, HeaderValue, Method, Request, Response, StatusCode, Version};
+
+/// Special trait that bundles the serialization of a type into a request body together with the corresponding content-type
+///
+/// For empty bodies with no content type `None` should be returned.
+pub trait IntoBodyAndContentType {
+    fn into_parts(self) -> anyhow::Result<Option<(Vec<u8>, &'static str)>>;
+}
+
+/// Wrapper type that automatically serializes the inner value to JSON and sets the content-type to `application/json`, if used together with a request.
+///
+/// See [`send_request`] function.
+pub struct Json<T>(pub T);
+
+impl<T: Serialize> IntoBodyAndContentType for Json<T> {
+    fn into_parts(self) -> anyhow::Result<Option<(Vec<u8>, &'static str)>> {
+        let body = serde_json::to_vec(&self.0)?;
+        Ok(Some((body, "application/json")))
+    }
+}
+
+/// Wrapper type that automatically serializes the inner value to plain text and sets the content-type to `text/plain`, if used together with a request.
+///
+/// See [`send_request`] function.
+pub struct Text<T>(pub T);
+
+impl<T: ToString> IntoBodyAndContentType for Text<T> {
+    fn into_parts(self) -> anyhow::Result<Option<(Vec<u8>, &'static str)>> {
+        let body = self.0.to_string().into_bytes();
+        Ok(Some((body, "text/plain")))
+    }
+}
+
+impl IntoBodyAndContentType for String {
+    fn into_parts(self) -> anyhow::Result<Option<(Vec<u8>, &'static str)>> {
+        let body = self.into_bytes();
+        Ok(Some((body, "text/plain")))
+    }
+}
+
+impl IntoBodyAndContentType for &str {
+    fn into_parts(self) -> anyhow::Result<Option<(Vec<u8>, &'static str)>> {
+        let body = self.to_string().into_bytes();
+        Ok(Some((body, "text/plain")))
+    }
+}
+
+/// Type that indicates an empty body. In this case no content-type header is set.
+///
+/// Identical to unit type `()`.
+///
+/// See [`send_request`] function.
+pub struct Empty;
+
+impl IntoBodyAndContentType for Empty {
+    fn into_parts(self) -> anyhow::Result<Option<(Vec<u8>, &'static str)>> {
+        Ok(None)
+    }
+}
+
+impl IntoBodyAndContentType for () {
+    fn into_parts(self) -> anyhow::Result<Option<(Vec<u8>, &'static str)>> {
+        Ok(None)
+    }
+}
+
+/// Wrapper type that automatically serializes the inner value to bytes and sets the content-type to `application/octet-stream`, if used together with a request.
+///
+/// See [`send_request`] function.
+pub struct Binary<T>(pub T);
+
+impl<T: Into<Vec<u8>>> IntoBodyAndContentType for Binary<T> {
+    fn into_parts(self) -> anyhow::Result<Option<(Vec<u8>, &'static str)>> {
+        let body = self.0.into();
+        Ok(Some((body, "application/octet-stream")))
+    }
+}
+
+impl IntoBodyAndContentType for Vec<u8> {
+    fn into_parts(self) -> anyhow::Result<Option<(Vec<u8>, &'static str)>> {
+        Ok(Some((self, "application/octet-stream")))
+    }
+}
+
+/// Send a http-request from webassembly and receive the response
+pub fn send_request<T>(request: Request<T>) -> anyhow::Result<Response<Vec<u8>>>
+where
+    T: IntoBodyAndContentType,
+{
+    let (mut parts, body) = request.into_parts();
+
+    // Inject correct content-type ( for empty bodies () we don't set the header value )
+    let body_bytes = match body.into_parts()? {
+        Some((bytes, content_type)) => {
+            parts
+                .headers
+                .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
+            bytes
+        }
+        None => Vec::new(),
+    };
+
+    // Serialize request head according to protocol
+    let mut head = format!("{} {} {:?}\r\n", parts.method, parts.uri, parts.version);
+    for (name, value) in parts.headers.iter() {
+        head.push_str(&format!("{}: {}\r\n", name, value.to_str().unwrap()));
+    }
+    head.push_str("\r\n"); // End of headers
+
+    // Perform the ABI call to actually send the request
+    let (rs_head, rs_body) = send_http_rq(head, body_bytes).map_err(|e| anyhow::Error::msg(e))?;
+    let rs = build_response_from_parts(&rs_head, rs_body)?;
+    Ok(rs)
+}
+
+/// Helper function to parse a [`Response`] from the raw parts
+fn build_response_from_parts(head: &str, body: Vec<u8>) -> anyhow::Result<Response<Vec<u8>>> {
+    let mut lines = head.lines();
+
+    // Parse the status line
+    let status_line = lines
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Empty response head"))?;
+    let mut status_parts = status_line.splitn(3, ' ');
+
+    let version_str = status_parts
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Missing HTTP version"))?;
+    let status_code_str = status_parts
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Missing status code"))?;
+    let _reason_phrase = status_parts.next().unwrap_or(""); // Optional, ignore for now
+
+    let version = match version_str {
+        "HTTP/1.0" => Version::HTTP_10,
+        "HTTP/1.1" => Version::HTTP_11,
+        "HTTP/2.0" | "HTTP/2" => Version::HTTP_2,
+        _ => return Err(anyhow::anyhow!("Unsupported HTTP version: {}", version_str)),
+    };
+
+    let status_code = StatusCode::from_bytes(status_code_str.as_bytes())?;
+
+    // Build base response;
+    let mut response = Response::builder().status(status_code).version(version);
+
+    let headers = response.headers_mut().unwrap();
+
+    // Parse headers
+    for line in lines {
+        if line.trim().is_empty() {
+            continue; // Skip empty lines
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            let header_name = HeaderName::from_str(name.trim())?;
+            let header_value = HeaderValue::from_str(value.trim())?;
+            headers.insert(header_name, header_value);
+        } else {
+            return Err(anyhow::anyhow!("Malformed header line: {}", line));
+        }
+    }
+    // Build the response
+    Ok(response.body(body)?)
+}
 
 /// Default return type for all routes that return lists.
 ///
@@ -281,7 +449,7 @@ pub mod queries {
     }
 
     #[cfg(test)]
-    mod tests {
+    mod query_tests {
         use super::*;
 
         #[test]
@@ -440,5 +608,85 @@ pub mod queries {
                 assert_eq!(cid, "agent_id=a073e869-4ae1-892c-aba7-2ad8318d5c12");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_valid_response() {
+        let head = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Test: 123\r\n\r\n";
+        let body = b"Hello, world!".to_vec();
+
+        let response = build_response_from_parts(head, body.clone()).unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.version(), Version::HTTP_11);
+        assert_eq!(
+            response.headers().get("Content-Type").unwrap(),
+            "text/plain"
+        );
+        assert_eq!(response.headers().get("X-Test").unwrap(), "123");
+        assert_eq!(response.body(), &body);
+    }
+
+    #[test]
+    fn test_valid_http_2_response() {
+        let head = "HTTP/2 204 No Content\r\nX-Empty: yes\r\n\r\n";
+        let body = Vec::new();
+
+        let response = build_response_from_parts(head, body.clone()).unwrap();
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(response.version(), Version::HTTP_2);
+        assert_eq!(response.headers().get("X-Empty").unwrap(), "yes");
+        assert_eq!(response.body(), &body);
+    }
+
+    #[test]
+    fn test_missing_status_line_parts() {
+        let head = "HTTP/1.1\r\nContent-Type: text/plain\r\n\r\n";
+        let body = b"Oops".to_vec();
+
+        let result = build_response_from_parts(head, body);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_invalid_http_version() {
+        let head = "HTTP/3.0 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+        let body = b"Invalid".to_vec();
+
+        let result = build_response_from_parts(head, body);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_invalid_status_code() {
+        let head = "HTTP/1.1 abc OK\r\nContent-Type: text/plain\r\n\r\n";
+        let body = b"Invalid".to_vec();
+
+        let result = build_response_from_parts(head, body);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_malformed_header() {
+        let head = "HTTP/1.1 200 OK\r\nBad-Header-Without-Colon\r\n\r\n";
+        let body = b"BadHeader".to_vec();
+
+        let result = build_response_from_parts(head, body);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_head() {
+        let head = "";
+        let body = b"Empty".to_vec();
+
+        let result = build_response_from_parts(head, body);
+        assert!(result.is_err());
     }
 }

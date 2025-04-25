@@ -1,4 +1,5 @@
 use borderless::__private::{registers::*, *};
+use borderless::http::{send_request, Method, Request};
 use borderless::{error, events::CallAction, info, new_error, Context, Result};
 
 #[no_mangle]
@@ -26,12 +27,21 @@ fn exec_run() -> Result<()> {
         .method_name()
         .context("missing required method-name")?;
 
-    let result = send_http_rq(
-        HttpMethod::Get,
-        "https://jsonplaceholder.typicode.com/users",
-        &[],
-    );
-    let value: borderless::serialize::Value = borderless::serialize::from_slice(&result.unwrap())?;
+    // TODO:
+    // - Complete http api
+    // - add websocket api
+    // - add schedule api
+
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("https://jsonplaceholder.typicode.com/users")
+        .body(())?;
+
+    let response = send_request(request)?;
+    info!("status {}", response.status());
+
+    let body = response.body();
+    let value: borderless::serialize::Value = borderless::serialize::from_slice(&body)?;
     info!("{}", value.to_string());
 
     match method {

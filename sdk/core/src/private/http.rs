@@ -1,7 +1,7 @@
-use serde::Serialize;
+use http::request::Parts;
+use serde::{Deserialize, Serialize};
 
-// NOTE: We need something different, that works with our storage implementation.
-// For now, we can try fiddling around with this.
+//#[deprecated(note = "replaced by trait function")]
 pub fn to_payload<T>(value: &T, path: &str) -> anyhow::Result<Option<String>>
 where
     T: Serialize,
@@ -27,4 +27,39 @@ where
     }
     // FCK my life, this works so great...
     Ok(Some(current.to_string()))
+}
+
+// TODO: Let's only use this for batch-requests; just to keep the usage of postcard to a minimum
+#[derive(Serialize, Deserialize)]
+pub struct SerRq {
+    pub method: String,
+    pub uri: String,
+    pub headers: String,
+    pub body: Vec<u8>,
+}
+
+impl SerRq {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, postcard::Error> {
+        postcard::to_allocvec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, postcard::Error> {
+        postcard::from_bytes(bytes)
+    }
+
+    pub fn from_parts(parts: Parts, body: Vec<u8>) -> Self {
+        let mut headers = String::with_capacity(16);
+        for (name, value) in parts.headers.iter() {
+            headers.push_str(name.as_str());
+            headers.push_str(": ");
+            headers.push_str(value.to_str().unwrap_or_default());
+            headers.push_str("\r\n");
+        }
+        Self {
+            method: parts.method.to_string(),
+            uri: parts.uri.to_string(),
+            headers,
+            body,
+        }
+    }
 }

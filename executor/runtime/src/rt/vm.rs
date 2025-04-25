@@ -300,7 +300,7 @@ impl<S: Db> VmState<S> {
     }
 }
 
-// Helper function to get the memory of the wasm module
+/// Helper function to get the linear memory of the wasm module
 fn get_memory(caller: &mut Caller<'_, VmState<impl Db>>) -> wasmtime::Result<Memory> {
     match caller.get_export("memory") {
         Some(Extern::Memory(mem)) => Ok(mem),
@@ -321,6 +321,24 @@ fn create_buffer(len: u64) -> Vec<u8> {
         buffer.set_len(len as usize);
     }
     buffer
+}
+
+/// Helper function to directly copy a bytes from the linear memory into a buffer
+fn copy_wasm_memory(
+    caller: &mut Caller<'_, VmState<impl Db>>,
+    memory: &Memory,
+    wasm_ptr: u64,
+    wasm_ptr_len: u64,
+) -> wasmtime::Result<Vec<u8>> {
+    // Create buffer
+    let mut buffer = create_buffer(wasm_ptr_len);
+
+    // Read from memory
+    memory
+        .read(caller, wasm_ptr as usize, &mut buffer)
+        .map_err(|e| wasmtime::Error::msg(format!("Failed to read from memory: {e}")))?;
+
+    Ok(buffer)
 }
 
 // --- Begin to implement abi
@@ -429,15 +447,11 @@ pub fn write_register(
     // Get memory
     let memory = get_memory(&mut caller)?;
 
-    // Create buffer
-    let mut buffer = create_buffer(wasm_ptr_len);
+    // Copy value
+    let value = copy_wasm_memory(&mut caller, &memory, wasm_ptr, wasm_ptr_len)?;
 
-    // Read from memory
-    memory
-        .read(&mut caller, wasm_ptr as usize, &mut buffer)
-        .map_err(|e| wasmtime::Error::msg(format!("Failed to read from memory: {e}")))?;
-    // Write register
-    caller.data_mut().set_register(register_id, buffer);
+    // Set register
+    caller.data_mut().set_register(register_id, value);
     Ok(())
 }
 
@@ -456,11 +470,8 @@ pub fn storage_write(
     // Get memory
     let memory = get_memory(&mut caller)?;
 
-    // Create buffers
-    let mut value = create_buffer(value_len);
-
-    // Read from memory
-    memory.read(&mut caller, value_ptr as usize, &mut value)?;
+    // Read value
+    let value = copy_wasm_memory(&mut caller, &memory, value_ptr, value_len)?;
 
     // Build key
     let key = caller.data().get_storage_key(base_key, sub_key)?;
@@ -552,34 +563,256 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
 }
 
 pub mod async_abi {
+    use borderless::Context;
+
     use super::*;
+
+    use reqwest::{
+        header::{HeaderMap, HeaderName, HeaderValue},
+        Client, Method as ReqwestMethod, Request, Response,
+    };
+    use std::{result::Result, str::FromStr};
 
     pub async fn send_http_rq(
         mut caller: Caller<'_, VmState<impl Db>>,
-        method: u32,
-        uri_ptr: u64,
-        uri_len: u64,
-        payload_ptr: u64,
-        payload_len: u64,
-        register_id: u64,
+        register_rq_head: u64,
+        register_rq_body: u64,
+        register_rs_head: u64,
+        register_rs_body: u64,
+        register_failure: u64,
     ) -> wasmtime::Result<u64> {
-        let memory = get_memory(&mut caller)?;
+        let head = caller
+            .data_mut()
+            .registers
+            .remove(&register_rq_head)
+            .context("missing rq-head")?
+            .into_inner();
 
-        // Read memory
-        let uri_bytes = memory
-            .data(&mut caller)
-            .get(uri_ptr as usize..(uri_ptr + uri_len) as usize)
-            .ok_or_else(|| wasmtime::Error::msg("Memory access out of bounds"))?;
+        let head = String::from_utf8(head)?;
 
-        // Construct message
-        let uri_str = String::from_utf8(uri_bytes.to_vec())
-            .unwrap_or_else(|e| format!("Invalid UTF-8 sequence: {e}"));
+        let body = caller
+            .data_mut()
+            .registers
+            .remove(&register_rq_body)
+            .context("missing rq-body")?
+            .into_inner();
 
-        let result = reqwest::get(uri_str).await?.bytes().await?;
+        // We do not use "?" to return the errors here, because these are client side errors, and not host related errors.
+        //
+        // We can use the `register_failure` to return the error message back to the caller on the wasm side.
+        let client = Client::new();
+        let rq = match parse_reqwest_request_from_parts(&client, &head, body) {
+            Ok(rq) => rq,
+            Err(e) => {
+                caller
+                    .data_mut()
+                    .set_register(register_failure, e.into_bytes());
+                return Ok(1);
+            }
+        };
 
-        caller.data_mut().set_register(register_id, result.into());
+        let rs = match client.execute(rq).await {
+            Ok(rs) => rs,
+            Err(e) => {
+                caller
+                    .data_mut()
+                    .set_register(register_failure, e.to_string().into_bytes());
+                return Ok(1);
+            }
+        };
+
+        let (rs_head, rs_body) = match serialize_response_for_ffi(rs).await {
+            Ok(rs) => rs,
+            Err(e) => {
+                caller
+                    .data_mut()
+                    .set_register(register_failure, e.to_string().into_bytes());
+                return Ok(1);
+            }
+        };
+        caller
+            .data_mut()
+            .set_register(register_rs_head, rs_head.into_bytes());
+        caller.data_mut().set_register(register_rs_body, rs_body);
 
         Ok(0)
+    }
+
+    fn parse_reqwest_request_from_parts(
+        client: &Client,
+        head: &str,
+        body: Vec<u8>,
+    ) -> Result<Request, String> {
+        let mut lines = head.lines();
+
+        // Parse request line
+        let request_line = lines
+            .next()
+            .ok_or_else(|| "Empty request head".to_string())?;
+        let mut parts = request_line.split_whitespace();
+
+        let method_str = parts
+            .next()
+            .ok_or_else(|| "No HTTP method found".to_string())?;
+        let uri = parts.next().ok_or_else(|| "No URI found".to_string())?;
+        let _version = parts
+            .next()
+            .ok_or_else(|| "No HTTP version found".to_string())?;
+        // (We ignore HTTP version for reqwest, it manages it internally.)
+
+        let method = ReqwestMethod::from_str(method_str).map_err(|e| e.to_string())?;
+
+        // Parse headers
+        let mut headers = HeaderMap::new();
+        for line in lines {
+            if line.trim().is_empty() {
+                continue; // End of headers
+            }
+            if let Some((name, value)) = line.split_once(":") {
+                let header_name = HeaderName::from_str(name.trim()).map_err(|e| e.to_string())?;
+                let header_value =
+                    HeaderValue::from_str(value.trim()).map_err(|e| e.to_string())?;
+                headers.append(header_name, header_value);
+            } else {
+                return Err(format!("Malformed header line: {}", line));
+            }
+        }
+
+        // Build the request
+        let rq = client
+            .request(method, uri)
+            .headers(headers)
+            .body(body)
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        Ok(rq)
+    }
+
+    async fn serialize_response_for_ffi(resp: Response) -> Result<(String, Vec<u8>), String> {
+        // Get status code and version
+        let status = resp.status();
+        let version = match resp.version() {
+            reqwest::Version::HTTP_10 => "HTTP/1.0",
+            reqwest::Version::HTTP_11 => "HTTP/1.1",
+            reqwest::Version::HTTP_2 => "HTTP/2",
+            other => return Err(format!("Unsupported HTTP version: {:?}", other)),
+        };
+
+        // Build the status line
+        let mut head = format!(
+            "{} {} {}\r\n",
+            version,
+            status.as_u16(),
+            status.canonical_reason().unwrap_or("")
+        );
+
+        // Serialize headers
+        for (name, value) in resp.headers().iter() {
+            head.push_str(&format!(
+                "{}: {}\r\n",
+                name.as_str(),
+                value
+                    .to_str()
+                    .map_err(|e| format!("failed to read header value: {e}"))?
+            ));
+        }
+
+        head.push_str("\r\n"); // End of headers
+
+        // Get body as bytes
+        let body = resp
+            .bytes()
+            .await
+            .map_err(|e| format!("failed to read response body: {e}"))?
+            .to_vec();
+
+        Ok((head, body))
+    }
+
+    #[cfg(test)]
+    mod async_abi_tests {
+        use super::*;
+        use reqwest::Method;
+
+        #[test]
+        fn test_valid_post_request() {
+            let client = Client::new();
+            let head = "POST https://example.com/api HTTP/1.1\r\nContent-Type: application/json\r\nX-Test: 42\r\n\r\n";
+            let body = b"{\"hello\":\"world\"}".to_vec();
+
+            let request = parse_reqwest_request_from_parts(&client, head, body.clone()).unwrap();
+
+            assert_eq!(request.method(), Method::POST);
+            assert_eq!(request.url().as_str(), "https://example.com/api");
+            assert_eq!(request.headers()["Content-Type"], "application/json");
+            assert_eq!(request.headers()["X-Test"], "42");
+            assert_eq!(request.body().unwrap().as_bytes().unwrap(), body.as_slice());
+        }
+
+        #[test]
+        fn test_valid_get_request() {
+            let client = Client::new();
+            let head = "GET https://example.com/ HTTP/1.1\r\nAccept: */*\r\n\r\n";
+            let body = Vec::new();
+
+            let request = parse_reqwest_request_from_parts(&client, head, body.clone()).unwrap();
+
+            assert_eq!(request.method(), Method::GET);
+            assert_eq!(request.url().as_str(), "https://example.com/");
+            assert_eq!(request.headers()["Accept"], "*/*");
+            assert!(request.body().is_none()); // No body for GET
+        }
+
+        #[test]
+        fn test_missing_method_error() {
+            let client = Client::new();
+            let head = " https://example.com/api HTTP/1.1\r\nContent-Type: text/plain\r\n\r\n";
+            let body = b"Missing method".to_vec();
+
+            let result = parse_reqwest_request_from_parts(&client, head, body);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_missing_uri_error() {
+            let client = Client::new();
+            let head = "POST HTTP/1.1\r\nContent-Type: text/plain\r\n\r\n";
+            let body = b"Missing URI".to_vec();
+
+            let result = parse_reqwest_request_from_parts(&client, head, body);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_missing_version_error() {
+            let client = Client::new();
+            let head = "POST https://example.com/api\r\nContent-Type: text/plain\r\n\r\n";
+            let body = b"Missing version".to_vec();
+
+            let result = parse_reqwest_request_from_parts(&client, head, body);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_malformed_header_error() {
+            let client = Client::new();
+            let head = "POST https://example.com/api HTTP/1.1\r\nBadHeaderWithoutColon\r\n\r\n";
+            let body = b"Malformed header".to_vec();
+
+            let result = parse_reqwest_request_from_parts(&client, head, body);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_empty_head_error() {
+            let client = Client::new();
+            let head = "";
+            let body = b"Empty head".to_vec();
+
+            let result = parse_reqwest_request_from_parts(&client, head, body);
+            assert!(result.is_err());
+        }
     }
 }
 

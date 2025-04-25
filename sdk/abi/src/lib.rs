@@ -10,6 +10,7 @@ extern "C" {
     pub fn read_register(register_id: u64, wasm_ptr: u64);
     pub fn write_register(register_id: u64, wasm_ptr: u64, wasm_ptr_len: u64);
     pub fn register_len(register_id: u64) -> u64;
+    // TODO: clear_register ?
 
     // --- Control flow
     pub fn panic() -> !;
@@ -19,14 +20,16 @@ extern "C" {
     pub fn storage_write(base_key: u64, sub_key: u64, value_ptr: u64, value_len: u64);
     pub fn storage_read(base_key: u64, sub_key: u64, register_id: u64);
     pub fn storage_remove(base_key: u64, sub_key: u64);
-    pub fn storage_has_key(base_key: u64, sub_key: u64) -> u64;
 
     // --- Dangerous API (introduces side-effects)
+    pub fn storage_has_key(base_key: u64, sub_key: u64) -> u64;
     pub fn storage_gen_sub_key() -> u64;
+    pub fn storage_next_subkey(base_key: u64, from_sub_key: u64) -> u64;
+    pub fn storage_query_subkey_range(base_key: u64, sub_key_start: u64, sub_key_end: u64) -> u64;
 
     // Profiling
     pub fn tic(); // matlab style
-    pub fn toc() -> u64; // returns the nanoseconds as u64
+    pub fn toc() -> u64; // << TODO: Let's not do that, but instead print out the result, so we don't create side-effects
 
     // Testing
     pub fn rand(min: u64, max: u64) -> u64;
@@ -47,13 +50,14 @@ extern "C" {
     pub fn open_ws_connection();
 
     // Sends a http-request to some remote entity and returns the result
+    //
+    // TODO: This is a weird design; usually you give pointers to wasm for reading
     pub fn send_http_rq(
-        method: u32,
-        uri_ptr: u64,
-        uri_len: u64,
-        payload_ptr: u64,
-        payload_len: u64,
-        register_id: u64,
+        register_rq_head: u64,
+        register_rq_body: u64,
+        register_rs_head: u64,
+        register_rs_body: u64,
+        register_failure: u64,
     ) -> u64;
 
     // Sends a batch of http-requests to some remote entities in parallel and returns the results
@@ -70,12 +74,4 @@ pub enum LogLevel {
     Info = 2,
     Warn = 3,
     Error = 4,
-}
-
-#[repr(u32)]
-pub enum HttpMethod {
-    Get = 0,
-    Post = 1,
-    Put = 2,
-    Delete = 3,
 }
