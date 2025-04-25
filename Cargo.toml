@@ -1,7 +1,7 @@
 [workspace]
 members = [
   "contracts/abi-test",
-  "contracts/collections-test",
+  "contracts/collections",
   "contracts/flipper",
   "executor/runner",
   "executor/runtime",

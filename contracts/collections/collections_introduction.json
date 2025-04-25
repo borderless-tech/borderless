@@ -5,12 +5,12 @@
   "roles": [],
   "sinks": [],
   "desc": {
-    "display_name": "lazyvec",
-    "summary": "a WASM contract for testing the LazyVec data structure",
+    "display_name": "collections",
+    "summary": "a WASM contract for testing the Borderless collections",
     "legal": null
   },
   "meta": {
-    "application": "lazyvec",
+    "application": "collections",
     "app_module": "test",
     "version": "0.1.0"
   }
