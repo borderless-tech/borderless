@@ -26,6 +26,7 @@ pub(crate) fn hashmap_basics() -> Result<()> {
     is_empty()?;
     insert()?;
     remove()?;
+    keys()?;
 
     info!("All integrity tests run successfully!");
     hashmap.commit(storage_key);
@@ -82,6 +83,29 @@ fn remove() -> Result<()> {
         let x = hashmap.remove(i);
         let y = oracle.remove(&i);
         ensure!(x == y, "Test [remove] failed with error 3")
+    }
+
+    Ok(())
+}
+
+fn keys() -> Result<()> {
+    let mut hashmap = load_map();
+    // A trusted reference used to know what the correct behavior should be
+    let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+
+    for i in 0..N {
+        let random = rand(0, u64::MAX);
+        hashmap.insert(i, random);
+        oracle.insert(i, random);
+    }
+    ensure!(
+        hashmap.len() == oracle.len(),
+        "Test [keys] failed with error 1"
+    );
+
+    for i in 0..N {
+        let k = hashmap.get(i).context("Get({i}) must return some value")?;
+        ensure!(*k == i, "Test [keys] failed with error 2")
     }
 
     Ok(())
