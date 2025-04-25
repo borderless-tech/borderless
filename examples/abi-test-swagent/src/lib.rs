@@ -1,6 +1,7 @@
 use borderless::__private::{registers::*, *};
 use borderless::http::{as_json, as_text, get, post_json, send_request, Json, Method, Request};
 use borderless::serialize::Value;
+use borderless::time::SystemTime;
 use borderless::{error, events::CallAction, info, new_error, Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -61,6 +62,8 @@ fn exec_run() -> Result<()> {
         "asdf" => {
             info!(" hello my friend ");
 
+            let now = SystemTime::now();
+
             // Test GET request
             info!("--- Test GET request: ");
             let request = Request::builder()
@@ -69,7 +72,9 @@ fn exec_run() -> Result<()> {
                 .body(())?;
 
             let response = send_request(request)?;
-            info!("status {}", response.status());
+
+            let elapsed = now.elapsed();
+            info!("status {}, time-elapsed={elapsed:?}", response.status());
 
             let value: Value = as_json(response)?;
             info!("{}", value.to_string());

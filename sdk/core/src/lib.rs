@@ -465,6 +465,11 @@ pub mod time {
                 .ok_or_else(|| Duration::from_millis((earlier.0 - self.0) as u64))?;
             Ok(Duration::from_millis(diff as u64))
         }
+
+        pub fn elapsed(&self) -> Duration {
+            let diff = SystemTime::now().0 - self.0;
+            Duration::from_millis(diff as u64)
+        }
     }
 
     impl Add<Duration> for SystemTime {
