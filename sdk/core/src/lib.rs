@@ -1,3 +1,4 @@
+pub mod agents;
 pub mod collections;
 pub mod contracts;
 pub mod lazy;
@@ -83,6 +84,10 @@ pub mod events {
     }
 
     impl CallAction {
+        pub fn new(method: MethodOrId, params: Value) -> Self {
+            Self { method, params }
+        }
+
         pub fn by_method(method_name: impl AsRef<str>, params: Value) -> Self {
             Self {
                 method: MethodOrId::ByName {
