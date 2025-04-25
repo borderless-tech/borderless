@@ -57,6 +57,10 @@ where
         }
     }
 
+    pub(crate) fn len_at_shard(&self, index: usize) -> usize {
+        self.metadata.len_at_shard(index)
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.metadata.len()
     }

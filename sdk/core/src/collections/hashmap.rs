@@ -76,6 +76,10 @@ where
         self.cache.exists()
     }
 
+    pub fn len_at_shard(&self, index: usize) -> usize {
+        self.cache.len_at_shard(index)
+    }
+
     pub fn len(&self) -> usize {
         self.cache.len()
     }
