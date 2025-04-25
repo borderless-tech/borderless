@@ -1,5 +1,5 @@
 use borderless::__private::{registers::*, *};
-use borderless::http::{as_json, as_text, get, send_request, Json, Method, Request};
+use borderless::http::{as_json, as_text, get, post_json, send_request, Json, Method, Request};
 use borderless::serialize::Value;
 use borderless::{error, events::CallAction, info, new_error, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ pub extern "C" fn process_action() {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct Post {
     title: String,
     body: String,
@@ -50,6 +50,7 @@ fn exec_run() -> Result<()> {
     // - [ ] add schedule api
 
     // Test GET request
+    info!("--- Test GET request: ");
     let request = Request::builder()
         .method(Method::GET)
         .uri("https://jsonplaceholder.typicode.com/users")
@@ -62,6 +63,7 @@ fn exec_run() -> Result<()> {
     info!("{}", value.to_string());
 
     // Test POST request
+    info!("--- Test POST request: ");
     let post = Post {
         title: "random".to_string(),
         body: "something that someone would write".to_string(),
@@ -71,7 +73,7 @@ fn exec_run() -> Result<()> {
     let request = Request::builder()
         .method(Method::POST)
         .uri("https://jsonplaceholder.typicode.com/posts")
-        .body(Json(post))?;
+        .body(Json(post.clone()))?;
 
     let response = send_request(request)?;
     info!("status {}", response.status());
@@ -79,6 +81,7 @@ fn exec_run() -> Result<()> {
     let value: Value = as_json(response)?;
     info!("{}", value.to_string());
 
+    info!("--- Test PUT request: ");
     let request = Request::builder()
         .method(Method::PUT)
         .uri("https://jsonplaceholder.typicode.com/posts/1")
@@ -89,11 +92,17 @@ fn exec_run() -> Result<()> {
             user_id: 123455,
         }))?;
 
+    // Use fancy monad here
     let updated: PostRes = send_request(request).and_then(as_json)?;
     info!("{updated:?}");
 
+    // Use the simple wrapper functions
     let something = get("https://jsonplaceholder.typicode.com/posts/1").and_then(as_text)?;
     info!("{something}");
+
+    let updated: PostRes =
+        post_json(post, "https://jsonplaceholder.typicode.com/posts").and_then(as_json)?;
+    info!("{updated:?}");
 
     match method {
         "asdf" => {
