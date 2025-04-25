@@ -25,9 +25,10 @@ pub(crate) fn hashmap_basics() -> Result<()> {
     info!("Executing the Hashmap integrity test suite...");
     is_empty()?;
     clear()?;
+    len()?;
     //keys()?;
     //contains_key()?;
-    //insert()?;
+    insert()?;
     //remove()?;
 
     info!("All integrity tests run successfully!");
@@ -41,6 +42,23 @@ fn is_empty() -> Result<()> {
     Ok(())
 }
 
+fn len() -> Result<()> {
+    let mut map = load_map();
+
+    for i in 0..N {
+        // Check integrity
+        ensure!(
+            map.len() == i as usize,
+            "Test [len] failed with {} {}",
+            map.len(),
+            i
+        );
+        let random = rand(0, u64::MAX);
+        map.insert(i, random);
+    }
+    Ok(())
+}
+
 fn insert() -> Result<()> {
     let mut hashmap = load_map();
     // A trusted reference used to know what the correct behavior should be
@@ -51,10 +69,6 @@ fn insert() -> Result<()> {
         hashmap.insert(i, random);
         oracle.insert(i, random);
     }
-    ensure!(
-        hashmap.len() == oracle.len(),
-        "Test [insert] failed with error 1"
-    );
     // Check integrity
     for i in 0..N {
         let val = hashmap.get(i).context("Get({i}) must return some value")?;
@@ -76,10 +90,6 @@ fn remove() -> Result<()> {
         hashmap.insert(i, random);
         oracle.insert(i, random);
     }
-    ensure!(
-        hashmap.len() == oracle.len(),
-        "Test [remove] failed with error 1"
-    );
     // Check integrity
     for i in 0..N {
         let x = hashmap.remove(i);
