@@ -1,4 +1,5 @@
 use crate::__private::storage_traits::Storeable;
+use crate::collections::lazyvec::proxy::Proxy as LazyVecProxy;
 use crate::collections::lazyvec::LazyVec;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -51,8 +52,8 @@ where
             .fold(0, usize::saturating_add)
     }
 
-    pub(crate) fn keys(&self) -> Vec<Key> {
-        todo!()
+    pub(crate) fn keys(&self) -> impl Iterator<Item = LazyVecProxy<'_, K>> + '_ {
+        self.shards.iter().flat_map(|shard| shard.iter())
     }
 
     pub(crate) fn clear(&mut self) {

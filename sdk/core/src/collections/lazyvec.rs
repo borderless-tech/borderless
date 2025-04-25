@@ -1,7 +1,7 @@
 mod cache;
 mod iterator;
 mod node;
-mod proxy;
+pub(crate) mod proxy;
 
 // use super::iterator::LazyVecItMut;
 use crate::__private::storage_traits;

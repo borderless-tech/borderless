@@ -14,6 +14,7 @@ mod cache;
 mod metadata;
 mod proxy;
 
+use super::lazyvec::proxy::Proxy as LazyVecProxy;
 use crate::__private::storage_traits;
 use crate::__private::storage_traits::private::Sealed;
 use cache::{Cache, KeyValue};
@@ -129,7 +130,7 @@ where
         self.cache.clear();
     }
 
-    pub fn keys(&self) -> Vec<u64> {
+    pub fn keys(&self) -> impl Iterator<Item = LazyVecProxy<'_, u64>> + '_ {
         self.cache.keys()
     }
 

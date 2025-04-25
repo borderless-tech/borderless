@@ -1,6 +1,7 @@
 use super::ROOT_KEY;
 use crate::__private::{read_field, storage_has_key, storage_remove, write_field};
 use crate::collections::hashmap::metadata::Metadata;
+use crate::collections::lazyvec::proxy::Proxy as LazyVecProxy;
 use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -60,7 +61,7 @@ where
         self.metadata.len()
     }
 
-    pub(crate) fn keys(&self) -> Vec<u64> {
+    pub(crate) fn keys(&self) -> impl Iterator<Item = LazyVecProxy<'_, u64>> + '_ {
         self.metadata.keys()
     }
 
@@ -133,7 +134,7 @@ where
 
         // Flag all cells for deletion
         for key in self.metadata.keys() {
-            self.operations.insert(key, CacheOp::Remove);
+            self.operations.insert(*key, CacheOp::Remove);
         }
         // Clear metadata
         self.metadata.clear();
