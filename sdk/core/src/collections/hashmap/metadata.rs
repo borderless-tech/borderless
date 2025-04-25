@@ -78,6 +78,7 @@ where
         key.hash(&mut hasher);
         let hash = hasher.finish();
         // Extract the 4 less-significant bits out of the hash
+        // TODO Update the mask if SHARDS value is changed
         (hash & 0xF) as usize
     }
 
