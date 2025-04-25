@@ -1,6 +1,8 @@
 use borderless::__private::{registers::*, *};
-use borderless::http::{send_request, Method, Request};
+use borderless::http::{as_json, as_text, get, send_request, Json, Method, Request};
+use borderless::serialize::Value;
 use borderless::{error, events::CallAction, info, new_error, Context, Result};
+use serde::{Deserialize, Serialize};
 
 #[no_mangle]
 pub extern "C" fn process_action() {
@@ -11,6 +13,21 @@ pub extern "C" fn process_action() {
         Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
         Err(e) => error!("execution failed: {e:?}"),
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Post {
+    title: String,
+    body: String,
+    user_id: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PostRes {
+    id: usize,
+    title: String,
+    body: String,
+    user_id: usize,
 }
 
 fn exec_run() -> Result<()> {
@@ -28,10 +45,11 @@ fn exec_run() -> Result<()> {
         .context("missing required method-name")?;
 
     // TODO:
-    // - Complete http api
-    // - add websocket api
-    // - add schedule api
+    // - [x] Complete http api
+    // - [ ] add websocket api
+    // - [ ] add schedule api
 
+    // Test GET request
     let request = Request::builder()
         .method(Method::GET)
         .uri("https://jsonplaceholder.typicode.com/users")
@@ -40,9 +58,42 @@ fn exec_run() -> Result<()> {
     let response = send_request(request)?;
     info!("status {}", response.status());
 
-    let body = response.body();
-    let value: borderless::serialize::Value = borderless::serialize::from_slice(&body)?;
+    let value: Value = as_json(response)?;
     info!("{}", value.to_string());
+
+    // Test POST request
+    let post = Post {
+        title: "random".to_string(),
+        body: "something that someone would write".to_string(),
+        user_id: 12345,
+    };
+
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("https://jsonplaceholder.typicode.com/posts")
+        .body(Json(post))?;
+
+    let response = send_request(request)?;
+    info!("status {}", response.status());
+
+    let value: Value = as_json(response)?;
+    info!("{}", value.to_string());
+
+    let request = Request::builder()
+        .method(Method::PUT)
+        .uri("https://jsonplaceholder.typicode.com/posts/1")
+        .body(Json(PostRes {
+            id: 1,
+            title: "asdf".to_string(),
+            body: "asdf".to_string(),
+            user_id: 123455,
+        }))?;
+
+    let updated: PostRes = send_request(request).and_then(as_json)?;
+    info!("{updated:?}");
+
+    let something = get("https://jsonplaceholder.typicode.com/posts/1").and_then(as_text)?;
+    info!("{something}");
 
     match method {
         "asdf" => {

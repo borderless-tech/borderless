@@ -5,11 +5,13 @@ use std::str::FromStr;
 use borderless_id_types::TxIdentifier;
 use http::header::CONTENT_TYPE;
 use queries::Pagination;
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::__private::send_http_rq;
 use crate::contracts::{Description, Info, Metadata};
 use crate::events::CallAction;
+use crate::warn;
 
 pub use http::{HeaderName, HeaderValue, Method, Request, Response, StatusCode, Version};
 
@@ -95,6 +97,27 @@ impl IntoBodyAndContentType for Vec<u8> {
     }
 }
 
+/// Simple function to perform a GET request
+pub fn get(url: impl AsRef<str>) -> anyhow::Result<Response<Vec<u8>>> {
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(url.as_ref())
+        .body(())?;
+    send_request(request)
+}
+
+/// Simple function to perform a POST request with some json payload
+pub fn post_json<T: Serialize, U: AsRef<str>>(
+    data: T,
+    url: U,
+) -> anyhow::Result<Response<Vec<u8>>> {
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(url.as_ref())
+        .body(Json(data))?;
+    send_request(request)
+}
+
 /// Send a http-request from webassembly and receive the response
 pub fn send_request<T>(request: Request<T>) -> anyhow::Result<Response<Vec<u8>>>
 where
@@ -124,6 +147,41 @@ where
     let (rs_head, rs_body) = send_http_rq(head, body_bytes).map_err(|e| anyhow::Error::msg(e))?;
     let rs = build_response_from_parts(&rs_head, rs_body)?;
     Ok(rs)
+}
+
+/// Helper function to parse the body of a response into a deserializable value
+///
+/// Will generate a warning, if the content-type is not `application/json`
+pub fn as_json<T>(response: Response<Vec<u8>>) -> anyhow::Result<T>
+where
+    T: DeserializeOwned,
+{
+    if !response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|h| h.to_str().ok())
+        .map(|h| h.starts_with("application/json"))
+        .unwrap_or_default()
+    {
+        warn!("as_json: Response does not have content-type 'application/json'");
+    }
+    Ok(serde_json::from_slice(response.body())?)
+}
+
+/// Helper function to parse the body of a response into a string
+///
+/// Will generate a warning, if the content-type is not `text/plain`
+pub fn as_text(response: Response<Vec<u8>>) -> anyhow::Result<String> {
+    if !response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|h| h.to_str().ok())
+        .map(|h| h.starts_with("text/plain"))
+        .unwrap_or_default()
+    {
+        warn!("as_text: Response does not have content-type 'text/plain'");
+    }
+    Ok(String::from_utf8(response.into_body())?)
 }
 
 /// Helper function to parse a [`Response`] from the raw parts
