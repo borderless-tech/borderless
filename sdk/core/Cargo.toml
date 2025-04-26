@@ -13,7 +13,9 @@ postcard.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
 serde_json.workspace = true
-nohash-hasher = "0.2.0"
+nohash-hasher.workspace = true
+bincode.workspace = true
+xxhash-rust.workspace = true
 
 [dev-dependencies]
 borderless-id-types = { workspace = true, features = [ "generate_ids" ] }

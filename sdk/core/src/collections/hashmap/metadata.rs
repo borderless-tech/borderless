@@ -3,8 +3,8 @@ use crate::collections::lazyvec::proxy::Proxy as LazyVecProxy;
 use crate::collections::lazyvec::LazyVec;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::marker::PhantomData;
+use xxhash_rust::xxh64::xxh64;
 
 type Key = u64;
 
@@ -77,14 +77,12 @@ where
 
 impl<K> Metadata<K>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq,
+    K: Serialize + DeserializeOwned,
 {
     fn shard_from_key(key: &K) -> usize {
-        // Use the default Rust hasher, as it is very performant
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        let hash = hasher.finish();
+        let bytes = bincode::serialize(key).expect("Serialization error");
         // Extract the less-significant bits out of the hash
+        let hash = xxh64(bytes.as_slice(), 12345);
         (hash & MASK) as usize
     }
 
