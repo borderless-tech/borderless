@@ -10,6 +10,3 @@ crate-type = ["cdylib"]
 borderless.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-
-# NOTE: This would be placed inside the macro crate
-xxhash-rust = { version = "0.8.12", features = ["const_xxh3", "xxh32"] }
