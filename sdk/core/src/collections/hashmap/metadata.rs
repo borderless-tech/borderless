@@ -84,7 +84,7 @@ where
     K: Serialize + DeserializeOwned,
 {
     fn shard_from_key(key: &K) -> usize {
-        let bytes = bincode::serialize(key).expect("Serialization error");
+        let bytes = postcard::to_allocvec::<K>(key).expect("Serialization error");
         // Extract the less-significant bits out of the hash
         let hash = xxh64(bytes.as_slice(), 12345);
         (hash & MASK) as usize
