@@ -24,8 +24,6 @@ use serde::Serialize;
 use serde_json::Value;
 use std::marker::PhantomData;
 
-pub(crate) const ROOT_KEY: u64 = 0;
-
 pub struct HashMap<V> {
     cache: Cache<V>,
 }

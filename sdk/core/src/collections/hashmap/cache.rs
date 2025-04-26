@@ -1,4 +1,3 @@
-use super::ROOT_KEY;
 use crate::__private::{read_field, storage_has_key, storage_remove, write_field};
 use crate::collections::hashmap::metadata::Metadata;
 use crate::collections::lazyvec::proxy::Proxy as LazyVecProxy;
@@ -70,7 +69,8 @@ where
     }
 
     pub(crate) fn exists(&self) -> bool {
-        storage_has_key(self.base_key, ROOT_KEY)
+        // Check if first shard exists
+        storage_has_key(self.base_key, 1)
     }
 
     pub(crate) fn contains_key(&self, sub_key: u64) -> bool {

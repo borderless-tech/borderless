@@ -24,7 +24,9 @@ where
     pub(crate) fn new(base_key: Key) -> Self {
         // Init each shard
         let shards: [LazyVec<K>; SHARDS] = std::array::from_fn(|i| {
-            let shard_key = base_key.saturating_add(i as Key);
+            // Shards are located in base_key + [1, 16]
+            let offset = i.saturating_add(1) as u64;
+            let shard_key = base_key.saturating_add(offset);
             LazyVec::new(shard_key)
         });
         // Create Metadata object
@@ -37,7 +39,9 @@ where
     pub(crate) fn open(base_key: Key) -> Self {
         // Load each shard
         let shards: [LazyVec<K>; SHARDS] = std::array::from_fn(|i| {
-            let shard_key = base_key.saturating_add(i as Key);
+            // Shards are located in base_key + [1, 16]
+            let offset = i.saturating_add(1) as u64;
+            let shard_key = base_key.saturating_add(offset);
             LazyVec::decode(shard_key)
         });
         // Create Metadata object
