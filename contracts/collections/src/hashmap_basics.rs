@@ -27,9 +27,9 @@ pub(crate) fn hashmap_basics() -> Result<()> {
     clear()?;
     len()?;
     keys()?;
-    //contains_key()?;
+    contains_key()?;
     insert()?;
-    //remove()?;
+    remove()?;
 
     info!("All integrity tests run successfully!");
     hashmap.commit(storage_key);
