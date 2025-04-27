@@ -26,7 +26,7 @@ pub(crate) fn hashmap_basics() -> Result<()> {
     is_empty()?;
     clear()?;
     len()?;
-    //keys()?;
+    keys()?;
     //contains_key()?;
     insert()?;
     //remove()?;
@@ -101,16 +101,21 @@ fn remove() -> Result<()> {
 
 fn keys() -> Result<()> {
     let mut hashmap = load_map();
+    // A trusted reference used to know what the correct behavior should be
+    let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
 
     for i in 0..N {
         let random = rand(0, u64::MAX);
         hashmap.insert(i, random);
+        oracle.insert(i, random);
     }
+    // Collect and sort both key-lists
+    let mut hashmap_keys: Vec<u64> = hashmap.keys().map(|p| *p).collect();
+    let mut oracle_keys: Vec<u64> = oracle.keys().cloned().collect();
+    hashmap_keys.sort_unstable();
+    oracle_keys.sort_unstable();
     // Check integrity
-    for i in 0..N {
-        let k = hashmap.get(i).context("Get({i}) must return some value")?;
-        ensure!(*k == i, "Test [keys] failed with error 2")
-    }
+    assert_eq!(hashmap_keys, oracle_keys);
     Ok(())
 }
 
