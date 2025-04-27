@@ -12,6 +12,8 @@ type Key = u64;
 const SHARDS: usize = 16;
 // Update the mask if SHARDS value is changed
 const MASK: u64 = 0xF;
+// Enforces determinism when hashing keys to index a shard
+const SEED: u64 = 12345;
 
 pub(crate) struct Metadata<K> {
     shards: [LazyVec<K>; SHARDS],
@@ -85,7 +87,7 @@ where
     K: Serialize + DeserializeOwned + Hash + Eq,
 {
     fn shard_from_key(key: &K) -> usize {
-        let mut h = Xxh64::new(12345);
+        let mut h = Xxh64::new(SEED);
         key.hash(&mut h);
         let hash = h.digest();
         // Extract the less-significant bits out of the hash
