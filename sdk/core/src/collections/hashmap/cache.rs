@@ -115,7 +115,7 @@ where
         self.operations.insert(key, CacheOp::Update);
     }
 
-    pub(crate) fn insert(&mut self, key: u64, node: KeyValue<V>) -> Option<V> {
+    pub(crate) fn insert(&mut self, key: u64, value: KeyValue<V>) -> Option<V> {
         if self.read(key).is_none() {
             // Add key to metadata
             self.metadata.insert(key);
@@ -124,7 +124,7 @@ where
         self.operations.insert(key, CacheOp::Update);
         // Insert new value
         let mut map = self.map.borrow_mut();
-        let cell = Rc::new(RefCell::new(node));
+        let cell = Rc::new(RefCell::new(value));
         map.insert(key, cell).and_then(Self::extract_cell)
     }
 
