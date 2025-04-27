@@ -81,7 +81,7 @@ where
 
 impl<K> Metadata<K>
 where
-    K: Serialize + DeserializeOwned,
+    K: Serialize + DeserializeOwned + PartialEq,
 {
     fn shard_from_key(key: &K) -> usize {
         let bytes = postcard::to_allocvec::<K>(key).expect("Serialization error");
@@ -97,11 +97,12 @@ where
         self.shards[index].push(key);
     }
 
-    pub(crate) fn remove(&self, key: K) {
+    pub(crate) fn remove(&mut self, key: K) {
         // Select the right shard
-        let _index = Self::shard_from_key(&key);
-        // Remove the key
-        //self.shards[index].remove_elem()
-        todo!()
+        let shard_idx = Self::shard_from_key(&key);
+        // Remove the key if it exists
+        if let Some(pos) = self.shards[shard_idx].iter().position(|k| *k == key) {
+            self.shards[shard_idx].remove(pos);
+        }
     }
 }
