@@ -100,9 +100,8 @@ where
     }
 
     pub(crate) fn remove(&mut self, key: u64) -> Option<V> {
-        if self.read(key).is_none() {
-            return None;
-        }
+        // Check if key is present
+        self.read(key)?;
         // Remove key from metadata
         self.metadata.remove(key);
         // Flag key as removed
