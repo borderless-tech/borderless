@@ -4,7 +4,6 @@ use borderless::{
     __private::storage_keys::{StorageKey, BASE_KEY_LOGS},
     http::{queries::Pagination, PaginatedElements},
     log::{LogLevel, LogLine},
-    ContractId,
 };
 use borderless_kv_store::*;
 use log::{debug, error, info, trace, warn};
@@ -28,17 +27,27 @@ struct BufferMeta {
     last_flush_count: u64,
 }
 
+struct Id([u8; 16]);
+impl AsRef<[u8; 16]> for Id {
+    fn as_ref(&self) -> &[u8; 16] {
+        &self.0
+    }
+}
+
 /// Logger instance that is created over a key-value storage for a given contract-id
 ///
 /// The logger is essentially a ring-buffer with a fixed size, that uses a specific key-space.
 pub struct Logger<'a, S: Db> {
     db: &'a S,
-    cid: ContractId,
+    id: Id,
 }
 
 impl<'a, S: Db> Logger<'a, S> {
-    pub fn new(db: &'a S, cid: ContractId) -> Self {
-        Self { db, cid }
+    pub fn new(db: &'a S, id: impl AsRef<[u8; 16]>) -> Self {
+        Self {
+            db,
+            id: Id(*id.as_ref()),
+        }
     }
 
     /// Flushes the given log lines into the ring-buffer.
@@ -70,7 +79,7 @@ impl<'a, S: Db> Logger<'a, S> {
         txn: &mut <S as Db>::RwTx<'_>,
     ) -> Result<()> {
         // Retrieve meta info, or initialize it if not present.
-        let meta_key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, SUB_KEY_META);
+        let meta_key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, SUB_KEY_META);
         let mut meta = match txn.read(db_ptr, &meta_key)? {
             Some(bytes) => postcard::from_bytes(bytes)?,
             None => {
@@ -98,7 +107,7 @@ impl<'a, S: Db> Logger<'a, S> {
         // Write each new log line using modulo arithmetic to wrap-around.
         for (i, line) in lines.iter().enumerate() {
             let index = (meta.end + i as u64) % MAX_LOG_BUFFER_SIZE;
-            let key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, index);
+            let key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, index);
             let bytes = postcard::to_allocvec(line)?;
             txn.write(db_ptr, &key, &bytes)?;
         }
@@ -126,7 +135,7 @@ impl<'a, S: Db> Logger<'a, S> {
     pub fn get_log_lines(&self, start_offset: u64, count: u64) -> Result<Vec<LogLine>> {
         let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
-        let meta_key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, SUB_KEY_META);
+        let meta_key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, SUB_KEY_META);
         // Read meta info; if missing, assume an empty buffer.
         let meta = match txn.read(&db_ptr, &meta_key)? {
             Some(bytes) => postcard::from_bytes(bytes)?,
@@ -147,7 +156,7 @@ impl<'a, S: Db> Logger<'a, S> {
         for i in range_start..range_end {
             // Compute the physical index using modulo arithmetic.
             let index = i % MAX_LOG_BUFFER_SIZE;
-            let key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, index);
+            let key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, index);
             if let Some(bytes) = txn.read(&db_ptr, &key)? {
                 let log_line: LogLine = postcard::from_bytes(bytes)?;
                 logs.push(log_line);
@@ -160,7 +169,7 @@ impl<'a, S: Db> Logger<'a, S> {
     pub fn get_last_log(&self) -> Result<Vec<LogLine>> {
         let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
-        let meta_key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, SUB_KEY_META);
+        let meta_key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, SUB_KEY_META);
 
         let meta: BufferMeta = match txn.read(&db_ptr, &meta_key)? {
             Some(bytes) => postcard::from_bytes(bytes)?,
@@ -175,7 +184,7 @@ impl<'a, S: Db> Logger<'a, S> {
         for i in flush_start..(flush_start + flush_count) {
             // Compute the physical index using modulo arithmetic.
             let index = i % MAX_LOG_BUFFER_SIZE;
-            let key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, index);
+            let key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, index);
             if let Some(bytes) = txn.read(&db_ptr, &key)? {
                 let log_line: LogLine = postcard::from_bytes(bytes)?;
                 logs.push(log_line);
@@ -192,7 +201,7 @@ impl<'a, S: Db> Logger<'a, S> {
     pub fn total_log_lines(&self) -> Result<u64> {
         let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
-        let meta_key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, SUB_KEY_META);
+        let meta_key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, SUB_KEY_META);
         // If meta is missing, we assume no logs have been flushed yet.
         let meta = match txn.read(&db_ptr, &meta_key)? {
             Some(bytes) => postcard::from_bytes(bytes)?,
@@ -207,7 +216,7 @@ impl<'a, S: Db> Logger<'a, S> {
         let per_page = pagination.per_page as u64;
         let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
-        let meta_key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, SUB_KEY_META);
+        let meta_key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, SUB_KEY_META);
 
         // Retrieve meta information. If not found, assume an empty buffer.
         let meta = match txn.read(&db_ptr, &meta_key)? {
@@ -247,7 +256,7 @@ impl<'a, S: Db> Logger<'a, S> {
         for i in page_start..page_end {
             // Map the logical index to the physical index in the ring-buffer.
             let physical_index = i % MAX_LOG_BUFFER_SIZE;
-            let key = StorageKey::system_key(&self.cid, BASE_KEY_LOGS, physical_index);
+            let key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, physical_index);
             if let Some(bytes) = txn.read(&db_ptr, &key)? {
                 let log_line: LogLine = postcard::from_bytes(bytes)?;
                 logs.push(log_line);

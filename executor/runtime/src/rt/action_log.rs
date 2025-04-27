@@ -181,7 +181,7 @@ impl<'a, S: Db> ActionLog<'a, S> {
     fn read_value<D: DeserializeOwned>(&self, base_key: u64, sub_key: u64) -> Result<Option<D>> {
         let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
-        let key = StorageKey::system_key(&self.cid, base_key, sub_key);
+        let key = StorageKey::system_key(self.cid, base_key, sub_key);
         let bytes = txn.read(&db_ptr, &key)?;
         let result = match bytes {
             Some(val) => Some(postcard::from_bytes(val)?),

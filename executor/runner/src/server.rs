@@ -1,4 +1,4 @@
-use std::{future::Future, num::NonZeroUsize};
+use std::future::Future;
 
 use anyhow::Result;
 use axum::{
@@ -11,7 +11,7 @@ use borderless::{events::CallAction, hash::Hash256, BorderlessId, ContractId};
 use borderless_kv_store::Db;
 use borderless_runtime::{
     http::{ActionWriter, ContractService, Service},
-    Runtime, SharedRuntime,
+    CodeStore, Runtime, SharedRuntime,
 };
 use log::info;
 
@@ -53,7 +53,7 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
 
         let mut rt = self.rt.lock();
         let result = match rt.process_transaction(&cid, action, &self.writer, tx_ctx) {
-            Ok(()) => Ok(hash),
+            Ok(_events) => Ok(hash),
             Err(e) => Err(e),
         };
 
@@ -64,7 +64,9 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
 
 pub async fn start_contract_server(db: impl Db + 'static) -> Result<()> {
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
-    let rt = Runtime::new(&db, NonZeroUsize::new(10).unwrap())?.into_shared();
+    let code_store = CodeStore::new(&db)?;
+    let rt = Runtime::new(&db, code_store)?.into_shared();
+    rt.lock().set_executor(writer)?;
     let action_writer = ActionApplier {
         rt: rt.clone(),
         writer,

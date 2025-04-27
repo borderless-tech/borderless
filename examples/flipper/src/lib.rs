@@ -4,14 +4,14 @@ pub mod flipper {
     use collections::lazyvec::LazyVec;
     use serde::{Deserialize, Serialize};
 
-    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize)]
     pub struct History {
         switch: bool,
         counter: u32,
     }
 
     // This is our state
-    #[derive(Debug, State)]
+    #[derive(State)]
     pub struct Flipper {
         switch: bool,
         counter: u32,

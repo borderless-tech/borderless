@@ -10,7 +10,7 @@ pub mod storage_traits;
 
 use borderless_abi as abi;
 
-use registers::REGISTER_ATOMIC_OP;
+use registers::*;
 use serde::{de::DeserializeOwned, Serialize};
 
 pub use postcard::from_bytes as from_postcard_bytes;
@@ -31,6 +31,67 @@ use crate::{contracts::Introduction, error};
 //
 // Maybe we can utilize this in a way, that makes our wasm code testable ?
 // Because without links to the abi, we cannot really test all this..
+//
+
+// --- PLAYGROUND FOR NEW ABI STUFF
+
+pub fn send_http_rq(
+    rq_head: impl AsRef<str>,
+    rq_body: impl AsRef<[u8]>,
+) -> Result<(String, Vec<u8>), String> {
+    write_string_to_register(REGISTER_REQUEST_HEAD, rq_head);
+    write_register(REGISTER_REQUEST_BODY, &rq_body);
+    let result = unsafe {
+        abi::send_http_rq(
+            REGISTER_REQUEST_HEAD,
+            REGISTER_REQUEST_BODY,
+            REGISTER_RESPONSE_HEAD,
+            REGISTER_RESPONSE_BODY,
+            REGISTER_ATOMIC_OP,
+        )
+    };
+
+    match result {
+        0 => {
+            let rs_head = required(
+                read_string_from_register(REGISTER_RESPONSE_HEAD),
+                "missing required response header",
+            );
+            let rs_body = required(
+                read_register(REGISTER_RESPONSE_BODY),
+                "missing required response body",
+            );
+            Ok((rs_head, rs_body))
+        }
+        1 => {
+            let error = required(
+                read_string_from_register(REGISTER_ATOMIC_OP),
+                "missing required error message for failed responses",
+            );
+            Err(error)
+        }
+        _ => {
+            error!("SYSTEM: invalid return code in 'send_http_rq' func");
+            abort()
+        }
+    }
+}
+
+/// Helper function that marks a register value as "required" - meaning that in case the value is not present,
+/// we abort the execution (this is an implementation error of the runtime, and not an error that the user should handle).
+///
+/// To avoid "being in the dark" when debugging this, we log an error message before aborting - just like we do with [`read_field`].
+fn required<T, S: AsRef<str>>(value: Option<T>, msg: S) -> T {
+    match value {
+        Some(v) => v,
+        None => {
+            error!("SYSTEM: {}", msg.as_ref());
+            abort();
+        }
+    }
+}
+
+// ---
 
 pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
     unsafe {
@@ -114,7 +175,10 @@ pub fn storage_has_key(base_key: u64, sub_key: u64) -> bool {
         match abi::storage_has_key(base_key, sub_key) {
             0 => false,
             1 => true,
-            _ => abort(),
+            _ => {
+                error!("SYSTEM: invalid return code in 'storage_has_key' func");
+                abort()
+            }
         }
     }
 }
@@ -134,7 +198,7 @@ where
     let value = match postcard::from_bytes::<Value>(&bytes) {
         Ok(value) => value,
         Err(e) => {
-            error!("read-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
+            error!("SYSTEM: read-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
             abort()
         }
     };
@@ -148,7 +212,7 @@ where
     let value = match postcard::to_allocvec::<Value>(value) {
         Ok(value) => value,
         Err(e) => {
-            error!("write-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
+            error!("SYSTEM: write-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
             abort()
         }
     };

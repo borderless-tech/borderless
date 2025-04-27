@@ -1,3 +1,4 @@
+pub mod agents;
 pub mod collections;
 pub mod contracts;
 pub mod lazy;
@@ -52,6 +53,7 @@ pub trait NamedSink {
 }
 
 pub mod events {
+    use anyhow::anyhow;
     use borderless_id_types::{AgentId, BorderlessId, ContractId};
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
@@ -82,6 +84,10 @@ pub mod events {
     }
 
     impl CallAction {
+        pub fn new(method: MethodOrId, params: Value) -> Self {
+            Self { method, params }
+        }
+
         pub fn by_method(method_name: impl AsRef<str>, params: Value) -> Self {
             Self {
                 method: MethodOrId::ByName {
@@ -163,11 +169,13 @@ pub mod events {
 
         /// Decodes the `Events` with [`postcard`]
         pub fn from_bytes(bytes: &[u8]) -> Result<Self, postcard::Error> {
+            // TODO: Postcard or json ?
             postcard::from_bytes(bytes)
         }
 
         /// Encodes the `Events` with [`postcard`]
         pub fn to_bytes(&self) -> Result<Vec<u8>, postcard::Error> {
+            // TODO: Postcard or json ?
             postcard::to_allocvec(self)
         }
     }
@@ -258,13 +266,12 @@ pub mod events {
                     crate::__private::abort();
                 }
             };
-            self.actions
-                .push((SinkType::Contract(contract_id.into()), action.into()))
+            self.actions.push((SinkType::Contract(contract_id), action))
         }
 
         pub fn add_event_for_process<IntoAction>(&mut self, agent_id: AgentId, action: IntoAction)
         where
-            IntoAction: Into<CallAction>,
+            IntoAction: TryInto<CallAction>,
             <IntoAction as TryInto<CallAction>>::Error: std::fmt::Display,
         {
             let action = match action.try_into() {
@@ -334,6 +341,9 @@ pub mod events {
                                     action,
                                 }),
                             }
+                        } else {
+                            // TODO: Should this be an error or should we just log the error here ?
+                            return Err(anyhow!("Failed to find sink '{alias}', which is referenced in the action output"));
                         }
                     }
                     SinkType::Agent(agent_id) => local.push(ProcessCall { agent_id, action }),
@@ -425,6 +435,73 @@ pub mod events {
                 Sink::Agent { .. } => true,
                 Sink::Contract { .. } => false,
             }
+        }
+    }
+}
+
+pub mod time {
+    use borderless_abi as abi;
+
+    use std::{
+        ops::{Add, AddAssign, Sub, SubAssign},
+        time::Duration,
+    };
+
+    // Very simple re-implementation of the SystemTime API
+    #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct SystemTime(i64);
+
+    pub fn timestamp() -> i64 {
+        unsafe { abi::timestamp() }
+    }
+
+    impl SystemTime {
+        pub fn now() -> Self {
+            Self(timestamp())
+        }
+
+        pub fn duration_since(&self, earlier: SystemTime) -> Result<Duration, Duration> {
+            let diff = self
+                .0
+                .checked_sub(earlier.0)
+                .ok_or_else(|| Duration::from_millis((earlier.0 - self.0) as u64))?;
+            Ok(Duration::from_millis(diff as u64))
+        }
+
+        pub fn elapsed(&self) -> Duration {
+            let diff = SystemTime::now().0 - self.0;
+            Duration::from_millis(diff as u64)
+        }
+    }
+
+    impl Add<Duration> for SystemTime {
+        type Output = SystemTime;
+
+        /// # Panics
+        ///
+        /// This function may panic if the resulting point in time cannot be represented by the underlying data structure
+        fn add(self, dur: Duration) -> SystemTime {
+            SystemTime(self.0 + dur.as_millis() as i64)
+        }
+    }
+
+    impl AddAssign<Duration> for SystemTime {
+        fn add_assign(&mut self, other: Duration) {
+            *self = *self + other;
+        }
+    }
+
+    impl Sub<Duration> for SystemTime {
+        type Output = SystemTime;
+
+        fn sub(self, dur: Duration) -> SystemTime {
+            SystemTime(self.0 - dur.as_millis() as i64)
+        }
+    }
+
+    impl SubAssign<Duration> for SystemTime {
+        fn sub_assign(&mut self, other: Duration) {
+            *self = *self - other;
         }
     }
 }
