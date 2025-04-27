@@ -22,10 +22,27 @@ use proxy::{Proxy, ProxyMut};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 
 pub struct HashMap<V> {
     cache: Cache<V>,
+}
+
+impl<V> Debug for HashMap<V>
+where
+    V: Serialize + DeserializeOwned + Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{{")?;
+        for key in self.keys() {
+            if let Some(keypair) = self.get(*key) {
+                writeln!(f, "    {}: {:?},", *key, *keypair)?;
+            }
+        }
+        writeln!(f, "}}")?;
+        Ok(())
+    }
 }
 
 impl<V> Sealed for HashMap<V> {}
