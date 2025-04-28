@@ -125,7 +125,7 @@ fn init_lazyvec() -> Result<()> {
 
 fn init_hashmap() -> Result<()> {
     let storage_key = make_user_key(HASHMAP_BASICS);
-    let mut hashmap: HashMap<u64> = HashMap::decode(storage_key);
+    let mut hashmap: HashMap<u64, u64> = HashMap::decode(storage_key);
     if hashmap.exists() {
         warn!("HashMap with given storage key already exists in DB. Wipe it out...");
         hashmap.clear();

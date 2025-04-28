@@ -13,7 +13,7 @@ const SHARDS: usize = 16;
 // Update the mask if SHARDS value is changed
 const MASK: u64 = 0xF;
 // Enforces determinism when hashing keys to index a shard
-const SEED: u64 = 12345;
+pub(crate) const SEED: u64 = 12345;
 
 pub(crate) struct Metadata<K> {
     shards: [LazyVec<K>; SHARDS],

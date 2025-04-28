@@ -6,12 +6,12 @@ use std::rc::Rc;
 
 use super::cache::KeyValue;
 
-pub struct Proxy<'a, V> {
-    pub(super) cell_ptr: Rc<RefCell<KeyValue<V>>>,
+pub struct Proxy<'a, K, V> {
+    pub(super) cell_ptr: Rc<RefCell<KeyValue<K, V>>>,
     pub(super) _back_ref: PhantomData<&'a V>, // <- prevents the tree from being borrowed mutably, while a proxy object exists
 }
 
-impl<'a, V> AsRef<V> for Proxy<'a, V> {
+impl<'a, K, V> AsRef<V> for Proxy<'a, K, V> {
     fn as_ref(&self) -> &V {
         // TODO - check if this causes UB !
         let p = unsafe { &mut *self.cell_ptr.as_ptr() };
@@ -19,7 +19,7 @@ impl<'a, V> AsRef<V> for Proxy<'a, V> {
     }
 }
 
-impl<'a, V> Deref for Proxy<'a, V> {
+impl<'a, K, V> Deref for Proxy<'a, K, V> {
     type Target = V;
 
     fn deref(&self) -> &Self::Target {
@@ -27,18 +27,18 @@ impl<'a, V> Deref for Proxy<'a, V> {
     }
 }
 
-impl<'a, V> Borrow<V> for Proxy<'a, V> {
+impl<'a, K, V> Borrow<V> for Proxy<'a, K, V> {
     fn borrow(&self) -> &V {
         self.as_ref()
     }
 }
 
-pub struct ProxyMut<'a, V> {
-    pub(super) cell_ptr: Rc<RefCell<KeyValue<V>>>,
+pub struct ProxyMut<'a, K, V> {
+    pub(super) cell_ptr: Rc<RefCell<KeyValue<K, V>>>,
     pub(super) _back_ref: PhantomData<&'a mut V>, // <- prevents the tree from being borrowed, while a proxy object exists
 }
 
-impl<'a, V> AsRef<V> for ProxyMut<'a, V> {
+impl<'a, K, V> AsRef<V> for ProxyMut<'a, K, V> {
     fn as_ref(&self) -> &V {
         // TODO - check if this causes UB !
         let p = unsafe { &mut *self.cell_ptr.as_ptr() };
@@ -46,7 +46,7 @@ impl<'a, V> AsRef<V> for ProxyMut<'a, V> {
     }
 }
 
-impl<'a, V> AsMut<V> for ProxyMut<'a, V> {
+impl<'a, K, V> AsMut<V> for ProxyMut<'a, K, V> {
     fn as_mut(&mut self) -> &mut V {
         // TODO - check if this causes UB !
         let p = unsafe { &mut *self.cell_ptr.as_ptr() };
@@ -54,7 +54,7 @@ impl<'a, V> AsMut<V> for ProxyMut<'a, V> {
     }
 }
 
-impl<'a, V> Deref for ProxyMut<'a, V> {
+impl<'a, K, V> Deref for ProxyMut<'a, K, V> {
     type Target = V;
 
     fn deref(&self) -> &Self::Target {
@@ -62,19 +62,19 @@ impl<'a, V> Deref for ProxyMut<'a, V> {
     }
 }
 
-impl<'a, V> DerefMut for ProxyMut<'a, V> {
+impl<'a, K, V> DerefMut for ProxyMut<'a, K, V> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.as_mut()
     }
 }
 
-impl<'a, V> Borrow<V> for ProxyMut<'a, V> {
+impl<'a, K, V> Borrow<V> for ProxyMut<'a, K, V> {
     fn borrow(&self) -> &V {
         self.as_ref()
     }
 }
 
-impl<'a, V> BorrowMut<V> for ProxyMut<'a, V> {
+impl<'a, K, V> BorrowMut<V> for ProxyMut<'a, K, V> {
     fn borrow_mut(&mut self) -> &mut V {
         self.as_mut()
     }
