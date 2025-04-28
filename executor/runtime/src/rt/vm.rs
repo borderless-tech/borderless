@@ -34,6 +34,9 @@ use crate::{
 // NOTE: I think this generalizes for both contracts and sw-agents;
 //
 // We have to fine-tune some things, but in general this works.
+//
+// TODO: Since it does not generalize completely; we could maybe define a trait for this ?
+// -> Or not. Let's first add the functionality for the SW-Agents (websocket etc.)
 
 pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
@@ -843,7 +846,6 @@ pub enum Commit {
     },
 }
 
-// TODO: Maybe add Agents here aswell ?
 /// Represents the different states of an active contract
 ///
 /// A contract can be executed with a mutable or immutable state.
@@ -877,7 +879,7 @@ impl ActiveItem {
 
     pub fn is_immutable(&self) -> bool {
         match self {
-            ActiveItem::Contract { mutable, .. } | ActiveItem::Agent { mutable, .. } => *mutable,
+            ActiveItem::Contract { mutable, .. } | ActiveItem::Agent { mutable, .. } => !*mutable,
             ActiveItem::None => false,
         }
     }
