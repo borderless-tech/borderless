@@ -7,7 +7,6 @@ use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -29,16 +28,6 @@ pub struct Cache<K, V> {
 pub struct KeyValue<K, V> {
     pub(crate) key: K,
     pub(crate) value: V, // Proxy needs access to the field
-}
-
-impl<K, V> Debug for KeyValue<K, V>
-where
-    K: Serialize + DeserializeOwned + Hash + Eq + Debug,
-    V: Serialize + DeserializeOwned + Debug,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{:?}: {:?},", self.key, self.value)
-    }
 }
 
 impl<K, V> KeyValue<K, V>

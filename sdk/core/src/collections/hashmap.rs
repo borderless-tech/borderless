@@ -37,11 +37,10 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{{")?;
         for key in self.keys() {
-            /*
-            if let Some(keypair) = self.get(*key) {
-                writeln!(f, "    {}: {:?},", *key, *keypair)?;
+            if let Some(keypair) = self.get((*key).clone()) {
+                let cell = keypair.cell_ptr.borrow();
+                writeln!(f, "    {:?}: {:?},", cell.key, cell.value)?;
             }
-             */
         }
         writeln!(f, "}}")?;
         Ok(())
