@@ -1,3 +1,4 @@
+use crate::product::Product;
 use borderless::__private::dev::rand;
 use borderless::collections::lazyvec::LazyVec;
 use borderless::ensure;
@@ -113,5 +114,29 @@ pub(crate) fn remove(lazy_vec: &mut LazyVec<u64>) -> Result<()> {
         );
     }
     ensure!(lazy_vec.is_empty(), "Error 3 in [remove]");
+    Ok(())
+}
+
+pub(crate) fn add_product(lazy_vec: &mut LazyVec<Product>) -> Result<()> {
+    info!("Number of products BEFORE: {}", lazy_vec.len());
+    if lazy_vec.len() > 100000 {
+        warn!("Too many products! Clearing...");
+        lazy_vec.clear();
+        return Ok(());
+    }
+
+    let start = lazy_vec.len();
+    let end = start + N;
+
+    for i in start..end {
+        let product = Product::generate_product();
+        lazy_vec.push(product.clone());
+
+        let from_vec = lazy_vec.get(i).unwrap();
+        if *from_vec != product {
+            return Err(new_error!("{} !== {}", *from_vec, product));
+        }
+    }
+    info!("Number of products AFTER: {}", lazy_vec.len());
     Ok(())
 }
