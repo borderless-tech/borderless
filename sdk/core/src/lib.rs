@@ -306,6 +306,16 @@ pub mod events {
         }
     }
 
+    impl<E> private::Sealed for Result<(), E> where E: std::error::Error + Send + Sync + 'static {}
+    impl<E> ActionOutEvent for Result<(), E>
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        fn convert_out_events(self) -> crate::Result<Events> {
+            Ok(Events::default())
+        }
+    }
+
     impl private::Sealed for ActionOutput {}
     impl ActionOutEvent for ActionOutput {
         fn convert_out_events(self) -> crate::Result<Events> {
