@@ -74,6 +74,16 @@ where
     }
 }
 
+impl<K, V> storage_traits::ToPayload for HashMap<K, V>
+where
+    K: Serialize + DeserializeOwned,
+    V: Serialize + DeserializeOwned,
+{
+    fn to_payload(&self, path: &str) -> anyhow::Result<Option<String>> {
+        Ok(None)
+    }
+}
+
 impl<K, V> HashMap<K, V>
 where
     K: Serialize + DeserializeOwned + Hash + Eq + Clone,
