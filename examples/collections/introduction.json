@@ -4,7 +4,8 @@
   "initial_state": {
     "counter": 0,
     "catalog": [],
-    "records": []
+    "records": [],
+    "points": []
   },
   "roles": [],
   "sinks": [],
