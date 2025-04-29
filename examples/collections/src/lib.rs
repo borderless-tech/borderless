@@ -42,6 +42,8 @@ pub mod collections {
             map::insert(&mut self.points)?;
             map::remove(&mut self.points)?;
             map::keys(&mut self.points)?;
+
+            info!("All basic tests run successfully!"); // TODO Why is it not displayed?
             Ok(())
         }
 
@@ -49,6 +51,8 @@ pub mod collections {
         fn run_complex(&mut self) -> Result<()> {
             // Run LazyVec complex
             vec::add_product(&mut self.catalog)?;
+
+            info!("All complex tests run successfully!");
             Ok(())
         }
     }
