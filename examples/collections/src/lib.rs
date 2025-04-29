@@ -1,3 +1,4 @@
+mod lazyvec_test;
 mod product;
 
 #[borderless::contract]
@@ -9,6 +10,8 @@ pub mod collections {
     use std::collections::HashMap as StdHashMap;
 
     use borderless::{Result, *};
+
+    use crate::lazyvec_test::*;
 
     const N: usize = 5000;
     const M: u64 = 5000;
@@ -25,143 +28,19 @@ pub mod collections {
     impl State {
         #[action]
         fn run_basics(&mut self) -> Result<()> {
-            self.basics_lazyvec()?;
-            self.basics_hashmap()?;
+            is_empty(&self.records)?;
+            clear(&mut self.records)?;
+            contains(&mut self.records)?;
+            push(&mut self.records)?;
+            pop(&mut self.records)?;
+            insert(&mut self.records)?;
+            remove(&mut self.records)?;
             Ok(())
         }
 
         #[action]
         fn run_complex(&mut self) -> Result<()> {
             self.add_product()?;
-            Ok(())
-        }
-
-        fn basics_lazyvec(&mut self) -> Result<()> {
-            self.is_empty()?;
-            self.clear()?;
-            self.contains()?;
-            self.push()?;
-            self.pop()?;
-            self.insert()?;
-            self.remove()?;
-            Ok(())
-        }
-
-        fn is_empty(&self) -> Result<()> {
-            ensure!(self.records.is_empty(), "Test [is_empty] failed");
-            Ok(())
-        }
-
-        fn clear(&mut self) -> Result<()> {
-            for i in 0..N {
-                self.records.push(i as u64);
-            }
-            self.records.clear();
-            ensure!(self.records.is_empty(), "Test [clear] failed");
-            Ok(())
-        }
-
-        fn contains(&mut self) -> Result<()> {
-            for _ in 0..N {
-                self.records.push(0);
-            }
-            let pos = 700;
-            let target: u64 = 30000;
-            ensure!(!self.records.contains(target), "Error 1 in [contains]");
-            self.records.insert(pos, target);
-            ensure!(self.records.contains(target), "Error 2 in [contains]");
-            self.records.remove(pos);
-            ensure!(!self.records.contains(target), "Error 3 in [contains]");
-            Ok(())
-        }
-
-        fn push(&mut self) -> Result<()> {
-            let mut oracle = Vec::with_capacity(N);
-            for _ in 0..N {
-                let random = rand(0, u64::MAX);
-                self.records.push(random);
-                oracle.push(random);
-            }
-            ensure!(self.records.len() == oracle.len(), "Error 1 in [push]");
-
-            // Check integrity
-            for i in 0..N {
-                let val = self
-                    .records
-                    .get(i)
-                    .context("Get({i}) must return some value")?;
-                ensure!(oracle.get(i) == Some(&val), "Error 2 in [push]")
-            }
-            Ok(())
-        }
-
-        fn pop(&mut self) -> Result<()> {
-            let mut oracle = Vec::with_capacity(N);
-            for _ in 0..N {
-                let random = rand(0, u64::MAX);
-                self.records.push(random);
-                oracle.push(random);
-            }
-            ensure!(self.records.len() == oracle.len(), "Error 1 in [pop]");
-
-            // Check integrity
-            for _ in 0..N {
-                ensure!(self.records.pop() == oracle.pop(), "Error 2 in [pop]")
-            }
-            ensure!(self.records.is_empty(), "Error 3 in [pop]");
-            ensure!(self.records.pop().is_none(), "Error 4 in [pop]");
-
-            Ok(())
-        }
-
-        fn insert(&mut self) -> Result<()> {
-            let mut oracle = Vec::with_capacity(N);
-            // Insert some values so the data structures are not empty before the test
-            for _ in 0..N {
-                let random = rand(0, u64::MAX);
-                self.records.push(random);
-                oracle.push(random);
-            }
-            ensure!(self.records.len() == oracle.len(), "Error 1 in [insert]");
-
-            // Insert new elements to random positions
-            for _i in 0..N {
-                let pos = rand(0, self.records.len() as u64) as usize;
-                let random = rand(0, u64::MAX);
-                self.records.insert(pos, random);
-                oracle.insert(pos, random)
-            }
-            ensure!(self.records.len() == oracle.len(), "Error 2 in [insert]");
-
-            // Check integrity
-            let end = self.records.len();
-            for i in 0..end {
-                let val = self
-                    .records
-                    .get(i)
-                    .context("Get({i}) must return some value")?;
-                ensure!(oracle.get(i) == Some(&val), "Error 3 in [insert]")
-            }
-            Ok(())
-        }
-
-        fn remove(&mut self) -> Result<()> {
-            let mut oracle = Vec::with_capacity(N);
-            for _ in 0..N {
-                let random = rand(0, u64::MAX);
-                self.records.push(random);
-                oracle.push(random);
-            }
-            ensure!(self.records.len() == oracle.len(), "Error 1 in [remove]");
-
-            for _ in 0..N {
-                let pos: usize = rand(0, self.records.len() as u64) as usize;
-                ensure!(
-                    self.records.remove(pos) == oracle.remove(pos),
-                    "Error 2 in [remove]"
-                );
-            }
-            ensure!(self.records.is_empty(), "Error 3 in [remove]");
             Ok(())
         }
 
