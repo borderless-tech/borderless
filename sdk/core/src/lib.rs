@@ -312,7 +312,8 @@ pub mod events {
         E: std::fmt::Display + Send + Sync + 'static,
     {
         fn convert_out_events(self) -> crate::Result<Events> {
-            Ok(Events::default())
+            self.map_err(|e| crate::Error::msg(e.to_string()))?
+                .convert_out_events()
         }
     }
 
