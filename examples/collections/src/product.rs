@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Product {
-    name: String,
+    pub(crate) name: String,
     price: u64,
     available: bool,
     related: Vec<Product>,

@@ -5,7 +5,8 @@
     "counter": 0,
     "catalog": [],
     "records": [],
-    "points": []
+    "points": [],
+    "listing": []
   },
   "roles": [],
   "sinks": [],

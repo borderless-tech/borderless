@@ -1,3 +1,4 @@
+use crate::product::Product;
 use borderless::__private::dev::rand;
 use borderless::collections::hashmap::HashMap;
 use borderless::ensure;
@@ -98,5 +99,30 @@ pub(crate) fn keys(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
     oracle_keys.sort_unstable();
     // Check integrity
     assert_eq!(hashmap_keys, oracle_keys);
+    Ok(())
+}
+
+pub(crate) fn add_product(hashmap: &mut HashMap<String, Product>) -> Result<()> {
+    info!("Number of products BEFORE: {}", hashmap.len());
+    if hashmap.len() > 100000 {
+        warn!("Too many products! Clearing...");
+        hashmap.clear();
+        return Ok(());
+    }
+
+    let start = hashmap.len() as u64;
+    let end = start + N;
+
+    for i in start..end {
+        let product = Product::generate_product();
+        let key = format!("{}{}", product.name, i);
+        hashmap.insert(key.clone(), product.clone());
+
+        let from_map = hashmap.get(key).unwrap();
+        if *from_map != product {
+            return Err(new_error!("{} !== {}", *from_map, product));
+        }
+    }
+    info!("Number of products AFTER: {}", hashmap.len());
     Ok(())
 }
