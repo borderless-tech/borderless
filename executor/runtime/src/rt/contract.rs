@@ -19,6 +19,7 @@ use super::{
     vm::{self, Commit, VmState},
     CodeStore,
 };
+use crate::logger::print_log_line;
 use crate::{
     error::{ErrorKind, Result},
     CONTRACT_SUB_DB,
@@ -275,7 +276,10 @@ impl<S: Db> Runtime<S> {
                 // NOTE: It is okay to abort the execution here with the finish_immutable_exec function,
                 // because we only get here, if the wasm execution has failed. Therefore there are no
                 // logs or actions to be commited to the database. We simply need this line to 'reset' the VmState for the next execution.
-                self.store.data_mut().finish_immutable_exec()?;
+                let logs = self.store.data_mut().finish_immutable_exec()?;
+                for l in logs {
+                    print_log_line(l);
+                }
             }
         }
 

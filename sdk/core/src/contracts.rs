@@ -446,21 +446,25 @@ impl Display for BlockCtx {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Symbols {
     /// Fields and addresses (storage-keys) of the contract-state
-    pub state: BTreeMap<String, String>,
+    pub state: BTreeMap<String, u64>,
     /// Method-names and method-ids of all actions
-    pub actions: BTreeMap<String, String>,
+    pub actions: BTreeMap<String, u32>,
 }
 
 impl Symbols {
+    // TODO: I liked the hex-encoding more, but it also made it harder to debug based on the generated symbols in the contract.
+    //
+    // We should either use hex everywhere or the raw number everywhere. For now I will use the numbers here, but I would maybe change
+    // the macro later to utilize the hex-encoding.
     pub fn from_symbols(state_syms: &[(&str, u64)], action_syms: &[(&str, u32)]) -> Self {
         // NOTE: We use a BTreeMap instead of a hash-map to get sorted keys.
         let mut state = BTreeMap::new();
         for (name, addr) in state_syms {
-            state.insert(name.to_string(), format!("0x{addr:08x}"));
+            state.insert(name.to_string(), *addr);
         }
         let mut actions = BTreeMap::new();
         for (name, addr) in action_syms {
-            actions.insert(name.to_string(), format!("0x{addr:04x}"));
+            actions.insert(name.to_string(), *addr);
         }
         Self { state, actions }
     }
