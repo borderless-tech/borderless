@@ -1,138 +1,182 @@
 mod hashmap_basics;
-mod lazyvec_basics;
-mod lazyvec_product;
+mod product;
 
-use borderless::{error, info, new_error, warn, Context, Result};
-use serde_json::json;
+#[borderless::contract]
+pub mod collections {
+    use crate::product::Product;
+    use borderless::__private::dev::rand;
+    use borderless::collections::lazyvec::LazyVec;
+    use borderless::{Result, *};
 
-#[no_mangle]
-pub extern "C" fn process_transaction() {
-    dev::tic();
-    let result = exec_run();
-    let elapsed = dev::toc();
-    match result {
-        Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
-        Err(e) => error!("execution failed: {e:?}"),
+    const N: usize = 5000;
+
+    // This is our state
+    #[derive(State)]
+    pub struct Collections {
+        counter: u32,
+        catalog: LazyVec<Product>,
+        records: LazyVec<u64>,
     }
-}
 
-#[no_mangle]
-pub extern "C" fn process_introduction() {
-    dev::tic();
-    let result = exec_introduction();
-    let elapsed = dev::toc();
-    match result {
-        Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
-        Err(e) => error!("execution failed: {e:?}"),
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn process_revocation() {
-    dev::tic();
-    let result = exec_run();
-    let elapsed = dev::toc();
-    match result {
-        Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
-        Err(e) => error!("execution failed: {e:?}"),
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn http_get_state() {}
-
-#[no_mangle]
-pub extern "C" fn http_post_action() {}
-
-use borderless::__private::storage_traits::Storeable;
-use borderless::__private::{dev, read_register, registers::*, storage_keys::make_user_key};
-use borderless::collections::hashmap::HashMap;
-use borderless::collections::lazyvec::LazyVec;
-use borderless::events::CallAction;
-
-fn exec_run() -> Result<()> {
-    // Read action
-    let input = read_register(REGISTER_INPUT).context("missing input register")?;
-    info!("read {} bytes", input.len());
-
-    let action = CallAction::from_bytes(&input)?;
-    let s = action.pretty_print()?;
-    info!("{s}");
-
-    let method = action
-        .method_name()
-        .context("missing required method-name")?;
-
-    match method {
-        "lazyvec_test" => {
-            lazyvec_basics()?;
-            lazyvec_product()?;
+    impl Collections {
+        #[action]
+        fn run_basics(&mut self) -> Result<()> {
+            self.is_empty()?;
+            self.clear()?;
+            self.contains()?;
+            self.push()?;
+            self.pop()?;
+            self.insert()?;
+            self.remove()?;
+            Ok(())
         }
-        "hashmap_test" => {
-            hashmap_basics()?;
+
+        #[action]
+        fn run_complex(&mut self) -> Result<()> {
+            self.add_product()?;
+            Ok(())
         }
-        other => return Err(new_error!("Unknown method: {other}")),
+
+        fn is_empty(&self) -> Result<()> {
+            ensure!(self.records.is_empty(), "Test [is_empty] failed");
+            Ok(())
+        }
+
+        fn clear(&mut self) -> Result<()> {
+            for i in 0..N {
+                self.records.push(i as u64);
+            }
+            self.records.clear();
+            ensure!(self.records.is_empty(), "Test [clear] failed");
+            Ok(())
+        }
+
+        fn contains(&mut self) -> Result<()> {
+            for _ in 0..N {
+                self.records.push(0);
+            }
+            let pos = 700;
+            let target: u64 = 30000;
+            ensure!(!self.records.contains(target), "Error 1 in [contains]");
+            self.records.insert(pos, target);
+            ensure!(self.records.contains(target), "Error 2 in [contains]");
+            self.records.remove(pos);
+            ensure!(!self.records.contains(target), "Error 3 in [contains]");
+            Ok(())
+        }
+
+        fn push(&mut self) -> Result<()> {
+            let mut oracle = Vec::with_capacity(N);
+            for _ in 0..N {
+                let random = rand(0, u64::MAX);
+                self.records.push(random);
+                oracle.push(random);
+            }
+            ensure!(self.records.len() == oracle.len(), "Error 1 in [push]");
+
+            // Check integrity
+            for i in 0..N {
+                let val = self
+                    .records
+                    .get(i)
+                    .context("Get({i}) must return some value")?;
+                ensure!(oracle.get(i) == Some(&val), "Error 2 in [push]")
+            }
+            Ok(())
+        }
+
+        fn pop(&mut self) -> Result<()> {
+            let mut oracle = Vec::with_capacity(N);
+            for _ in 0..N {
+                let random = rand(0, u64::MAX);
+                self.records.push(random);
+                oracle.push(random);
+            }
+            ensure!(self.records.len() == oracle.len(), "Error 1 in [pop]");
+
+            // Check integrity
+            for _ in 0..N {
+                ensure!(self.records.pop() == oracle.pop(), "Error 2 in [pop]")
+            }
+            ensure!(self.records.is_empty(), "Error 3 in [pop]");
+            ensure!(self.records.pop().is_none(), "Error 4 in [pop]");
+
+            Ok(())
+        }
+
+        fn insert(&mut self) -> Result<()> {
+            let mut oracle = Vec::with_capacity(N);
+            // Insert some values so the data structures are not empty before the test
+            for _ in 0..N {
+                let random = rand(0, u64::MAX);
+                self.records.push(random);
+                oracle.push(random);
+            }
+            ensure!(self.records.len() == oracle.len(), "Error 1 in [insert]");
+
+            // Insert new elements to random positions
+            for _i in 0..N {
+                let pos = rand(0, self.records.len() as u64) as usize;
+                let random = rand(0, u64::MAX);
+                self.records.insert(pos, random);
+                oracle.insert(pos, random)
+            }
+            ensure!(self.records.len() == oracle.len(), "Error 2 in [insert]");
+
+            // Check integrity
+            let end = self.records.len();
+            for i in 0..end {
+                let val = self
+                    .records
+                    .get(i)
+                    .context("Get({i}) must return some value")?;
+                ensure!(oracle.get(i) == Some(&val), "Error 3 in [insert]")
+            }
+            Ok(())
+        }
+
+        fn remove(&mut self) -> Result<()> {
+            let mut oracle = Vec::with_capacity(N);
+            for _ in 0..N {
+                let random = rand(0, u64::MAX);
+                self.records.push(random);
+                oracle.push(random);
+            }
+            ensure!(self.records.len() == oracle.len(), "Error 1 in [remove]");
+
+            for _ in 0..N {
+                let pos: usize = rand(0, self.records.len() as u64) as usize;
+                ensure!(
+                    self.records.remove(pos) == oracle.remove(pos),
+                    "Error 2 in [remove]"
+                );
+            }
+            ensure!(self.records.is_empty(), "Error 3 in [remove]");
+            Ok(())
+        }
+
+        pub fn add_product(&mut self) -> Result<()> {
+            info!("Number of products BEFORE: {}", self.catalog.len());
+            if self.catalog.len() > 100000 {
+                warn!("Too many products! Clearing...");
+                self.catalog.clear();
+                return Ok(());
+            }
+
+            let start = self.catalog.len();
+            let end = start + N;
+
+            for i in start..end {
+                let product = Product::generate_product();
+                self.catalog.push(product.clone());
+
+                let from_vec = self.catalog.get(i).unwrap();
+                if *from_vec != product {
+                    return Err(new_error!("{} !== {}", *from_vec, product));
+                }
+            }
+            info!("Number of products AFTER: {}", self.catalog.len());
+            Ok(())
+        }
     }
-    Ok(())
-}
-
-use crate::hashmap_basics::{hashmap_basics, HASHMAP_BASICS};
-use crate::lazyvec_basics::{lazyvec_basics, LAZYVEC_INTEGRITY};
-use crate::lazyvec_product::{lazyvec_product, LAZYVEC_PRODUCT};
-use borderless::contracts::Introduction;
-
-fn exec_introduction() -> Result<()> {
-    // Read action
-    let input = read_register(REGISTER_INPUT).context("missing input register")?;
-    info!("read {} bytes", input.len());
-
-    let introduction = Introduction::from_bytes(&input)?;
-    let s = introduction.pretty_print()?;
-    info!("{s}");
-
-    // Init collections
-    init_lazyvec()?;
-    init_hashmap()?;
-    Ok(())
-}
-
-fn init_lazyvec() -> Result<()> {
-    // Init LazyVec related to integrity tests
-    let storage_key = make_user_key(LAZYVEC_PRODUCT);
-    let mut lazy_vec: LazyVec<lazyvec_product::Product> = LazyVec::decode(storage_key);
-    if lazy_vec.exists() {
-        warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
-        lazy_vec.clear();
-    } else {
-        info!("Create new LazyVec for the product test");
-        lazy_vec = LazyVec::parse_value(json!([]), storage_key)?;
-    }
-    lazy_vec.commit(storage_key);
-
-    // Init LazyVec related to product tests
-    let storage_key = make_user_key(LAZYVEC_INTEGRITY);
-    let mut lazy_vec: LazyVec<u64> = LazyVec::decode(storage_key);
-    if lazy_vec.exists() {
-        warn!("LazyVec with given storage key already exists in DB. Wipe it out...");
-        lazy_vec.clear();
-    } else {
-        info!("Create new LazyVec for the integrity test");
-        lazy_vec = LazyVec::parse_value(json!([]), storage_key)?;
-    }
-    lazy_vec.commit(storage_key);
-    Ok(())
-}
-
-fn init_hashmap() -> Result<()> {
-    let storage_key = make_user_key(HASHMAP_BASICS);
-    let mut hashmap: HashMap<u64, u64> = HashMap::decode(storage_key);
-    if hashmap.exists() {
-        warn!("HashMap with given storage key already exists in DB. Wipe it out...");
-        hashmap.clear();
-    } else {
-        info!("Create new HashMap for the integrity test");
-        hashmap = HashMap::parse_value(json!([]), storage_key)?;
-    }
-    hashmap.commit(storage_key);
-    Ok(())
 }
