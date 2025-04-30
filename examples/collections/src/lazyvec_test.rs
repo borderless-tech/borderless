@@ -6,7 +6,8 @@ use borderless::{Result, *};
 
 const N: usize = 5000;
 
-pub(crate) fn is_empty(lazy_vec: &LazyVec<u64>) -> Result<()> {
+pub(crate) fn is_empty(lazy_vec: &mut LazyVec<u64>) -> Result<()> {
+    lazy_vec.clear();
     ensure!(lazy_vec.is_empty(), "Test [is_empty] failed");
     Ok(())
 }
@@ -21,6 +22,7 @@ pub(crate) fn clear(lazy_vec: &mut LazyVec<u64>) -> Result<()> {
 }
 
 pub(crate) fn contains(lazy_vec: &mut LazyVec<u64>) -> Result<()> {
+    lazy_vec.clear();
     for _ in 0..N {
         lazy_vec.push(0);
     }
@@ -35,6 +37,7 @@ pub(crate) fn contains(lazy_vec: &mut LazyVec<u64>) -> Result<()> {
 }
 
 pub(crate) fn push(lazy_vec: &mut LazyVec<u64>) -> Result<()> {
+    lazy_vec.clear();
     let mut oracle = Vec::with_capacity(N);
     for _ in 0..N {
         let random = rand(0, u64::MAX);
@@ -52,6 +55,7 @@ pub(crate) fn push(lazy_vec: &mut LazyVec<u64>) -> Result<()> {
 }
 
 pub(crate) fn pop(lazy_vec: &mut LazyVec<u64>) -> Result<()> {
+    lazy_vec.clear();
     let mut oracle = Vec::with_capacity(N);
     for _ in 0..N {
         let random = rand(0, u64::MAX);
@@ -70,6 +74,7 @@ pub(crate) fn pop(lazy_vec: &mut LazyVec<u64>) -> Result<()> {
 }
 
 pub(crate) fn insert(lazy_vec: &mut LazyVec<u64>) -> Result<()> {
+    lazy_vec.clear();
     let mut oracle = Vec::with_capacity(N);
     // Insert some values so the data structures are not empty before the test
     for _ in 0..N {
@@ -98,6 +103,7 @@ pub(crate) fn insert(lazy_vec: &mut LazyVec<u64>) -> Result<()> {
 }
 
 pub(crate) fn remove(lazy_vec: &mut LazyVec<u64>) -> Result<()> {
+    lazy_vec.clear();
     let mut oracle = Vec::with_capacity(N);
     for _ in 0..N {
         let random = rand(0, u64::MAX);
