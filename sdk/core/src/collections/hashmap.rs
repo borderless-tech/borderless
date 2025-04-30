@@ -1,3 +1,8 @@
+mod keyvalue;
+mod metadata;
+mod proxy;
+
+use super::hashmap::keyvalue::KeyValue;
 use super::hashmap::metadata::{Metadata, SEED};
 use super::hashmap::proxy::{Proxy, ProxyMut};
 use crate::__private::storage_traits::private::Sealed;
@@ -5,7 +10,7 @@ use crate::__private::{read_field, storage_has_key, storage_remove, storage_trai
 use crate::collections::lazyvec::proxy::Proxy as LazyVecProxy;
 use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
@@ -13,37 +18,6 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use xxhash_rust::xxh64::Xxh64;
-
-/*
- * IntMap<u64, Product>;
- *         |      |
- *      sub-key   +-> ( key<u64>, value<Product> )
- *
- * get(key: u64)                    -> read_field(BASE_KEY, key) -> (key, value) -> &(_, value)
- * insert(key: u64, value: Product) -> (key, value) -> write_field(BASE_KEY, key, value)
- *
- * Map<String, Product>
- *         |      |
- *      sub-key   +-> ( key<String>, value<Product> )
- */
-mod metadata;
-mod proxy;
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct KeyValue<K, V> {
-    pub(crate) key: K,
-    pub(crate) value: V, // Proxy needs access to the field
-}
-
-impl<K, V> KeyValue<K, V>
-where
-    K: Serialize + DeserializeOwned + Hash + Eq,
-    V: Serialize + DeserializeOwned,
-{
-    pub(crate) fn new(key: K, value: V) -> Self {
-        KeyValue { key, value }
-    }
-}
 
 enum CacheOp {
     Update,
