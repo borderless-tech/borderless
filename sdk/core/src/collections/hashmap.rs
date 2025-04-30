@@ -26,7 +26,7 @@ enum CacheOp {
 
 pub struct HashMap<K, V> {
     base_key: u64,
-    map: RefCell<IntMap<u64, Rc<RefCell<KeyValue<K, V>>>>>,
+    cache: RefCell<IntMap<u64, Rc<RefCell<KeyValue<K, V>>>>>,
     operations: IntMap<u64, CacheOp>,
     metadata: Metadata<K>,
 }
@@ -39,7 +39,7 @@ where
     V: Serialize + DeserializeOwned,
 {
     fn to_payload(&self, path: &str) -> anyhow::Result<Option<String>> {
-        Ok(None)
+        todo!()
     }
 }
 
@@ -92,7 +92,7 @@ where
     pub(crate) fn new(base_key: u64) -> Self {
         HashMap {
             base_key,
-            map: RefCell::default(),
+            cache: RefCell::default(),
             operations: IntMap::default(),
             metadata: Metadata::new(base_key),
         }
@@ -101,7 +101,7 @@ where
     pub(crate) fn open(base_key: u64) -> Self {
         HashMap {
             base_key,
-            map: RefCell::default(),
+            cache: RefCell::default(),
             operations: IntMap::default(),
             metadata: Metadata::open(base_key),
         }
@@ -138,8 +138,8 @@ where
         // Flag key as removed
         self.operations.insert(internal_key, CacheOp::Remove);
         // Remove value from cache
-        let mut map = self.map.borrow_mut();
-        map.remove(&internal_key).and_then(Self::extract_cell)
+        let mut cache = self.cache.borrow_mut();
+        cache.remove(&internal_key).and_then(Self::extract_cell)
     }
 
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
@@ -151,12 +151,12 @@ where
         // Flag key as modified
         self.operations.insert(internal_key, CacheOp::Update);
         // Insert new value
-        let mut map = self.map.borrow_mut();
+        let mut cache = self.cache.borrow_mut();
         // Create pair
         let pair = KeyValue::new(key.clone(), value);
         let cell = Rc::new(RefCell::new(pair));
-        // Insert new KeyPair into the hashmap
-        map.insert(internal_key, cell).and_then(Self::extract_cell)
+        // Insert new KeyPair into the cache
+        cache.insert(internal_key, cell).and_then(Self::extract_cell)
     }
 
     pub fn get(&self, key: K) -> Option<Proxy<'_, K, V>> {
@@ -191,7 +191,7 @@ where
 
     pub fn clear(&mut self) {
         // Clear the in-memory map, deallocating the used resources
-        self.map = RefCell::default();
+        self.cache = RefCell::default();
         self.operations = IntMap::default();
 
         // Flag all cells for deletion
@@ -208,8 +208,8 @@ where
         for (key, op) in &self.operations {
             match op {
                 CacheOp::Update => {
-                    let map = self.map.borrow();
-                    let cell = map.get(key).expect("Cache corruption");
+                    let cache = self.cache.borrow();
+                    let cell = cache.get(key).expect("Cache corruption");
                     write_field(self.base_key, *key, cell.as_ref());
                 }
                 CacheOp::Remove => storage_remove(self.base_key, *key),
@@ -226,7 +226,7 @@ where
             return None;
         }
         // Check first the in-memory copy
-        if let Some(cell) = self.map.borrow().get(&key) {
+        if let Some(cell) = self.cache.borrow().get(&key) {
             return Some(cell.clone());
         }
         // Fallback to DB
@@ -235,7 +235,7 @@ where
             Some(keypair) => {
                 let cell = Rc::new(RefCell::new(keypair));
                 // Add value to the in-memory mirror
-                self.map.borrow_mut().insert(key, cell.clone());
+                self.cache.borrow_mut().insert(key, cell.clone());
                 Some(cell)
             }
         }
