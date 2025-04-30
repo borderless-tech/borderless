@@ -54,11 +54,6 @@ where
         }
     }
 
-    pub(crate) fn len_at_shard(&self, index: usize) -> usize {
-        assert!(index < SHARDS);
-        self.shards[index].len()
-    }
-
     pub(crate) fn len(&self) -> usize {
         self.shards
             .iter()

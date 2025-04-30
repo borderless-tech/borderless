@@ -1,10 +1,9 @@
+use crate::collections::hashmap::KeyValue;
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
-
-use super::cache::KeyValue;
 
 pub struct Proxy<'a, K, V> {
     pub(super) cell_ptr: Rc<RefCell<KeyValue<K, V>>>,
