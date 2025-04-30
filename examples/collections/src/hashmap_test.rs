@@ -7,7 +7,8 @@ use std::collections::HashMap as StdHashMap;
 
 const N: u64 = 5000;
 
-pub(crate) fn is_empty(hashmap: &HashMap<u64, u64>) -> Result<()> {
+pub(crate) fn is_empty(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
     ensure!(hashmap.is_empty(), "Test [is_empty] failed");
     Ok(())
 }
@@ -24,6 +25,7 @@ pub(crate) fn clear(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
 }
 
 pub(crate) fn len(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
     for i in 0..N {
         // Check integrity
         ensure!(hashmap.len() == i as usize, "Error 1 in [len]");
@@ -34,6 +36,7 @@ pub(crate) fn len(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
 }
 
 pub(crate) fn contains_key(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
     for i in 0..N {
         let random = rand(0, u64::MAX);
         hashmap.insert(i, random);
@@ -49,6 +52,7 @@ pub(crate) fn contains_key(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
 }
 
 pub(crate) fn insert(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
     // A trusted reference used to know what the correct behavior should be
     let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
 
@@ -66,6 +70,7 @@ pub(crate) fn insert(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
 }
 
 pub(crate) fn remove(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
     // A trusted reference used to know what the correct behavior should be
     let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
 
@@ -84,6 +89,7 @@ pub(crate) fn remove(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
 }
 
 pub(crate) fn keys(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
     // A trusted reference used to know what the correct behavior should be
     let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
 
