@@ -64,11 +64,14 @@ macro_rules! impl_uuid {
                 out
             }
 
-            /// Compacts the ID into a `u64`
-            pub fn compact(&self) -> u64 {
+            /// Merges and Compacts two IDs into a `u64`
+            ///
+            /// Can be used to construct database keys.
+            pub fn merge_compact(&self, other: &Self) -> u64 {
+                let merged = self.merge(other);
                 let mut out = [0; 8];
                 for i in 0..8 {
-                    out[i] = self.as_bytes()[i] ^ self.as_bytes()[i + 8];
+                    out[i] = merged[i] ^ merged[i + 8];
                 }
                 u64::from_be_bytes(out)
             }
@@ -696,6 +699,15 @@ mod tests {
             let bid_1 = BorderlessId::generate();
             let bid_2 = BorderlessId::generate();
             assert_eq!(bid_1.merge(&bid_2), bid_2.merge(&bid_1));
+        }
+    }
+
+    #[test]
+    fn merge_compact_is_commutative() {
+        for _ in 0..1_000_000 {
+            let bid_1 = BorderlessId::generate();
+            let bid_2 = BorderlessId::generate();
+            assert_eq!(bid_1.merge_compact(&bid_2), bid_2.merge_compact(&bid_1));
         }
     }
 }
