@@ -15,6 +15,7 @@ pub use uuid::Uuid;
 macro_rules! impl_uuid {
     ($type:ident, $prefix_upper:literal, $prefix_lower:literal) => {
         impl $type {
+            /// Generates a new ID
             #[cfg(any(all(feature = "generate_ids", not(target_arch = "wasm32")), test))]
             pub fn generate() -> Self {
                 // Start by generating a v4 uuid
@@ -23,6 +24,7 @@ macro_rules! impl_uuid {
                 uuid.into()
             }
 
+            /// Converts the ID into a [`uuid::Uuid`]
             pub fn into_uuid(self) -> uuid::Uuid {
                 self.0
             }
@@ -35,25 +37,40 @@ macro_rules! impl_uuid {
                 $type(uuid::Uuid::new_v8(bytes))
             }
 
+            /// Returns the underlying bytes
             pub fn into_bytes(self) -> [u8; 16] {
                 self.0.into_bytes()
             }
 
+            /// Returns a reference to the underlying bytes
             pub fn as_bytes(&self) -> &[u8; 16] {
                 self.0.as_bytes()
             }
 
+            /// Parses an ID from a `&str`
             pub fn parse_str(s: &str) -> Result<Self, uuid::Error> {
                 let uuid = Uuid::parse_str(s)?;
                 Ok(uuid.into())
             }
 
+            /// Merges two IDs commutatively
+            ///
+            /// Can be used to construct database keys.
             pub fn merge(&self, other: &Self) -> [u8; 16] {
                 let mut out = [0; 16];
                 for i in 0..16 {
                     out[i] = self.as_bytes()[i] ^ other.as_bytes()[i];
                 }
                 out
+            }
+
+            /// Compacts the ID into a `u64`
+            pub fn compact(&self) -> u64 {
+                let mut out = [0; 8];
+                for i in 0..8 {
+                    out[i] = self.as_bytes()[i] ^ self.as_bytes()[i + 8];
+                }
+                u64::from_be_bytes(out)
             }
         }
 
@@ -670,6 +687,15 @@ mod tests {
             assert!(!super::did_prefix(&bid));
             assert!(!super::did_prefix(&cid));
             assert!(super::did_prefix(&did));
+        }
+    }
+
+    #[test]
+    fn merge_is_commutative() {
+        for _ in 0..1_000_000 {
+            let bid_1 = BorderlessId::generate();
+            let bid_2 = BorderlessId::generate();
+            assert_eq!(bid_1.merge(&bid_2), bid_2.merge(&bid_1));
         }
     }
 }
