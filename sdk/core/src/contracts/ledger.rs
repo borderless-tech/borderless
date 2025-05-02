@@ -1,12 +1,19 @@
 #![allow(unused)]
 use std::collections::HashMap;
 
+use anyhow::anyhow;
 use borderless_id_types::BorderlessId;
+use serde::{Deserialize, Serialize};
+
+use crate::__private::{read_field, storage_keys::BASE_KEY_MASK_LEDGER, write_field};
+
+use super::TxCtx;
 
 // TODO: I don't like this design.
 //
 // Couldn't we do something that let's us do EUR( 32_50 ) ?
 // Or use parse trait ... "32,50€".parse()?
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Currency {
     /// Albanian Lek
     ALL = 8,
@@ -119,14 +126,95 @@ pub trait Account: Copy {
         }
     }
 }
+
 pub struct TransferBuilder<A: Account> {
     party_a: A,
     party_b: A,
 }
 
-impl<A: Account> TransferBuilder<A> {
+impl TransferBuilder<BorderlessId> {
     pub fn amount(self, amount: u64, currency: Currency) {
         todo!("create transfer between the two parties")
+    }
+}
+
+const SUB_KEY_STATE = 0;
+const SUB_KEY_LEN = u64::MAX;
+
+pub struct Ledger {
+    party_a: BorderlessId,
+    party_b: BorderlessId,
+    base_key: u64,
+}
+
+impl Ledger {
+    pub fn open(party_a: BorderlessId, party_b: BorderlessId) -> Self {
+        let base_key = party_a.merge_compact(party_b) & BASE_KEY_MASK_LEDGER;
+        Ledger {
+            party_a,
+            party_b,
+            base_key,
+        }
+    }
+
+    pub fn state(&self) -> LedgerState {
+        if let Some(state) = read_field(self.base_key, SUB_KEY_STATE) {
+            state
+        } else {
+            // Return default value
+            LedgerState {
+                party_a: self.party_a,
+                party_b: self.party_b,
+                currency: Currency::EUR,
+                balance: 0,
+            }
+        }
+    }
+
+    pub fn len(&self) -> u64 {
+        read_field(self.base_key, SUB_KEY_LEN).unwrap_or_default()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    // TODO: This could be its own error type tbh
+    pub fn push(&mut self, state: LedgerState) -> crate::Result<()> {
+        let prev = self.state();
+        if prev.currency != state.currency {
+            return Err(anyhow!("ledger currency mismatch"));
+        }
+
+        if prev.party_a != state.party_a || prev.party_a != state.party_b || prev.party_b != state.party_b {
+            return Err(anyhow!("ledger party mismatch"));
+        }
+
+        // Record the new state
+        let new_state = LedgerState {
+            party_a: state.party_a,
+            party_b: state.party_b,
+            currency: state.currency,
+            balance: prev + state.balance,
+        };
+        write_field(self.base_key, SUB_KEY_STATE, &new_state);
+
+        // Record the transfer plus the metadata
+        let transfer = LedgerStateMeta {
+            transfer: state,
+            tx_ctx: super::env::tx_ctx(),
+            block_ts: super::env::block_timestamp(),
+        };
+        let sub_key = self.len() + 1;
+        write_field(self.base_key, sub_key, &transfer);
+
+        // Adjust len ( the sub_key for the record is the new len )
+        write_field(self.base_key, SUB_KEY_LEN, sub_key);
+        Ok(())
+    }
+
+    pub fn get_transfer(&self, idx: usize) -> Option<LedgerStateMeta> {
+        todo!()
     }
 }
 
@@ -139,7 +227,8 @@ impl<A: Account> TransferBuilder<A> {
 //
 // -> Let's create a ledger structure as described above
 /// Simple ledger between two parties
-pub struct Ledger {
+#[derive(Serialize, Deserialize)]
+pub struct LedgerState {
     /// First party of the ledger
     party_a: BorderlessId,
 
@@ -157,11 +246,9 @@ pub struct Ledger {
     balance: i64,
 }
 
-/// List of ledgers in a smart-contract
-///
-/// There can be one ledger for each pair of participants in the contract.
-pub struct Ledgers {
-    // NOTE: The idea is to "merge" the two ids into one thing, so the ledger can be accessed
-    // by the tuple of borderless-ids (the merge operation is commutative)
-    inner: HashMap<[u8; 16], Ledger>,
+#[derive(Serialize, Deserialize)]
+pub struct LedgerStateMeta {
+    transfer: LedgerState,
+    tx_ctx: TxCtx,
+    block_ts: u64,
 }
