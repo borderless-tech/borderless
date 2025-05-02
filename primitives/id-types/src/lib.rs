@@ -47,6 +47,14 @@ macro_rules! impl_uuid {
                 let uuid = Uuid::parse_str(s)?;
                 Ok(uuid.into())
             }
+
+            pub fn merge(&self, other: &Self) -> [u8; 16] {
+                let mut out = [0; 16];
+                for i in 0..16 {
+                    out[i] = self.as_bytes()[i] ^ other.as_bytes()[i];
+                }
+                out
+            }
         }
 
         impl From<u128> for $type {
