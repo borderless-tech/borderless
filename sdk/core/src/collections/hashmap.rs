@@ -249,6 +249,10 @@ where
         HashMapIt::new(self)
     }
 
+    pub fn values(&self) -> HashMapIt<K, V> {
+        HashMapIt::new(self)
+    }
+
     fn commit(self) {
         // Sync the in-memory mirror with the DB state
         for (key, op) in &self.operations {

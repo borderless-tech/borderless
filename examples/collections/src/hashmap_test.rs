@@ -108,6 +108,22 @@ pub(crate) fn keys(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn values(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
+    // A trusted reference used to know what the correct behavior should be
+    let mut oracle = vec![];
+
+    for i in 0..20 {
+        let random = rand(0, u64::MAX);
+        hashmap.insert(i, random);
+        oracle.push(random);
+    }
+    for v in hashmap.values() {
+        assert!(oracle.contains(&*v));
+    }
+    Ok(())
+}
+
 pub(crate) fn add_product(hashmap: &mut HashMap<String, Product>) -> Result<()> {
     info!("Number of products BEFORE: {}", hashmap.len());
     if hashmap.len() > 100000 {

@@ -47,6 +47,7 @@ pub mod collections {
             map::insert(&mut self.points)?;
             map::remove(&mut self.points)?;
             map::keys(&mut self.points)?;
+            map::values(&mut self.points)?;
 
             info!("--------------------------------- ");
             info!("All basic tests run successfully!");
