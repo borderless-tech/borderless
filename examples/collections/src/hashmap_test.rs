@@ -111,9 +111,9 @@ pub(crate) fn keys(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
 pub(crate) fn values(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
     hashmap.clear();
     // A trusted reference used to know what the correct behavior should be
-    let mut oracle = vec![];
+    let mut oracle = Vec::with_capacity(N as usize);
 
-    for i in 0..20 {
+    for i in 0..N {
         let random = rand(0, u64::MAX);
         hashmap.insert(i, random);
         oracle.push(random);
