@@ -42,7 +42,7 @@ pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
     db: S,
     db_ptr: S::Handle,
-    db_acid_txn_buffer: Option<Vec<StorageOp>>,
+
     last_timer: Option<Instant>,
 
     /// Current buffer of log output for the given contract
@@ -58,7 +58,6 @@ impl<S: Db> VmState<S> {
             registers: Default::default(),
             db,
             db_ptr,
-            db_acid_txn_buffer: None,
             last_timer: None,
             log_buffer: Vec::new(),
             active_item: ActiveItem::None,
@@ -79,9 +78,11 @@ impl<S: Db> VmState<S> {
         if Controller::new(&self.db).contract_revoked(&cid)? {
             return Err(ErrorKind::RevokedContract { cid }.into());
         }
-        self.active_item = ActiveItem::Contract { cid, mutable: true };
+        self.active_item = ActiveItem::Contract {
+            cid,
+            db_txns: Some(Vec::new()),
+        };
         self.log_buffer.clear();
-        self.db_acid_txn_buffer = Some(Vec::new());
         Ok(())
     }
 
@@ -107,12 +108,14 @@ impl<S: Db> VmState<S> {
 
     // Inner wrapper, so we can return the result, but also perform the cleanup afterwards in case of an error
     fn finish_mut_exec_inner(&mut self, commit: Commit) -> Result<()> {
-        let cid = match self.active_item {
-            ActiveItem::Contract { cid, mutable } => {
-                if !mutable {
+        let active = std::mem::replace(&mut self.active_item, ActiveItem::None);
+        let (cid, buf) = match active {
+            ActiveItem::Contract { cid, db_txns } => {
+                if let Some(db_txns) = db_txns {
+                    (cid, db_txns)
+                } else {
                     return Err(Error::msg("Contract execution was marked as immutable"));
                 }
-                cid
             }
             ActiveItem::Agent { .. } => {
                 return Err(Error::msg(
@@ -126,7 +129,6 @@ impl<S: Db> VmState<S> {
         let now = Instant::now();
 
         // Commit storage buffer
-        let buf = std::mem::take(&mut self.db_acid_txn_buffer).unwrap_or_default();
         let mut txn = self.db.begin_rw_txn()?;
         for op in buf.into_iter() {
             // Check, that all keys are user-keys - ignore system-keys.
@@ -195,10 +197,9 @@ impl<S: Db> VmState<S> {
         }
         self.active_item = ActiveItem::Contract {
             cid,
-            mutable: false,
+            db_txns: Some(Vec::new()),
         };
         self.log_buffer.clear();
-        self.db_acid_txn_buffer = None;
         Ok(())
     }
 
@@ -220,7 +221,6 @@ impl<S: Db> VmState<S> {
             return Err(Error::msg("Cannot clear non existing contract or sw-agent"));
         }
         self.active_item = ActiveItem::None;
-        self.db_acid_txn_buffer = None;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
@@ -231,24 +231,25 @@ impl<S: Db> VmState<S> {
                 "Cannot start a new execution while something else is still active",
             ));
         }
-        self.active_item = ActiveItem::Agent { aid, mutable };
+        let db_txns = if mutable { Some(Vec::new()) } else { None };
+        self.active_item = ActiveItem::Agent { aid, db_txns };
         self.log_buffer.clear();
-        self.db_acid_txn_buffer = None;
         Ok(())
     }
 
     pub fn finish_agent_exec(&mut self, commit_state: bool) -> Result<Vec<LogLine>> {
-        let aid = match self.active_item {
+        let active = std::mem::replace(&mut self.active_item, ActiveItem::None);
+        let (aid, buf) = match active {
             ActiveItem::Contract { .. } => {
                 return Err(Error::msg(
                     "cannot finish an agent while a contract is still running",
                 ))
             }
-            ActiveItem::Agent { mutable, aid } => {
-                if !mutable && commit_state {
+            ActiveItem::Agent { aid, db_txns } => {
+                if db_txns.is_none() && commit_state {
                     return Err(Error::msg("Agent execution was marked as immutable"));
                 }
-                aid
+                (aid, db_txns)
             }
             ActiveItem::None => {
                 return Err(Error::msg("No active sw-agent"));
@@ -256,14 +257,25 @@ impl<S: Db> VmState<S> {
         };
         if commit_state {
             let mut txn = self.db.begin_rw_txn()?;
+            // Apply storage operations
+            for op in buf.unwrap().into_iter() {
+                // Check, that all keys are user-keys - ignore system-keys.
+                if !op.is_userspace() {
+                    warn!("Agent tried to write or remove a value with a storage-key that is not in user-space");
+                    continue;
+                }
+                match op {
+                    StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
+                    StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
+                }
+            }
+
             // Flush log
             let logger = Logger::new(&self.db, aid);
             logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
             txn.commit()?;
         }
 
-        self.active_item = ActiveItem::None;
-        self.db_acid_txn_buffer = None;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
@@ -478,7 +490,7 @@ pub fn storage_write(
 
     // Check, if there is an acid txn, and if so, commit the changes to that:
     let caller_data = &mut caller.data_mut();
-    if let Some(buf) = &mut caller_data.db_acid_txn_buffer {
+    if let Some(buf) = caller_data.active_item.storage_ops() {
         buf.push(StorageOp::write(key, value));
     }
     Ok(())
@@ -527,8 +539,7 @@ pub fn storage_remove(
     let caller_data = &mut caller.data_mut();
 
     // Write changes to storage-buffer
-    if let Some(buf) = &mut caller_data.db_acid_txn_buffer {
-        // txn.delete(&caller_data.db_ptr, &key)?;
+    if let Some(buf) = caller_data.active_item.storage_ops() {
         buf.push(StorageOp::remove(key));
     }
     Ok(())
@@ -855,8 +866,16 @@ pub enum Commit {
 /// An immutable contract execution is e.g. required for handling http-requests or performing dry-runs.
 /// In such a case, calls to `storage_write` will result in an error.
 enum ActiveItem {
-    Contract { cid: ContractId, mutable: bool },
-    Agent { aid: AgentId, mutable: bool },
+    Contract {
+        cid: ContractId,
+        // 'None', if immutable
+        db_txns: Option<Vec<StorageOp>>,
+    },
+    Agent {
+        aid: AgentId,
+        // 'None', if immutable
+        db_txns: Option<Vec<StorageOp>>,
+    },
     None,
 }
 
@@ -879,8 +898,19 @@ impl ActiveItem {
 
     pub fn is_immutable(&self) -> bool {
         match self {
-            ActiveItem::Contract { mutable, .. } | ActiveItem::Agent { mutable, .. } => !*mutable,
+            ActiveItem::Contract { db_txns, .. } | ActiveItem::Agent { db_txns, .. } => {
+                db_txns.is_none()
+            }
             ActiveItem::None => false,
+        }
+    }
+
+    pub fn storage_ops(&mut self) -> Option<&mut Vec<StorageOp>> {
+        match self {
+            ActiveItem::Contract { db_txns, .. } | ActiveItem::Agent { db_txns, .. } => {
+                db_txns.as_mut()
+            }
+            ActiveItem::None => None,
         }
     }
 }
