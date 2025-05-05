@@ -295,6 +295,13 @@ where
         self.operations.insert(key, CacheOp::Update);
     }
 
+    fn at(&self, idx: usize) -> Option<Proxy<'_, K, V>> {
+        if let Some(key) = self.metadata.at(idx) {
+            return self.get((*key).clone());
+        }
+        None
+    }
+
     fn extract_cell(rc: Rc<RefCell<KeyValue<K, V>>>) -> Option<V> {
         let old_cell = Rc::try_unwrap(rc).ok().expect("Rc strong counter > 1");
         Some(old_cell.into_inner().value)
@@ -304,12 +311,5 @@ where
         let mut h = Xxh64::new(SEED);
         key.hash(&mut h);
         h.digest()
-    }
-
-    fn at(&self, idx: usize) -> Option<Proxy<'_, K, V>> {
-        if let Some(key) = self.metadata.at(idx) {
-            return self.get((*key).clone());
-        }
-        None
     }
 }
