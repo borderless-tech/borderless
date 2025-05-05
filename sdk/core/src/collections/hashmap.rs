@@ -231,7 +231,10 @@ where
     pub fn clear(&mut self) {
         // Clear the in-memory map, deallocating the used resources
         self.cache = RefCell::default();
-        self.operations = IntMap::default();
+        // Keep only the remove operations
+        // TODO this can be inefficient, as we do not check whether the removed keys are in the DB
+        self.operations
+            .retain(|_, op| matches!(op, CacheOp::Remove));
 
         // Flag all cells for deletion
         for key in self.metadata.keys() {
