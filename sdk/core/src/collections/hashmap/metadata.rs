@@ -7,8 +7,6 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use xxhash_rust::xxh64::Xxh64;
 
-type Key = u64;
-
 const SHARDS: usize = 16;
 // Update the mask if SHARDS value is changed
 const MASK: u64 = 0xF;
@@ -24,7 +22,7 @@ impl<K> Metadata<K>
 where
     K: Serialize + DeserializeOwned,
 {
-    pub(crate) fn new(base_key: Key) -> Self {
+    pub(crate) fn new(base_key: u64) -> Self {
         // Init each shard
         let shards: [LazyVec<K>; SHARDS] = std::array::from_fn(|i| {
             // Shards are located in base_key + [1, 16]
@@ -39,7 +37,7 @@ where
         }
     }
 
-    pub(crate) fn open(base_key: Key) -> Self {
+    pub(crate) fn open(base_key: u64) -> Self {
         // Load each shard
         let shards: [LazyVec<K>; SHARDS] = std::array::from_fn(|i| {
             // Shards are located in base_key + [1, 16]
