@@ -150,8 +150,8 @@ pub struct TransferBuilder<A: Account> {
 }
 
 impl TransferBuilder<BorderlessId> {
-    pub fn amount(self, amount: u64, currency: Currency) {
-        todo!("create transfer between the two parties")
+    pub fn amount(self, amount: i64, currency: Currency) -> crate::Result<()> {
+        Ledger::open(self.party_a, self.party_b).push(amount, currency)
     }
 }
 
@@ -197,31 +197,29 @@ impl Ledger {
     }
 
     // TODO: This could be its own error type tbh
-    pub fn push(&mut self, state: LedgerState) -> crate::Result<()> {
+    pub fn push(&mut self, amount: i64, currency: Currency) -> crate::Result<()> {
         let prev = self.state();
-        if prev.currency != state.currency {
+        if prev.currency != currency {
             return Err(anyhow!("ledger currency mismatch"));
-        }
-
-        if prev.party_a != state.party_a
-            || prev.party_a != state.party_b
-            || prev.party_b != state.party_b
-        {
-            return Err(anyhow!("ledger party mismatch"));
         }
 
         // Record the new state
         let new_state = LedgerState {
-            party_a: state.party_a,
-            party_b: state.party_b,
-            currency: state.currency,
-            balance: prev.balance + state.balance,
+            party_a: prev.party_a,
+            party_b: prev.party_b,
+            currency,
+            balance: prev.balance + amount,
         };
-        // write_field(self.base_key, SUB_KEY_STATE, &new_state);
+        write_field(self.base_key, SUB_KEY_STATE, &new_state);
 
         // Record the transfer plus the metadata
         let transfer = LedgerStateMeta {
-            transfer: state,
+            transfer: LedgerState {
+                party_a: prev.party_a,
+                party_b: prev.party_b,
+                currency,
+                balance: amount,
+            },
             tx_ctx: super::env::tx_ctx(),
             block_ts: super::env::block_timestamp(),
         };
