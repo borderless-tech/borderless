@@ -104,4 +104,16 @@ where
             self.shards[shard_idx].remove(pos);
         }
     }
+
+    pub(crate) fn at(&self, idx: usize) -> Option<LazyVecProxy<'_, K>> {
+        let mut pos = idx;
+        for shard in &self.shards {
+            if pos < shard.len() {
+                return shard.get(pos);
+            }
+            pos = pos.saturating_sub(shard.len());
+        }
+        // Index was out of bounds
+        None
+    }
 }

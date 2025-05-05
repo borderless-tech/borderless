@@ -13,7 +13,7 @@ pub struct Proxy<'a, K, V> {
 impl<'a, K, V> AsRef<V> for Proxy<'a, K, V> {
     fn as_ref(&self) -> &V {
         // TODO - check if this causes UB !
-        let p = unsafe { &mut *self.cell_ptr.as_ptr() };
+        let p = unsafe { &*self.cell_ptr.as_ptr() };
         &p.value
     }
 }
@@ -29,6 +29,18 @@ impl<'a, K, V> Deref for Proxy<'a, K, V> {
 impl<'a, K, V> Borrow<V> for Proxy<'a, K, V> {
     fn borrow(&self) -> &V {
         self.as_ref()
+    }
+}
+
+impl<'a, K, V> Proxy<'a, K, V> {
+    pub fn key(&self) -> &K {
+        let kv = unsafe { &*self.cell_ptr.as_ptr() };
+        &kv.key
+    }
+
+    pub fn value(&self) -> &V {
+        let kv = unsafe { &*self.cell_ptr.as_ptr() };
+        &kv.value
     }
 }
 

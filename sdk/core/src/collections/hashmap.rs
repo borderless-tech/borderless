@@ -1,3 +1,4 @@
+mod iterator;
 mod keyvalue;
 mod metadata;
 mod proxy;
@@ -7,6 +8,7 @@ use super::hashmap::metadata::{Metadata, SEED};
 use super::hashmap::proxy::{Proxy, ProxyMut};
 use crate::__private::storage_traits::private::Sealed;
 use crate::__private::{read_field, storage_has_key, storage_remove, storage_traits, write_field};
+use crate::collections::hashmap::iterator::HashMapIt;
 use crate::collections::lazyvec::proxy::Proxy as LazyVecProxy;
 use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
@@ -35,11 +37,46 @@ impl<K, V> Sealed for HashMap<K, V> {}
 
 impl<K, V> storage_traits::ToPayload for HashMap<K, V>
 where
-    K: Serialize + DeserializeOwned,
+    K: Serialize + DeserializeOwned + Hash + Eq + Clone,
     V: Serialize + DeserializeOwned,
 {
     fn to_payload(&self, path: &str) -> anyhow::Result<Option<String>> {
-        todo!()
+        // As this is a map, there is no further nesting
+        if !path.is_empty() {
+            return Ok(None);
+        }
+        // We build the json output manually to save performance
+        let n_items = self.len();
+        if n_items == 0 {
+            return Ok(Some("{}".to_string()));
+        }
+        let mut items = self.iter();
+        let first = items.next().unwrap(); // We checked empty
+
+        // To pre-allocate the output string, we encode one object and use this as a reference
+        let encoded_key = serde_json::to_string(first.key())?;
+        let encoded_value = serde_json::to_string(first.value())?;
+        let encoded = format!("{}: {}", encoded_key, encoded_value);
+
+        // TODO Preallocating like this is not valid as keys and values can differ in size
+        // for N items: N * ITEM_LENGTH + (N-1) (commas) + 2 ('{}'); add some padding just in case
+        let mut buf = String::with_capacity(encoded.len() * n_items + n_items + 10);
+        buf.push('{');
+        buf.push_str(&encoded);
+        buf.push(',');
+        for item in items {
+            let encoded_key = serde_json::to_string(item.key())?;
+            let encoded_value = serde_json::to_string(item.value())?;
+            let encoded = format!("{}: {}", encoded_key, encoded_value);
+            buf.push_str(&encoded);
+            buf.push(',');
+        }
+        // Remove trailing ','
+        if n_items > 1 {
+            buf.pop();
+        }
+        buf.push('}');
+        Ok(Some(buf))
     }
 }
 
@@ -156,7 +193,9 @@ where
         let pair = KeyValue::new(key.clone(), value);
         let cell = Rc::new(RefCell::new(pair));
         // Insert new KeyPair into the cache
-        cache.insert(internal_key, cell).and_then(Self::extract_cell)
+        cache
+            .insert(internal_key, cell)
+            .and_then(Self::extract_cell)
     }
 
     pub fn get(&self, key: K) -> Option<Proxy<'_, K, V>> {
@@ -201,6 +240,10 @@ where
         }
         // Clear metadata
         self.metadata.clear();
+    }
+
+    pub fn iter(&self) -> HashMapIt<K, V> {
+        HashMapIt::new(self)
     }
 
     fn commit(self) {
@@ -254,5 +297,12 @@ where
         let mut h = Xxh64::new(SEED);
         key.hash(&mut h);
         h.digest()
+    }
+
+    fn at(&self, idx: usize) -> Option<Proxy<'_, K, V>> {
+        if let Some(key) = self.metadata.at(idx) {
+            return self.get((*key).clone());
+        }
+        None
     }
 }
