@@ -9,7 +9,6 @@ use super::hashmap::proxy::{Key, Proxy, ProxyMut};
 use crate::__private::storage_traits::private::Sealed;
 use crate::__private::{read_field, storage_has_key, storage_remove, storage_traits, write_field};
 use crate::collections::hashmap::iterator::{HashMapIt, Keys};
-use crate::collections::lazyvec::proxy::Proxy as LazyVecProxy;
 use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -293,13 +292,6 @@ where
 
     fn flag_write(&mut self, key: u64) {
         self.operations.insert(key, CacheOp::Update);
-    }
-
-    fn at(&self, idx: usize) -> Option<Proxy<'_, K, V>> {
-        if let Some(key) = self.metadata.at(idx) {
-            return self.get((*key).clone());
-        }
-        None
     }
 
     fn get_key(&self, internal_key: u64) -> Option<Key<'_, K, V>> {
