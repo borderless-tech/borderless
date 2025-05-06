@@ -17,11 +17,11 @@ use borderless::{
 };
 use wasmtime::{Caller, Extern, Memory};
 
+use borderless::__private::registers::REGISTER_CURSOR;
+use borderless_kv_store::*;
 use log::{debug, warn};
 use nohash::IntMap;
 use rand::Rng;
-
-use borderless_kv_store::*;
 
 use crate::{
     controller::{write_introduction, write_revocation, Controller},
@@ -532,6 +532,48 @@ pub fn storage_remove(
         buf.push(StorageOp::remove(key));
     }
     Ok(())
+}
+
+pub fn storage_cursor(
+    mut caller: Caller<'_, VmState<impl Db>>,
+    base_key: u64,
+) -> wasmtime::Result<u64> {
+    // Build key
+    let key = caller.data().get_storage_key(base_key, 0)?;
+    let tgt_prefix = key.get_prefix();
+
+    // Set up DB access
+    let db = &caller.data().db;
+    let db_ptr = &caller.data().db_ptr;
+    let txn = db.begin_ro_txn()?;
+
+    // 1 - Move cursor at target key
+    // 2 - Convert DB keys into StorageKey
+    // 3 - Fetch all the keys matching the target prefix
+    // 4 - For each resulting key, extract its sub-key
+    let mut cursor = txn.ro_cursor(db_ptr)?;
+    let keys: Vec<u64> = cursor
+        .iter_from(&key)
+        .map(|(key, _)| StorageKey::try_from(key).expect("Slice length error"))
+        .take_while(|key| {
+            let key_prefix = key.get_prefix();
+            key_prefix.starts_with(&tgt_prefix)
+        })
+        .map(|key| key.sub_key())
+        .collect();
+
+    drop(cursor);
+    drop(txn);
+
+    let caller_data = &mut caller.data_mut();
+
+    // Write keys in the registers
+    for (i, key) in keys.iter().enumerate() {
+        let bytes = key.to_le_bytes().to_vec();
+        caller_data.set_register(REGISTER_CURSOR.saturating_add(i as u64), bytes);
+    }
+    // Return number of keys
+    Ok(keys.len() as u64)
 }
 
 pub fn storage_has_key(
