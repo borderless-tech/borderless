@@ -1,10 +1,8 @@
 mod iterator;
 mod keyvalue;
-mod metadata;
 mod proxy;
 
 use super::hashmap::keyvalue::KeyValue;
-use super::hashmap::metadata::{Metadata, SEED};
 use super::hashmap::proxy::{Key, Proxy, ProxyMut};
 use crate::__private::storage_traits::private::Sealed;
 use crate::__private::{read_field, storage_has_key, storage_remove, storage_traits, write_field};
@@ -20,6 +18,9 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use xxhash_rust::xxh64::Xxh64;
 
+// Enforces determinism when hashing keys
+pub(crate) const SEED: u64 = 12345;
+
 enum CacheOp {
     Update,
     Remove,
@@ -29,7 +30,6 @@ pub struct HashMap<K, V> {
     base_key: u64,
     cache: RefCell<IntMap<u64, Rc<RefCell<KeyValue<K, V>>>>>,
     operations: IntMap<u64, CacheOp>,
-    metadata: Metadata<K>,
 }
 
 impl<K, V> Sealed for HashMap<K, V> {}
@@ -130,7 +130,6 @@ where
             base_key,
             cache: RefCell::default(),
             operations: IntMap::default(),
-            metadata: Metadata::new(base_key),
         }
     }
 
@@ -139,12 +138,11 @@ where
             base_key,
             cache: RefCell::default(),
             operations: IntMap::default(),
-            metadata: Metadata::open(base_key),
         }
     }
 
     pub fn len(&self) -> usize {
-        self.metadata.len()
+        todo!()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -165,8 +163,6 @@ where
         let internal_key = Self::hash_key(&key);
         // Check if key is present
         self.read(internal_key)?;
-        // Remove key from metadata
-        self.metadata.remove(key);
         // Flag key as removed
         self.operations.insert(internal_key, CacheOp::Remove);
         // Remove value from cache
@@ -176,10 +172,6 @@ where
 
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         let internal_key = Self::hash_key(&key);
-        if self.read(internal_key).is_none() {
-            // Add key to metadata
-            self.metadata.insert(key.clone());
-        }
         // Flag key as modified
         self.operations.insert(internal_key, CacheOp::Update);
         // Insert new value
@@ -231,13 +223,12 @@ where
         self.operations
             .retain(|_, op| matches!(op, CacheOp::Remove));
 
+        // TODO Handle this using storage_cursor
         // Flag all cells for deletion
-        for key in self.metadata.keys() {
-            let key = Self::hash_key(&key);
-            self.operations.insert(key, CacheOp::Remove);
-        }
-        // Clear metadata
-        self.metadata.clear();
+        //for key in self.metadata.keys() {
+        //    let key = Self::hash_key(&key);
+        //    self.operations.insert(key, CacheOp::Remove);
+        //}
     }
 
     pub fn iter(&self) -> HashMapIt<K, V> {
@@ -264,8 +255,6 @@ where
                 CacheOp::Remove => storage_remove(self.base_key, *key),
             }
         }
-        // Commit metadata
-        self.metadata.commit();
     }
 
     fn read(&self, key: u64) -> Option<Rc<RefCell<KeyValue<K, V>>>> {
