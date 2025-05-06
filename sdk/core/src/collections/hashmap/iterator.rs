@@ -1,5 +1,3 @@
-use crate::__private::registers::REGISTER_CURSOR;
-use crate::__private::{read_register, storage_cursor};
 use crate::collections::hashmap::proxy::{Key, Proxy};
 use crate::collections::hashmap::HashMap;
 use serde::de::DeserializeOwned;
@@ -36,8 +34,8 @@ where
 
 pub struct Keys<'a, K, V> {
     map: &'a HashMap<K, V>,
-    range: u64,
-    global_idx: u64,
+    range: usize,
+    global_idx: usize,
 }
 
 impl<'a, K, V> Iterator for Keys<'a, K, V>
@@ -48,17 +46,8 @@ where
     type Item = Key<'a, K, V>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.global_idx >= self.range {
-            // Iterator is consumed
-            return None;
-        }
-        // Read content from register
-        let bytes = read_register(REGISTER_CURSOR.saturating_add(self.global_idx))?;
-        // Convert into the sub-key
-        let arr: [u8; 8] = bytes.as_slice().try_into().expect("Slice length error");
-        let sub_key = u64::from_le_bytes(arr);
-
-        let out = self.map.get_key(sub_key);
+        // Returns None if the iterator is consumed
+        let out = self.map.get_key(self.global_idx);
         self.global_idx = self.global_idx.saturating_add(1);
         out
     }
@@ -70,10 +59,9 @@ where
     V: Serialize + DeserializeOwned,
 {
     pub fn new(map: &'a HashMap<K, V>) -> Self {
-        let range = storage_cursor(map.base_key);
         Keys {
             map,
-            range,
+            range: map.len(),
             global_idx: 0,
         }
     }
