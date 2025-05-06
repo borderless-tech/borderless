@@ -567,7 +567,7 @@ pub fn storage_cursor(
 
     let caller_data = &mut caller.data_mut();
 
-    // Write keys in the registers
+    // Write keys into the registers
     for (i, key) in keys.iter().enumerate() {
         let bytes = key.to_le_bytes().to_vec();
         caller_data.set_register(REGISTER_CURSOR.saturating_add(i as u64), bytes);
