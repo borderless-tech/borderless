@@ -40,7 +40,7 @@ impl<K, V> Sealed for HashMap<K, V> {}
 
 impl<K, V> storage_traits::ToPayload for HashMap<K, V>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq + Clone,
+    K: Serialize + DeserializeOwned + Hash + Eq,
     V: Serialize + DeserializeOwned,
 {
     fn to_payload(&self, path: &str) -> anyhow::Result<Option<String>> {
@@ -85,17 +85,19 @@ where
 
 impl<K, V> Debug for HashMap<K, V>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq + Clone + Debug,
+    K: Serialize + DeserializeOwned + Hash + Eq + Debug,
     V: Serialize + DeserializeOwned + Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{{")?;
+        /*
         for key in self.keys() {
             if let Some(keypair) = self.get((*key).clone()) {
                 let cell = keypair.cell_ptr.borrow();
                 writeln!(f, "    {:?}: {:?},", cell.key, cell.value)?;
             }
         }
+        */
         writeln!(f, "}}")?;
         Ok(())
     }
@@ -103,7 +105,7 @@ where
 
 impl<K, V> storage_traits::Storeable for HashMap<K, V>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq + Clone,
+    K: Serialize + DeserializeOwned + Hash + Eq,
     V: Serialize + DeserializeOwned,
 {
     fn decode(base_key: u64) -> Self {
@@ -126,7 +128,7 @@ where
 
 impl<K, V> HashMap<K, V>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq + Clone,
+    K: Serialize + DeserializeOwned + Hash + Eq,
     V: Serialize + DeserializeOwned,
 {
     pub(crate) fn new(base_key: u64) -> Self {
@@ -186,7 +188,7 @@ where
         // Insert new value
         let mut cache = self.cache.borrow_mut();
         // Create pair
-        let pair = KeyValue::new(key.clone(), value);
+        let pair = KeyValue::new(key, value);
         let cell = Rc::new(RefCell::new(pair));
         // Insert new KeyPair into the cache
         cache

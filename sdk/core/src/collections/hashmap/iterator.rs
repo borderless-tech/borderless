@@ -12,7 +12,7 @@ pub struct HashMapIt<'a, K, V> {
 
 impl<'a, K, V> Iterator for HashMapIt<'a, K, V>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq + Clone,
+    K: Serialize + DeserializeOwned + Hash + Eq,
     V: Serialize + DeserializeOwned,
 {
     type Item = Proxy<'a, K, V>;
@@ -24,7 +24,7 @@ where
 
 impl<'a, K, V> HashMapIt<'a, K, V>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq + Clone,
+    K: Serialize + DeserializeOwned + Hash + Eq,
     V: Serialize + DeserializeOwned,
 {
     pub fn new(map: &'a HashMap<K, V>) -> Self {
@@ -40,7 +40,7 @@ pub struct Keys<'a, K, V> {
 
 impl<'a, K, V> Iterator for Keys<'a, K, V>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq + Clone,
+    K: Serialize + DeserializeOwned + Hash + Eq,
     V: Serialize + DeserializeOwned,
 {
     type Item = Key<'a, K, V>;
@@ -55,7 +55,7 @@ where
 
 impl<'a, K, V> Keys<'a, K, V>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq + Clone,
+    K: Serialize + DeserializeOwned + Hash + Eq,
     V: Serialize + DeserializeOwned,
 {
     pub fn new(map: &'a HashMap<K, V>) -> Self {
@@ -71,7 +71,7 @@ pub struct Values<'a, K, V> {
 
 impl<'a, K, V> Iterator for Values<'a, K, V>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq + Clone,
+    K: Serialize + DeserializeOwned + Hash + Eq,
     V: Serialize + DeserializeOwned,
 {
     type Item = Value<'a, K, V>;
@@ -86,7 +86,7 @@ where
 
 impl<'a, K, V> Values<'a, K, V>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq + Clone,
+    K: Serialize + DeserializeOwned + Hash + Eq,
     V: Serialize + DeserializeOwned,
 {
     pub fn new(map: &'a HashMap<K, V>) -> Self {
