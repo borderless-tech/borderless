@@ -141,8 +141,7 @@ where
 
     pub(crate) fn open(base_key: u64) -> Self {
         // Read number of entries from the DB
-        // let entries = read_field::<usize>(base_key, 0).unwrap();
-        let entries = storage_cursor(base_key) as usize;
+        let entries = read_field::<usize>(base_key, 0).unwrap();
         HashMap {
             base_key,
             cache: RefCell::default(),
@@ -262,6 +261,9 @@ where
     }
 
     fn commit(self) {
+        // Store the entries counter in the DB
+        write_field(self.base_key, 0, &self.entries);
+
         // Sync the in-memory mirror with the DB state
         for (key, op) in &self.operations {
             match op {
