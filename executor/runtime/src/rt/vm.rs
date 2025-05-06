@@ -538,8 +538,8 @@ pub fn storage_cursor(
     mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u64,
 ) -> wasmtime::Result<u64> {
-    // Build key
-    let key = caller.data().get_storage_key(base_key, 0)?;
+    // Build key (skips base_key)
+    let key = caller.data().get_storage_key(base_key, 1)?;
     let tgt_prefix = key.get_prefix();
 
     // Set up DB access
