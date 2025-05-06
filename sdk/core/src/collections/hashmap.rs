@@ -158,11 +158,6 @@ where
         self.len() == 0
     }
 
-    pub fn exists(&self) -> bool {
-        // Check if first shard exists
-        storage_has_key(self.base_key, 1)
-    }
-
     pub fn contains_key(&self, sub_key: K) -> bool {
         let sub_key = Self::hash_key(&sub_key);
         self.read(sub_key).is_some()
