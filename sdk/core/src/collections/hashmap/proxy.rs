@@ -25,6 +25,26 @@ impl<'a, K, V> Deref for Key<'a, K, V> {
     }
 }
 
+pub struct Value<'a, K, V> {
+    pub(super) cell_ptr: Rc<RefCell<KeyValue<K, V>>>,
+    pub(super) _back_ref: PhantomData<&'a V>,
+}
+
+impl<'a, K, V> AsRef<V> for Value<'a, K, V> {
+    fn as_ref(&self) -> &V {
+        let p = unsafe { &*self.cell_ptr.as_ptr() };
+        &p.value
+    }
+}
+
+impl<'a, K, V> Deref for Value<'a, K, V> {
+    type Target = V;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
 pub struct Proxy<'a, K, V> {
     pub(super) cell_ptr: Rc<RefCell<KeyValue<K, V>>>,
     pub(super) _back_ref: PhantomData<&'a V>, // <- prevents the tree from being borrowed mutably, while a proxy object exists

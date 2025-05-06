@@ -3,13 +3,13 @@ mod keyvalue;
 mod proxy;
 
 use super::hashmap::keyvalue::KeyValue;
-use super::hashmap::proxy::{Key, Proxy, ProxyMut};
+use super::hashmap::proxy::{Key as ProxyKey, Proxy, ProxyMut, Value as ProxyValue};
 use crate::__private::registers::REGISTER_CURSOR;
 use crate::__private::storage_traits::private::Sealed;
 use crate::__private::{
     read_field, read_register, storage_cursor, storage_remove, storage_traits, write_field,
 };
-use crate::collections::hashmap::iterator::{HashMapIt, Keys};
+use crate::collections::hashmap::iterator::{HashMapIt, Keys, Values};
 use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -250,8 +250,11 @@ where
         Keys::new(self)
     }
 
-    pub fn values(&self) -> HashMapIt<K, V> {
-        HashMapIt::new(self)
+    pub fn values(&self) -> Values<K, V> {
+        // Load missing entries to memory
+        self.load_entries();
+        // Return Values iterator
+        Values::new(self)
     }
 
     fn commit(self) {
@@ -313,14 +316,30 @@ where
         self.operations.insert(key, CacheOp::Update);
     }
 
-    fn get_key(&self, index: usize) -> Option<Key<'_, K, V>> {
+    fn get_key(&self, index: usize) -> Option<ProxyKey<'_, K, V>> {
         // Read n-th key
         let key = *self.cache.borrow().keys().nth(index)?;
         // Create key proxy object
         match self.read(key) {
             None => None,
             Some(cell) => {
-                let key = Key {
+                let key = ProxyKey {
+                    cell_ptr: cell,
+                    _back_ref: PhantomData,
+                };
+                Some(key)
+            }
+        }
+    }
+
+    fn get_value(&self, index: usize) -> Option<ProxyValue<'_, K, V>> {
+        // Read n-th key
+        let key = *self.cache.borrow().keys().nth(index)?;
+        // Create value proxy object
+        match self.read(key) {
+            None => None,
+            Some(cell) => {
+                let key = ProxyValue {
                     cell_ptr: cell,
                     _back_ref: PhantomData,
                 };
