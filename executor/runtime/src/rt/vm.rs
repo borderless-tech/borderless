@@ -699,12 +699,16 @@ pub mod async_abi {
         }
 
         // Build the request
-        let rq = client
-            .request(method, uri)
-            .headers(headers)
-            .body(body)
+        let rq = {
+            let client = client.request(method, uri).headers(headers);
+            if !body.is_empty() {
+                client.body(body)
+            } else {
+                client
+            }
             .build()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?
+        };
 
         Ok(rq)
     }
