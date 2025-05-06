@@ -48,8 +48,8 @@ pub struct VmState<S: Db> {
     /// Current buffer of log output for the given contract
     log_buffer: Vec<LogLine>,
 
-    // Currently active contract or sw-agent
-    active_item: ActiveItem,
+    /// Currently active contract or sw-agent
+    active: ActiveEntity,
 }
 
 impl<S: Db> VmState<S> {
@@ -60,7 +60,7 @@ impl<S: Db> VmState<S> {
             db_ptr,
             last_timer: None,
             log_buffer: Vec::new(),
-            active_item: ActiveItem::None,
+            active: ActiveEntity::None,
         }
     }
 
@@ -70,7 +70,7 @@ impl<S: Db> VmState<S> {
     ///
     /// Calling this function while the `VmState` already has an active contract results in an error.
     pub fn begin_mutable_exec(&mut self, cid: ContractId) -> Result<()> {
-        if self.active_item.is_some() {
+        if self.active.is_some() {
             return Err(Error::msg(
                 "Cannot start a new execution while something else is still active",
             ));
@@ -78,7 +78,7 @@ impl<S: Db> VmState<S> {
         if Controller::new(&self.db).contract_revoked(&cid)? {
             return Err(ErrorKind::RevokedContract { cid }.into());
         }
-        self.active_item = ActiveItem::Contract {
+        self.active = ActiveEntity::Contract {
             cid,
             db_txns: Some(Vec::new()),
         };
@@ -100,7 +100,7 @@ impl<S: Db> VmState<S> {
         let result = self.finish_mut_exec_inner(commit);
 
         // Reset everything
-        self.active_item = ActiveItem::None;
+        self.active = ActiveEntity::None;
         self.log_buffer.clear();
 
         result
@@ -108,21 +108,21 @@ impl<S: Db> VmState<S> {
 
     // Inner wrapper, so we can return the result, but also perform the cleanup afterwards in case of an error
     fn finish_mut_exec_inner(&mut self, commit: Commit) -> Result<()> {
-        let active = std::mem::replace(&mut self.active_item, ActiveItem::None);
+        let active = std::mem::replace(&mut self.active, ActiveEntity::None);
         let (cid, buf) = match active {
-            ActiveItem::Contract { cid, db_txns } => {
+            ActiveEntity::Contract { cid, db_txns } => {
                 if let Some(db_txns) = db_txns {
                     (cid, db_txns)
                 } else {
                     return Err(Error::msg("Contract execution was marked as immutable"));
                 }
             }
-            ActiveItem::Agent { .. } => {
+            ActiveEntity::Agent { .. } => {
                 return Err(Error::msg(
                     "Cannot finish a contract while a sw-agent is active",
                 ));
             }
-            ActiveItem::None => {
+            ActiveEntity::None => {
                 return Err(Error::msg("No active contract"));
             }
         };
@@ -192,10 +192,10 @@ impl<S: Db> VmState<S> {
     ///
     /// Calling this function while the `VmState` already has an active contract results in an error.
     pub fn begin_immutable_exec(&mut self, cid: ContractId) -> Result<()> {
-        if self.active_item.is_some() {
+        if self.active.is_some() {
             return Err(Error::msg("Cannot overwrite active contract"));
         }
-        self.active_item = ActiveItem::Contract {
+        self.active = ActiveEntity::Contract {
             cid,
             db_txns: Some(Vec::new()),
         };
@@ -217,41 +217,41 @@ impl<S: Db> VmState<S> {
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
     pub fn finish_immutable_exec(&mut self) -> Result<Vec<LogLine>> {
-        if self.active_item.is_none() {
+        if self.active.is_none() {
             return Err(Error::msg("Cannot clear non existing contract or sw-agent"));
         }
-        self.active_item = ActiveItem::None;
+        self.active = ActiveEntity::None;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
 
     pub fn begin_agent_exec(&mut self, aid: AgentId, mutable: bool) -> Result<()> {
-        if self.active_item.is_some() {
+        if self.active.is_some() {
             return Err(Error::msg(
                 "Cannot start a new execution while something else is still active",
             ));
         }
         let db_txns = if mutable { Some(Vec::new()) } else { None };
-        self.active_item = ActiveItem::Agent { aid, db_txns };
+        self.active = ActiveEntity::Agent { aid, db_txns };
         self.log_buffer.clear();
         Ok(())
     }
 
     pub fn finish_agent_exec(&mut self, commit_state: bool) -> Result<Vec<LogLine>> {
-        let active = std::mem::replace(&mut self.active_item, ActiveItem::None);
+        let active = std::mem::replace(&mut self.active, ActiveEntity::None);
         let (aid, buf) = match active {
-            ActiveItem::Contract { .. } => {
+            ActiveEntity::Contract { .. } => {
                 return Err(Error::msg(
                     "cannot finish an agent while a contract is still running",
                 ))
             }
-            ActiveItem::Agent { aid, db_txns } => {
+            ActiveEntity::Agent { aid, db_txns } => {
                 if db_txns.is_none() && commit_state {
                     return Err(Error::msg("Agent execution was marked as immutable"));
                 }
                 (aid, db_txns)
             }
-            ActiveItem::None => {
+            ActiveEntity::None => {
                 return Err(Error::msg("No active sw-agent"));
             }
         };
@@ -284,7 +284,7 @@ impl<S: Db> VmState<S> {
     ///
     /// Note: This function only generates user-keys, as values with system-keys must be commited by the host.
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
-        let key = self.active_item.storage_key(base_key, sub_key)?;
+        let key = self.active.storage_key(base_key, sub_key)?;
         Ok(key)
     }
 
@@ -475,7 +475,7 @@ pub fn storage_write(
     value_ptr: u64,
     value_len: u64,
 ) -> wasmtime::Result<()> {
-    if caller.data().active_item.is_immutable() {
+    if caller.data().active.is_immutable() {
         return Ok(());
     }
     // Get memory
@@ -490,7 +490,7 @@ pub fn storage_write(
     // Push storage operation
     caller
         .data_mut()
-        .active_item
+        .active
         .push_storage(StorageOp::write(key, value))?;
     Ok(())
 }
@@ -527,7 +527,7 @@ pub fn storage_remove(
     base_key: u64,
     sub_key: u64,
 ) -> wasmtime::Result<()> {
-    if caller.data().active_item.is_immutable() {
+    if caller.data().active.is_immutable() {
         return Ok(());
     }
 
@@ -538,9 +538,7 @@ pub fn storage_remove(
     let caller_data = &mut caller.data_mut();
 
     // Write changes to storage-buffer
-    caller_data
-        .active_item
-        .push_storage(StorageOp::remove(key))?;
+    caller_data.active.push_storage(StorageOp::remove(key))?;
     Ok(())
 }
 
@@ -860,15 +858,15 @@ pub enum Commit {
     },
 }
 
-/// Represents the different states of an active contract
+/// Represents an executable entity in the VmState.
 ///
-/// A contract can be executed with a mutable or immutable state.
-/// Processing a chain-transaction requires a mutable state,
+/// An entity can be executed with a mutable or immutable state.
+/// Processing a chain-transaction on a contract requires a mutable state e.g.,
 /// as this means the state of the contract can change and changes are written to the database.
 ///
-/// An immutable contract execution is e.g. required for handling http-requests or performing dry-runs.
-/// In such a case, calls to `storage_write` will result in an error.
-enum ActiveItem {
+/// An immutable execution is e.g. required for handling http-requests or performing dry-runs.
+/// In such a case, calls to `storage_write` will be simply ignored.
+enum ActiveEntity {
     Contract {
         cid: ContractId,
         // 'None', if immutable
@@ -882,31 +880,31 @@ enum ActiveItem {
     None,
 }
 
-impl ActiveItem {
+impl ActiveEntity {
     pub fn is_some(&self) -> bool {
         !self.is_none()
     }
 
     pub fn is_none(&self) -> bool {
-        matches!(self, ActiveItem::None)
+        matches!(self, ActiveEntity::None)
     }
 
     /// Returns the storage key for the active entity
     pub fn storage_key(&self, base_key: u64, sub_key: u64) -> Result<StorageKey> {
         match self {
-            ActiveItem::Contract { cid, .. } => Ok(StorageKey::new(cid, base_key, sub_key)),
-            ActiveItem::Agent { aid, .. } => Ok(StorageKey::new(aid, base_key, sub_key)),
-            ActiveItem::None => Err(ErrorKind::NoActiveEntity.into()),
+            ActiveEntity::Contract { cid, .. } => Ok(StorageKey::new(cid, base_key, sub_key)),
+            ActiveEntity::Agent { aid, .. } => Ok(StorageKey::new(aid, base_key, sub_key)),
+            ActiveEntity::None => Err(ErrorKind::NoActiveEntity.into()),
         }
     }
 
     /// Returns `true` if the active entity is immutable
     pub fn is_immutable(&self) -> bool {
         match self {
-            ActiveItem::Contract { db_txns, .. } | ActiveItem::Agent { db_txns, .. } => {
+            ActiveEntity::Contract { db_txns, .. } | ActiveEntity::Agent { db_txns, .. } => {
                 db_txns.is_none()
             }
-            ActiveItem::None => false,
+            ActiveEntity::None => false,
         }
     }
 
@@ -916,7 +914,7 @@ impl ActiveItem {
     /// or if the active entity is immutable.
     pub fn push_storage(&mut self, op: StorageOp) -> Result<()> {
         match self {
-            ActiveItem::Contract { db_txns, .. } | ActiveItem::Agent { db_txns, .. } => {
+            ActiveEntity::Contract { db_txns, .. } | ActiveEntity::Agent { db_txns, .. } => {
                 if let Some(db_txns) = db_txns {
                     db_txns.push(op);
                     Ok(())
@@ -924,65 +922,7 @@ impl ActiveItem {
                     Err(ErrorKind::Immutable.into())
                 }
             }
-            ActiveItem::None => Err(ErrorKind::NoActiveEntity.into()),
-        }
-    }
-
-    /// Checks weather or not the active entity is a contract with given mutability.
-    ///
-    /// # Panic
-    ///
-    /// This function panics if the active entity is not a contract and does not match the required mutability.
-    /// We don't use an error here, as this is not something that can happen at runtime,
-    /// if the implementation uses the `VmState` correctly.
-    pub fn assert_contract(&self, mutable: bool) {
-        match self {
-            ActiveItem::Contract { db_txns, .. } => {
-                assert_eq!(
-                    db_txns.is_some(),
-                    mutable,
-                    "contract mutability mismatch: 'mutable' must be {mutable}"
-                );
-            }
-            ActiveItem::Agent { .. } => panic!("active entity is a sw-agent and not a contract"),
-            ActiveItem::None => panic!("no active contract"),
-        }
-    }
-
-    /// Checks weather or not the active entity is a sw-agent with given mutability.
-    ///
-    /// # Panic
-    ///
-    /// This function panics if the active entity is not a sw-agent and does not match the required mutability.
-    /// We don't use an error here, as this is not something that can happen at runtime,
-    /// if the implementation uses the `VmState` correctly.
-    pub fn assert_agent(&self, mutable: bool) {
-        match self {
-            ActiveItem::Agent { db_txns, .. } => {
-                assert_eq!(
-                    db_txns.is_some(),
-                    mutable,
-                    "agent mutability mismatch: 'mutable' must be {mutable}"
-                );
-            }
-            ActiveItem::Contract { .. } => panic!("active entity is a contract and not a sw-agent"),
-            ActiveItem::None => panic!("no active sw-agent"),
-        }
-    }
-
-    /// Checks weather or not the active entity is empty (`None`).
-    ///
-    /// # Panic
-    ///
-    /// This function panics if the active entity is not a `None`.
-    /// We don't use an error here, as this is not something that can happen at runtime,
-    /// if the implementation uses the `VmState` correctly.
-    pub fn assert_empty(&self) {
-        match self {
-            ActiveItem::Contract { .. } | ActiveItem::Agent { .. } => {
-                panic!("active entity in VmState is not empty")
-            }
-            ActiveItem::None => (),
+            ActiveEntity::None => Err(ErrorKind::NoActiveEntity.into()),
         }
     }
 }
