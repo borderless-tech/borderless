@@ -5,6 +5,26 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
+pub struct Key<'a, K, V> {
+    pub(super) cell_ptr: Rc<RefCell<KeyValue<K, V>>>,
+    pub(super) _back_ref: PhantomData<&'a V>,
+}
+
+impl<'a, K, V> AsRef<K> for Key<'a, K, V> {
+    fn as_ref(&self) -> &K {
+        let p = unsafe { &*self.cell_ptr.as_ptr() };
+        &p.key
+    }
+}
+
+impl<'a, K, V> Deref for Key<'a, K, V> {
+    type Target = K;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
 pub struct Proxy<'a, K, V> {
     pub(super) cell_ptr: Rc<RefCell<KeyValue<K, V>>>,
     pub(super) _back_ref: PhantomData<&'a V>, // <- prevents the tree from being borrowed mutably, while a proxy object exists

@@ -5,10 +5,10 @@ mod proxy;
 
 use super::hashmap::keyvalue::KeyValue;
 use super::hashmap::metadata::{Metadata, SEED};
-use super::hashmap::proxy::{Proxy, ProxyMut};
+use super::hashmap::proxy::{Key, Proxy, ProxyMut};
 use crate::__private::storage_traits::private::Sealed;
 use crate::__private::{read_field, storage_has_key, storage_remove, storage_traits, write_field};
-use crate::collections::hashmap::iterator::HashMapIt;
+use crate::collections::hashmap::iterator::{HashMapIt, Keys};
 use crate::collections::lazyvec::proxy::Proxy as LazyVecProxy;
 use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
@@ -152,10 +152,6 @@ where
         self.len() == 0
     }
 
-    pub fn keys(&self) -> impl Iterator<Item = LazyVecProxy<'_, K>> + '_ {
-        self.metadata.keys()
-    }
-
     pub fn exists(&self) -> bool {
         // Check if first shard exists
         storage_has_key(self.base_key, 1)
@@ -249,6 +245,10 @@ where
         HashMapIt::new(self)
     }
 
+    pub fn keys(&self) -> Keys<K, V> {
+        Keys::new(self)
+    }
+
     pub fn values(&self) -> HashMapIt<K, V> {
         HashMapIt::new(self)
     }
@@ -300,6 +300,19 @@ where
             return self.get((*key).clone());
         }
         None
+    }
+
+    fn get_key(&self, internal_key: u64) -> Option<Key<'_, K, V>> {
+        match self.read(internal_key) {
+            None => None,
+            Some(cell) => {
+                let key = Key {
+                    cell_ptr: cell,
+                    _back_ref: PhantomData,
+                };
+                Some(key)
+            }
+        }
     }
 
     fn extract_cell(rc: Rc<RefCell<KeyValue<K, V>>>) -> Option<V> {
