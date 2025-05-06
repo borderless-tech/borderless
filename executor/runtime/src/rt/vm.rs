@@ -284,9 +284,8 @@ impl<S: Db> VmState<S> {
     ///
     /// Note: This function only generates user-keys, as values with system-keys must be commited by the host.
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
-        self.active_item
-            .storage_key(base_key, sub_key)
-            .ok_or_else(|| wasmtime::Error::msg("no contract has been activated"))
+        let key = self.active_item.storage_key(base_key, sub_key)?;
+        Ok(key)
     }
 
     /// Writes the given value into the register.
@@ -488,11 +487,11 @@ pub fn storage_write(
     // Build key
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
-    // Check, if there is an acid txn, and if so, commit the changes to that:
-    let caller_data = &mut caller.data_mut();
-    if let Some(buf) = caller_data.active_item.storage_ops() {
-        buf.push(StorageOp::write(key, value));
-    }
+    // Push storage operation
+    caller
+        .data_mut()
+        .active_item
+        .push_storage(StorageOp::write(key, value))?;
     Ok(())
 }
 
@@ -539,9 +538,9 @@ pub fn storage_remove(
     let caller_data = &mut caller.data_mut();
 
     // Write changes to storage-buffer
-    if let Some(buf) = caller_data.active_item.storage_ops() {
-        buf.push(StorageOp::remove(key));
-    }
+    caller_data
+        .active_item
+        .push_storage(StorageOp::remove(key))?;
     Ok(())
 }
 
@@ -888,14 +887,16 @@ impl ActiveItem {
         matches!(self, ActiveItem::None)
     }
 
-    pub fn storage_key(&self, base_key: u64, sub_key: u64) -> Option<StorageKey> {
+    /// Returns the storage key for the active entity
+    pub fn storage_key(&self, base_key: u64, sub_key: u64) -> Result<StorageKey> {
         match self {
-            ActiveItem::Contract { cid, .. } => Some(StorageKey::new(cid, base_key, sub_key)),
-            ActiveItem::Agent { aid, .. } => Some(StorageKey::new(aid, base_key, sub_key)),
-            ActiveItem::None => None,
+            ActiveItem::Contract { cid, .. } => Ok(StorageKey::new(cid, base_key, sub_key)),
+            ActiveItem::Agent { aid, .. } => Ok(StorageKey::new(aid, base_key, sub_key)),
+            ActiveItem::None => Err(ErrorKind::NoActiveEntity.into()),
         }
     }
 
+    /// Returns `true` if the active entity is immutable
     pub fn is_immutable(&self) -> bool {
         match self {
             ActiveItem::Contract { db_txns, .. } | ActiveItem::Agent { db_txns, .. } => {
@@ -905,12 +906,79 @@ impl ActiveItem {
         }
     }
 
-    pub fn storage_ops(&mut self) -> Option<&mut Vec<StorageOp>> {
+    /// Pushes a storage operation to the storage buffer - if any
+    ///
+    /// Returns an error if there is either no active entity
+    /// or if the active entity is immutable.
+    pub fn push_storage(&mut self, op: StorageOp) -> Result<()> {
         match self {
             ActiveItem::Contract { db_txns, .. } | ActiveItem::Agent { db_txns, .. } => {
-                db_txns.as_mut()
+                if let Some(db_txns) = db_txns {
+                    db_txns.push(op);
+                    Ok(())
+                } else {
+                    Err(ErrorKind::Immutable.into())
+                }
             }
-            ActiveItem::None => None,
+            ActiveItem::None => Err(ErrorKind::NoActiveEntity.into()),
+        }
+    }
+
+    /// Checks weather or not the active entity is a contract with given mutability.
+    ///
+    /// # Panic
+    ///
+    /// This function panics if the active entity is not a contract and does not match the required mutability.
+    /// We don't use an error here, as this is not something that can happen at runtime,
+    /// if the implementation uses the `VmState` correctly.
+    pub fn assert_contract(&self, mutable: bool) {
+        match self {
+            ActiveItem::Contract { db_txns, .. } => {
+                assert_eq!(
+                    db_txns.is_some(),
+                    mutable,
+                    "contract mutability mismatch: 'mutable' must be {mutable}"
+                );
+            }
+            ActiveItem::Agent { .. } => panic!("active entity is a sw-agent and not a contract"),
+            ActiveItem::None => panic!("no active contract"),
+        }
+    }
+
+    /// Checks weather or not the active entity is a sw-agent with given mutability.
+    ///
+    /// # Panic
+    ///
+    /// This function panics if the active entity is not a sw-agent and does not match the required mutability.
+    /// We don't use an error here, as this is not something that can happen at runtime,
+    /// if the implementation uses the `VmState` correctly.
+    pub fn assert_agent(&self, mutable: bool) {
+        match self {
+            ActiveItem::Agent { db_txns, .. } => {
+                assert_eq!(
+                    db_txns.is_some(),
+                    mutable,
+                    "agent mutability mismatch: 'mutable' must be {mutable}"
+                );
+            }
+            ActiveItem::Contract { .. } => panic!("active entity is a contract and not a sw-agent"),
+            ActiveItem::None => panic!("no active sw-agent"),
+        }
+    }
+
+    /// Checks weather or not the active entity is empty (`None`).
+    ///
+    /// # Panic
+    ///
+    /// This function panics if the active entity is not a `None`.
+    /// We don't use an error here, as this is not something that can happen at runtime,
+    /// if the implementation uses the `VmState` correctly.
+    pub fn assert_empty(&self) {
+        match self {
+            ActiveItem::Contract { .. } | ActiveItem::Agent { .. } => {
+                panic!("active entity in VmState is not empty")
+            }
+            ActiveItem::None => (),
         }
     }
 }
@@ -920,7 +988,9 @@ impl ActiveItem {
 /// All storage operations are commited to the key-value-store
 /// once the contract finished its execution.
 enum StorageOp {
+    /// Writes the given value to the storage key
     Write { key: StorageKey, value: Vec<u8> },
+    /// Removes the value at the given storage key
     Remove { key: StorageKey },
 }
 
