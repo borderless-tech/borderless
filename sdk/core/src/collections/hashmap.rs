@@ -4,8 +4,12 @@ mod proxy;
 
 use super::hashmap::keyvalue::KeyValue;
 use super::hashmap::proxy::{Key, Proxy, ProxyMut};
+use crate::__private::registers::REGISTER_CURSOR;
 use crate::__private::storage_traits::private::Sealed;
-use crate::__private::{read_field, storage_has_key, storage_remove, storage_traits, write_field};
+use crate::__private::{
+    read_field, read_register, storage_cursor, storage_has_key, storage_remove, storage_traits,
+    write_field,
+};
 use crate::collections::hashmap::iterator::{HashMapIt, Keys};
 use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
@@ -30,6 +34,7 @@ pub struct HashMap<K, V> {
     base_key: u64,
     cache: RefCell<IntMap<u64, Rc<RefCell<KeyValue<K, V>>>>>,
     operations: IntMap<u64, CacheOp>,
+    entries: usize,
 }
 
 impl<K, V> Sealed for HashMap<K, V> {}
@@ -130,19 +135,24 @@ where
             base_key,
             cache: RefCell::default(),
             operations: IntMap::default(),
+            entries: 0,
         }
     }
 
     pub(crate) fn open(base_key: u64) -> Self {
+        // Read number of entries from the DB
+        // let entries = read_field::<usize>(base_key, 0).unwrap();
+        let entries = storage_cursor(base_key) as usize;
         HashMap {
             base_key,
             cache: RefCell::default(),
             operations: IntMap::default(),
+            entries,
         }
     }
 
     pub fn len(&self) -> usize {
-        todo!()
+        self.entries
     }
 
     pub fn is_empty(&self) -> bool {
@@ -163,6 +173,8 @@ where
         let internal_key = Self::hash_key(&key);
         // Check if key is present
         self.read(internal_key)?;
+        // Decrease number of entries
+        self.entries = self.entries.saturating_sub(1);
         // Flag key as removed
         self.operations.insert(internal_key, CacheOp::Remove);
         // Remove value from cache
@@ -172,6 +184,10 @@ where
 
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         let internal_key = Self::hash_key(&key);
+        if self.read(internal_key).is_none() {
+            // Increase number of entries
+            self.entries = self.entries.saturating_add(1);
+        }
         // Flag key as modified
         self.operations.insert(internal_key, CacheOp::Update);
         // Insert new value
@@ -216,19 +232,18 @@ where
     }
 
     pub fn clear(&mut self) {
+        // Discard local changes
+        self.operations.clear();
+        // Load missing entries to memory
+        self.load_entries();
+        // Flag all keys to be removed
+        for key in self.cache.borrow().keys() {
+            self.operations.insert(*key, CacheOp::Remove);
+        }
+        // Update counter of total entries
+        self.entries = 0;
         // Clear the in-memory map, deallocating the used resources
         self.cache = RefCell::default();
-        // Keep only the remove operations
-        // TODO this can be inefficient, as we do not check whether the removed keys are in the DB
-        self.operations
-            .retain(|_, op| matches!(op, CacheOp::Remove));
-
-        // TODO Handle this using storage_cursor
-        // Flag all cells for deletion
-        //for key in self.metadata.keys() {
-        //    let key = Self::hash_key(&key);
-        //    self.operations.insert(key, CacheOp::Remove);
-        //}
     }
 
     pub fn iter(&self) -> HashMapIt<K, V> {
@@ -236,6 +251,9 @@ where
     }
 
     pub fn keys(&self) -> Keys<K, V> {
+        // Load missing entries to memory
+        self.load_entries();
+        // Return Keys iterator
         Keys::new(self)
     }
 
@@ -279,12 +297,31 @@ where
         }
     }
 
+    fn load_entries(&self) {
+        // Load missing entries to memory
+        let entries = storage_cursor(self.base_key) as usize;
+
+        for i in 0..entries {
+            // Read content from register
+            let bytes = read_register(REGISTER_CURSOR.saturating_add(i as u64))
+                .expect("Fail to read register");
+            // Convert into the sub-key
+            let arr: [u8; 8] = bytes.as_slice().try_into().expect("Slice length error");
+            let sub_key = u64::from_le_bytes(arr);
+            // Load keys into the cache
+            self.read(sub_key);
+        }
+    }
+
     fn flag_write(&mut self, key: u64) {
         self.operations.insert(key, CacheOp::Update);
     }
 
-    fn get_key(&self, internal_key: u64) -> Option<Key<'_, K, V>> {
-        match self.read(internal_key) {
+    fn get_key(&self, index: usize) -> Option<Key<'_, K, V>> {
+        // Read n-th key
+        let key = *self.cache.borrow().keys().nth(index)?;
+        // Create key proxy object
+        match self.read(key) {
             None => None,
             Some(cell) => {
                 let key = Key {

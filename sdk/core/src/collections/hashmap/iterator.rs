@@ -34,7 +34,6 @@ where
 
 pub struct Keys<'a, K, V> {
     map: &'a HashMap<K, V>,
-    range: usize,
     global_idx: usize,
 }
 
@@ -59,10 +58,6 @@ where
     V: Serialize + DeserializeOwned,
 {
     pub fn new(map: &'a HashMap<K, V>) -> Self {
-        Keys {
-            map,
-            range: map.len(),
-            global_idx: 0,
-        }
+        Keys { map, global_idx: 0 }
     }
 }
