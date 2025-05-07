@@ -16,7 +16,7 @@ use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -36,6 +36,7 @@ pub struct HashMap<K, V> {
     cache: RefCell<IntMap<u64, Rc<RefCell<KeyValue<K, V>>>>>,
     operations: IntMap<u64, CacheOp>,
     entries: usize,
+    loaded: Cell<bool>, // All entries in the DB have already been fetched
 }
 
 impl<K, V> Sealed for HashMap<K, V> {}
@@ -139,6 +140,7 @@ where
             cache: RefCell::default(),
             operations: IntMap::default(),
             entries: 0,
+            loaded: Cell::new(false),
         }
     }
 
@@ -150,6 +152,7 @@ where
             cache: RefCell::default(),
             operations: IntMap::default(),
             entries,
+            loaded: Cell::new(false),
         }
     }
 
@@ -241,6 +244,8 @@ where
         self.entries = 0;
         // Clear the in-memory map, deallocating the used resources
         self.cache = RefCell::default();
+        // Flag loaded to false as we lost the DB entries
+        self.loaded.set(false);
     }
 
     pub fn iter(&self) -> HashMapIt<K, V> {
@@ -303,6 +308,13 @@ where
     }
 
     fn load_entries(&self) {
+        if self.loaded.get() {
+            // The in-memory mirror already contains all the DB entries
+            return;
+        }
+        // Flag loaded to true to avoid dumping the DB several times
+        self.loaded.set(true);
+
         // Load missing entries to memory
         let entries = storage_cursor(self.base_key) as usize;
 
