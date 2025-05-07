@@ -3,7 +3,9 @@ mod keyvalue;
 mod proxy;
 
 use super::hashmap::keyvalue::KeyValue;
-use super::hashmap::proxy::{Key as ProxyKey, Proxy, ProxyMut, Value as ProxyValue};
+use super::hashmap::proxy::{
+    Key as ProxyKey, Proxy, ProxyMut, Value as ProxyValue, ValueMut as MutProxyValue,
+};
 use crate::__private::registers::REGISTER_CURSOR;
 use crate::__private::storage_traits::private::Sealed;
 use crate::__private::{
@@ -196,12 +198,12 @@ where
             .and_then(Self::extract_cell)
     }
 
-    pub fn get(&self, key: K) -> Option<Proxy<'_, K, V>> {
+    pub fn get(&self, key: K) -> Option<ProxyValue<'_, K, V>> {
         let internal_key = Self::hash_key(&key);
         match self.read(internal_key) {
             None => None,
             Some(cell) => {
-                let proxy = Proxy {
+                let proxy = ProxyValue {
                     cell_ptr: cell,
                     _back_ref: PhantomData,
                 };
@@ -210,14 +212,14 @@ where
         }
     }
 
-    pub fn get_mut(&mut self, key: K) -> Option<ProxyMut<'_, K, V>> {
+    pub fn get_mut(&mut self, key: K) -> Option<MutProxyValue<'_, K, V>> {
         let internal_key = Self::hash_key(&key);
         match self.read(internal_key) {
             None => None,
             Some(cell) => {
                 // NOTE: Mark the node as changed, because the user could totally do that.
                 self.flag_write(internal_key);
-                let proxy = ProxyMut {
+                let proxy = MutProxyValue {
                     cell_ptr: cell,
                     _back_ref: PhantomData,
                 };
