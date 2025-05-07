@@ -60,20 +60,15 @@ where
         let first = items.next().unwrap(); // We checked empty
 
         // To pre-allocate the output string, we encode one object and use this as a reference
-        let encoded_key = serde_json::to_string(first.key())?;
-        let encoded_value = serde_json::to_string(first.value())?;
-        let encoded = format!("{}: {}", encoded_key, encoded_value);
+        let encoded = serde_json::to_string(first.as_ref())?;
 
-        // TODO Preallocating like this is not valid as keys and values can differ in size
         // for N items: N * ITEM_LENGTH + (N-1) (commas) + 2 ('{}'); add some padding just in case
         let mut buf = String::with_capacity(encoded.len() * n_items + n_items + 10);
         buf.push('{');
         buf.push_str(&encoded);
         buf.push(',');
         for item in items {
-            let encoded_key = serde_json::to_string(item.key())?;
-            let encoded_value = serde_json::to_string(item.value())?;
-            let encoded = format!("{}: {}", encoded_key, encoded_value);
+            let encoded = serde_json::to_string(item.as_ref())?;
             buf.push_str(&encoded);
             buf.push(',');
         }
