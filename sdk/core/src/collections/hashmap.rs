@@ -4,7 +4,7 @@ mod proxy;
 
 use super::hashmap::keyvalue::KeyValue;
 use super::hashmap::proxy::{
-    Key as ProxyKey, Proxy, ProxyMut, Value as ProxyValue, ValueMut as MutProxyValue,
+    Key as KeyProxy, Proxy, ProxyMut, Value as ValueProxy, ValueMut as ValueMutProxy,
 };
 use crate::__private::registers::REGISTER_CURSOR;
 use crate::__private::storage_traits::private::Sealed;
@@ -198,12 +198,12 @@ where
             .and_then(Self::extract_cell)
     }
 
-    pub fn get(&self, key: K) -> Option<ProxyValue<'_, K, V>> {
+    pub fn get(&self, key: K) -> Option<ValueProxy<'_, K, V>> {
         let internal_key = Self::hash_key(&key);
         match self.read(internal_key) {
             None => None,
             Some(cell) => {
-                let proxy = ProxyValue {
+                let proxy = ValueProxy {
                     cell_ptr: cell,
                     _back_ref: PhantomData,
                 };
@@ -212,14 +212,14 @@ where
         }
     }
 
-    pub fn get_mut(&mut self, key: K) -> Option<MutProxyValue<'_, K, V>> {
+    pub fn get_mut(&mut self, key: K) -> Option<ValueMutProxy<'_, K, V>> {
         let internal_key = Self::hash_key(&key);
         match self.read(internal_key) {
             None => None,
             Some(cell) => {
                 // NOTE: Mark the node as changed, because the user could totally do that.
                 self.flag_write(internal_key);
-                let proxy = MutProxyValue {
+                let proxy = ValueMutProxy {
                     cell_ptr: cell,
                     _back_ref: PhantomData,
                 };
@@ -320,14 +320,14 @@ where
         self.operations.insert(key, CacheOp::Update);
     }
 
-    fn get_key(&self, index: usize) -> Option<ProxyKey<'_, K, V>> {
+    fn get_key(&self, index: usize) -> Option<KeyProxy<'_, K, V>> {
         // Read n-th key
         let key = *self.cache.borrow().keys().nth(index)?;
         // Create key proxy object
         match self.read(key) {
             None => None,
             Some(cell) => {
-                let key = ProxyKey {
+                let key = KeyProxy {
                     cell_ptr: cell,
                     _back_ref: PhantomData,
                 };
@@ -336,14 +336,14 @@ where
         }
     }
 
-    fn get_value(&self, index: usize) -> Option<ProxyValue<'_, K, V>> {
+    fn get_value(&self, index: usize) -> Option<ValueProxy<'_, K, V>> {
         // Read n-th key
         let key = *self.cache.borrow().keys().nth(index)?;
         // Create value proxy object
         match self.read(key) {
             None => None,
             Some(cell) => {
-                let key = ProxyValue {
+                let key = ValueProxy {
                     cell_ptr: cell,
                     _back_ref: PhantomData,
                 };
