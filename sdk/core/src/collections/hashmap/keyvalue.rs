@@ -2,7 +2,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct KeyValue<K, V> {
     pub(crate) pair: (K, V), // Proxy needs access to the field
 }
