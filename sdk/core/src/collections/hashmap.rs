@@ -4,7 +4,7 @@ mod proxy;
 
 use super::hashmap::keyvalue::KeyValue;
 use super::hashmap::proxy::{
-    Key as KeyProxy, Proxy, ProxyMut, Value as ValueProxy, ValueMut as ValueMutProxy,
+    Entry as EntryProxy, Key as KeyProxy, Value as ValueProxy, ValueMut as ValueMutProxy,
 };
 use crate::__private::registers::REGISTER_CURSOR;
 use crate::__private::storage_traits::private::Sealed;
@@ -118,7 +118,7 @@ where
         let values: Vec<KeyValue<K, V>> = serde_json::from_value(value)?;
         let mut out = Self::new(base_key);
         for v in values {
-            out.insert(v.key, v.value);
+            out.insert(v.pair.0, v.pair.1);
         }
         Ok(out)
     }
@@ -244,6 +244,8 @@ where
     }
 
     pub fn iter(&self) -> HashMapIt<K, V> {
+        // Load missing entries to memory
+        self.load_entries();
         HashMapIt::new(self)
     }
 
@@ -320,6 +322,22 @@ where
         self.operations.insert(key, CacheOp::Update);
     }
 
+    fn get_entry(&self, index: usize) -> Option<EntryProxy<'_, K, V>> {
+        // Read n-th key
+        let key = *self.cache.borrow().keys().nth(index)?;
+        // Create entry proxy object
+        match self.read(key) {
+            None => None,
+            Some(cell) => {
+                let key = EntryProxy {
+                    cell_ptr: cell,
+                    _back_ref: PhantomData,
+                };
+                Some(key)
+            }
+        }
+    }
+
     fn get_key(&self, index: usize) -> Option<KeyProxy<'_, K, V>> {
         // Read n-th key
         let key = *self.cache.borrow().keys().nth(index)?;
@@ -354,7 +372,7 @@ where
 
     fn extract_cell(rc: Rc<RefCell<KeyValue<K, V>>>) -> Option<V> {
         let old_cell = Rc::try_unwrap(rc).ok().expect("Rc strong counter > 1");
-        Some(old_cell.into_inner().value)
+        Some(old_cell.into_inner().pair.1)
     }
 
     fn hash_key(key: &K) -> u64 {

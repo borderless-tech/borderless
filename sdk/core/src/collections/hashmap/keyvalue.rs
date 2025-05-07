@@ -4,8 +4,7 @@ use std::hash::Hash;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct KeyValue<K, V> {
-    pub(crate) key: K,
-    pub(crate) value: V, // Proxy needs access to the field
+    pub(crate) pair: (K, V), // Proxy needs access to the field
 }
 
 impl<K, V> KeyValue<K, V>
@@ -14,6 +13,6 @@ where
     V: Serialize + DeserializeOwned,
 {
     pub(crate) fn new(key: K, value: V) -> Self {
-        KeyValue { key, value }
+        KeyValue { pair: (key, value) }
     }
 }

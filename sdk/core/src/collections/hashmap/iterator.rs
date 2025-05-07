@@ -1,4 +1,4 @@
-use crate::collections::hashmap::proxy::{Key, Proxy, Value};
+use crate::collections::hashmap::proxy::{Entry, Key, Value};
 use crate::collections::hashmap::HashMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -15,10 +15,13 @@ where
     K: Serialize + DeserializeOwned + Hash + Eq,
     V: Serialize + DeserializeOwned,
 {
-    type Item = Proxy<'a, K, V>;
+    type Item = Entry<'a, K, V>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        // Returns None if the iterator is consumed
+        let out = self.map.get_entry(self.global_idx);
+        self.global_idx = self.global_idx.saturating_add(1);
+        out
     }
 }
 
