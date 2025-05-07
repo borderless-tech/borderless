@@ -92,17 +92,13 @@ where
     V: Serialize + DeserializeOwned + Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{{")?;
-        /*
-        for key in self.keys() {
-            if let Some(keypair) = self.get((*key).clone()) {
-                let cell = keypair.cell_ptr.borrow();
-                writeln!(f, "    {:?}: {:?},", cell.key, cell.value)?;
-            }
+        // Use the Rust's built-in debug_map helper
+        let mut dm = f.debug_map();
+        for entry in self.iter() {
+            let (k, v) = &*entry;
+            dm.entry(k, v);
         }
-        */
-        writeln!(f, "}}")?;
-        Ok(())
+        dm.finish()
     }
 }
 
