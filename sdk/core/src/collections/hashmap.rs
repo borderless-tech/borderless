@@ -58,9 +58,10 @@ where
         }
         let mut items = self.iter();
         let first = items.next().unwrap(); // We checked empty
+        use serde_json::to_string as str;
 
         // To pre-allocate the output string, we encode one object and use this as a reference
-        let encoded = serde_json::to_string(first.as_ref())?;
+        let encoded = format!("\"{}\": \"{}\"", str(first.key())?, str(first.value())?);
 
         // for N items: N * ITEM_LENGTH + (N-1) (commas) + 2 ('{}'); add some padding just in case
         let mut buf = String::with_capacity(encoded.len() * n_items + n_items + 10);
@@ -68,7 +69,7 @@ where
         buf.push_str(&encoded);
         buf.push(',');
         for item in items {
-            let encoded = serde_json::to_string(item.as_ref())?;
+            let encoded = format!("\"{}\": \"{}\"", str(item.key())?, str(item.value())?);
             buf.push_str(&encoded);
             buf.push(',');
         }
