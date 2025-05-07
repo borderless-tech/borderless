@@ -46,6 +46,7 @@ pub mod collections {
             map::contains_key(&mut self.points)?;
             map::insert(&mut self.points)?;
             map::remove(&mut self.points)?;
+            map::iter(&mut self.points)?;
             map::keys(&mut self.points)?;
             map::values(&mut self.points)?;
 

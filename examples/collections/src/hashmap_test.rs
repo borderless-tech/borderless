@@ -88,6 +88,25 @@ pub(crate) fn remove(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn iter(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
+    // A trusted reference used to know what the correct behavior should be
+    let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+    for i in 0..N {
+        let random = rand(0, u64::MAX);
+        hashmap.insert(i, random);
+        oracle.insert(i, random);
+    }
+    // Collect and sort both key-lists
+    let mut hashmap_pairs: Vec<(u64, u64)> = hashmap.iter().map(|e| *e).collect();
+    let mut oracle_pairs: Vec<(u64, u64)> = oracle.iter().map(|(k, v)| (*k, *v)).collect();
+    hashmap_pairs.sort_unstable();
+    oracle_pairs.sort_unstable();
+    // Check integrity
+    assert_eq!(hashmap_pairs, oracle_pairs);
+    Ok(())
+}
+
 pub(crate) fn keys(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
     hashmap.clear();
     // A trusted reference used to know what the correct behavior should be
