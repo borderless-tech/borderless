@@ -101,6 +101,7 @@ impl<S: Db> VmState<S> {
         // Reset everything
         self.active_item = ActiveItem::None;
         self.log_buffer.clear();
+        self.clear_registers()?;
 
         result
     }
@@ -221,6 +222,7 @@ impl<S: Db> VmState<S> {
         }
         self.active_item = ActiveItem::None;
         self.db_acid_txn_buffer = None;
+        self.clear_registers()?;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
@@ -264,8 +266,15 @@ impl<S: Db> VmState<S> {
 
         self.active_item = ActiveItem::None;
         self.db_acid_txn_buffer = None;
+        self.clear_registers()?;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
+    }
+
+    // Clears the registers from REGISTER_CURSOR until 2^64 -1
+    fn clear_registers(&mut self) -> Result<()> {
+        self.registers.retain(|&k, _| k < REGISTER_CURSOR);
+        Ok(())
     }
 
     /// Generates the storage key based on the currently active contract.
