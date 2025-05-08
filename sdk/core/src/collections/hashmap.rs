@@ -71,7 +71,7 @@ where
             buf.push(',');
         }
         // Remove trailing ','
-        if n_items > 1 {
+        if n_items > 0 {
             buf.pop();
         }
         buf.push('}');
