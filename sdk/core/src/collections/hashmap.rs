@@ -16,7 +16,7 @@ use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -36,7 +36,7 @@ pub struct HashMap<K, V> {
     cache: RefCell<IntMap<u64, Rc<RefCell<KeyValue<K, V>>>>>,
     operations: IntMap<u64, CacheOp>,
     entries: usize,
-    db_keys: Vec<u64>,
+    db_keys: OnceCell<Vec<u64>>,
 }
 
 impl<K, V> Sealed for HashMap<K, V> {}
@@ -129,33 +129,19 @@ where
             cache: RefCell::default(),
             operations: IntMap::default(),
             entries: 0,
-            db_keys: Vec::default(),
+            db_keys: OnceCell::default(),
         }
     }
 
     pub(crate) fn open(base_key: u64) -> Self {
-        // Load entries from DB
-        let entries = storage_cursor(base_key) as usize;
-
-        // Load DB keys
-        let mut db_keys: Vec<u64> = Vec::with_capacity(entries);
-        for i in 0..entries {
-            // Read content from register
-            let bytes = read_register(REGISTER_CURSOR.saturating_add(i as u64))
-                .expect("Fail to read register");
-            // Convert into the sub-key
-            let arr: [u8; 8] = bytes.as_slice().try_into().expect("Slice length error");
-            let sub_key = u64::from_le_bytes(arr);
-            // Push key into the vector
-            db_keys.push(sub_key);
-        }
-
+        // Read number of entries from the DB
+        let entries = read_field::<usize>(base_key, 0).unwrap();
         HashMap {
             base_key,
             cache: RefCell::default(),
             operations: IntMap::default(),
             entries,
-            db_keys,
+            db_keys: OnceCell::default(),
         }
     }
 
@@ -238,9 +224,10 @@ where
         // Discard local changes
         self.operations.clear();
         self.cache = RefCell::default();
-        // Flag DB keys to be removed
-        for key in self.db_keys.iter() {
-            self.operations.insert(*key, CacheOp::Remove);
+        // Flag keys to be removed
+        let db_keys: Vec<u64> = self.db_keys().iter().cloned().collect();
+        for key in db_keys {
+            self.operations.insert(key, CacheOp::Remove);
         }
         // Update counter of total entries
         self.entries = 0;
@@ -345,10 +332,31 @@ where
         }
     }
 
+    fn db_keys(&self) -> &Vec<u64> {
+        self.db_keys.get_or_init(|| {
+            // Load entries from DB
+            let entries = storage_cursor(self.base_key) as usize;
+
+            // Load DB keys
+            let mut db_keys: Vec<u64> = Vec::with_capacity(entries);
+            for i in 0..entries {
+                // Read content from register
+                let bytes = read_register(REGISTER_CURSOR.saturating_add(i as u64))
+                    .expect("Fail to read register");
+                // Convert into the sub-key
+                let arr: [u8; 8] = bytes.as_slice().try_into().expect("Slice length error");
+                let sub_key = u64::from_le_bytes(arr);
+                // Push key into the vector
+                db_keys.push(sub_key);
+            }
+            db_keys
+        })
+    }
+
     fn internal_keys(&self) -> Vec<u64> {
         let cache = self.cache.borrow();
         // Keys may be duplicated
-        cache.keys().chain(self.db_keys.iter()).cloned().collect()
+        cache.keys().chain(self.db_keys().iter()).cloned().collect()
     }
 
     fn extract_cell(rc: Rc<RefCell<KeyValue<K, V>>>) -> Option<V> {
