@@ -17,6 +17,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
 use std::cell::{OnceCell, RefCell};
+use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -105,6 +106,7 @@ where
     }
 
     fn parse_value(value: Value, base_key: u64) -> anyhow::Result<Self> {
+        // TODO Test this
         let values: Vec<KeyValue<K, V>> = serde_json::from_value(value)?;
         let mut out = Self::new(base_key);
         for v in values {
@@ -225,6 +227,7 @@ where
         self.operations.clear();
         self.cache = RefCell::default();
         // Flag keys to be removed
+        // TODO Enhance?
         let db_keys: Vec<u64> = self.db_keys().iter().cloned().collect();
         for key in db_keys {
             self.operations.insert(key, CacheOp::Remove);
@@ -353,9 +356,8 @@ where
         })
     }
 
-    fn internal_keys(&self) -> Vec<u64> {
+    fn internal_keys(&self) -> HashSet<u64> {
         let cache = self.cache.borrow();
-        // Keys may be duplicated
         cache.keys().chain(self.db_keys().iter()).cloned().collect()
     }
 

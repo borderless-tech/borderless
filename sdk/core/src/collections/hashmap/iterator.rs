@@ -2,14 +2,14 @@ use crate::collections::hashmap::proxy::{Entry, Key, Value};
 use crate::collections::hashmap::HashMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::collections::HashMap as StdHashMap;
+use std::collections::HashSet;
 use std::hash::Hash;
 
 /// Immutable HashMap Iterator
 pub struct HashMapIt<'a, K, V> {
     map: &'a HashMap<K, V>,
     idx: usize,
-    keys: StdHashMap<u64, ()>,
+    keys: HashSet<u64>,
 }
 
 impl<'a, K, V> Iterator for HashMapIt<'a, K, V>
@@ -20,13 +20,10 @@ where
     type Item = Entry<'a, K, V>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.keys.iter().nth(self.idx) {
-            None => None, // The iterator is consumed
-            Some((key, _)) => {
-                self.idx = self.idx.saturating_add(1);
-                self.map.get_entry(*key)
-            }
-        }
+        self.keys.iter().nth(self.idx).and_then(|key| {
+            self.idx = self.idx.saturating_add(1);
+            self.map.get_entry(*key)
+        })
     }
 }
 
@@ -37,13 +34,7 @@ where
 {
     pub fn new(map: &'a HashMap<K, V>) -> Self {
         // Fetch keys from the HashMap
-        let internal_keys = map.internal_keys();
-
-        let mut keys = StdHashMap::with_capacity(internal_keys.len());
-        internal_keys.into_iter().for_each(|key| {
-            keys.insert(key, ());
-        });
-
+        let keys = map.internal_keys();
         HashMapIt { map, keys, idx: 0 }
     }
 }
@@ -52,7 +43,7 @@ where
 pub struct Keys<'a, K, V> {
     map: &'a HashMap<K, V>,
     idx: usize,
-    keys: StdHashMap<u64, ()>,
+    keys: HashSet<u64>,
 }
 
 impl<'a, K, V> Iterator for Keys<'a, K, V>
@@ -63,13 +54,10 @@ where
     type Item = Key<'a, K, V>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.keys.iter().nth(self.idx) {
-            None => None, // The iterator is consumed
-            Some((key, _)) => {
-                self.idx = self.idx.saturating_add(1);
-                self.map.get_key(*key)
-            }
-        }
+        self.keys.iter().nth(self.idx).and_then(|key| {
+            self.idx = self.idx.saturating_add(1);
+            self.map.get_key(*key)
+        })
     }
 }
 
@@ -80,13 +68,7 @@ where
 {
     pub fn new(map: &'a HashMap<K, V>) -> Self {
         // Fetch keys from the HashMap
-        let internal_keys = map.internal_keys();
-
-        let mut keys = StdHashMap::with_capacity(internal_keys.len());
-        internal_keys.into_iter().for_each(|key| {
-            keys.insert(key, ());
-        });
-
+        let keys = map.internal_keys();
         Keys { map, keys, idx: 0 }
     }
 }
@@ -95,7 +77,7 @@ where
 pub struct Values<'a, K, V> {
     map: &'a HashMap<K, V>,
     idx: usize,
-    keys: StdHashMap<u64, ()>,
+    keys: HashSet<u64>,
 }
 
 impl<'a, K, V> Iterator for Values<'a, K, V>
@@ -106,13 +88,10 @@ where
     type Item = Value<'a, K, V>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.keys.iter().nth(self.idx) {
-            None => None, // The iterator is consumed
-            Some((key, _)) => {
-                self.idx = self.idx.saturating_add(1);
-                self.map.get_value(*key)
-            }
-        }
+        self.keys.iter().nth(self.idx).and_then(|key| {
+            self.idx = self.idx.saturating_add(1);
+            self.map.get_value(*key)
+        })
     }
 }
 
@@ -123,13 +102,7 @@ where
 {
     pub fn new(map: &'a HashMap<K, V>) -> Self {
         // Fetch keys from the HashMap
-        let internal_keys = map.internal_keys();
-
-        let mut keys = StdHashMap::with_capacity(internal_keys.len());
-        internal_keys.into_iter().for_each(|key| {
-            keys.insert(key, ());
-        });
-
+        let keys = map.internal_keys();
         Values { map, keys, idx: 0 }
     }
 }
