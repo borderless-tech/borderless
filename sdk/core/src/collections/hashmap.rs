@@ -16,7 +16,7 @@ use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -36,7 +36,7 @@ pub struct HashMap<K, V> {
     cache: RefCell<IntMap<u64, Rc<RefCell<KeyValue<K, V>>>>>,
     operations: IntMap<u64, CacheOp>,
     entries: usize,
-    loaded: Cell<bool>, // All entries in the DB have already been fetched
+    db_keys: Vec<u64>,
 }
 
 impl<K, V> Sealed for HashMap<K, V> {}
@@ -129,19 +129,33 @@ where
             cache: RefCell::default(),
             operations: IntMap::default(),
             entries: 0,
-            loaded: Cell::new(false),
+            db_keys: Vec::default(),
         }
     }
 
     pub(crate) fn open(base_key: u64) -> Self {
-        // Read number of entries from the DB
-        let entries = read_field::<usize>(base_key, 0).unwrap();
+        // Load entries from DB
+        let entries = storage_cursor(base_key) as usize;
+
+        // Load DB keys
+        let mut db_keys: Vec<u64> = Vec::with_capacity(entries);
+        for i in 0..entries {
+            // Read content from register
+            let bytes = read_register(REGISTER_CURSOR.saturating_add(i as u64))
+                .expect("Fail to read register");
+            // Convert into the sub-key
+            let arr: [u8; 8] = bytes.as_slice().try_into().expect("Slice length error");
+            let sub_key = u64::from_le_bytes(arr);
+            // Push key into the vector
+            db_keys.push(sub_key);
+        }
+
         HashMap {
             base_key,
             cache: RefCell::default(),
             operations: IntMap::default(),
             entries,
-            loaded: Cell::new(false),
+            db_keys,
         }
     }
 
@@ -223,36 +237,25 @@ where
     pub fn clear(&mut self) {
         // Discard local changes
         self.operations.clear();
-        // Load missing entries to memory
-        self.load_entries();
-        // Flag all keys to be removed
-        for key in self.cache.borrow().keys() {
+        self.cache = RefCell::default();
+        // Flag DB keys to be removed
+        for key in self.db_keys.iter() {
             self.operations.insert(*key, CacheOp::Remove);
         }
         // Update counter of total entries
         self.entries = 0;
-        // Clear the in-memory map, deallocating the used resources
-        self.cache = RefCell::default();
-        // Flag loaded to false as we lost the DB entries
-        self.loaded.set(false);
     }
 
     pub fn iter(&self) -> HashMapIt<K, V> {
-        // Load missing entries to memory
-        self.load_entries();
         HashMapIt::new(self)
     }
 
     pub fn keys(&self) -> Keys<K, V> {
-        // Load missing entries to memory
-        self.load_entries();
         // Return Keys iterator
         Keys::new(self)
     }
 
     pub fn values(&self) -> Values<K, V> {
-        // Load missing entries to memory
-        self.load_entries();
         // Return Values iterator
         Values::new(self)
     }
@@ -296,38 +299,13 @@ where
         }
     }
 
-    fn load_entries(&self) {
-        if self.loaded.get() {
-            // The in-memory mirror already contains all the DB entries
-            return;
-        }
-        // Flag loaded to true to avoid dumping the DB several times
-        self.loaded.set(true);
-
-        // Load missing entries to memory
-        let entries = storage_cursor(self.base_key) as usize;
-
-        for i in 0..entries {
-            // Read content from register
-            let bytes = read_register(REGISTER_CURSOR.saturating_add(i as u64))
-                .expect("Fail to read register");
-            // Convert into the sub-key
-            let arr: [u8; 8] = bytes.as_slice().try_into().expect("Slice length error");
-            let sub_key = u64::from_le_bytes(arr);
-            // Load keys into the cache
-            self.read(sub_key);
-        }
-    }
-
     fn flag_write(&mut self, key: u64) {
         self.operations.insert(key, CacheOp::Update);
     }
 
-    fn get_entry(&self, index: usize) -> Option<EntryProxy<'_, K, V>> {
-        // Read n-th key
-        let key = *self.cache.borrow().keys().nth(index)?;
+    fn get_entry(&self, internal_key: u64) -> Option<EntryProxy<'_, K, V>> {
         // Create entry proxy object
-        match self.read(key) {
+        match self.read(internal_key) {
             None => None,
             Some(cell) => {
                 let key = EntryProxy {
@@ -339,11 +317,9 @@ where
         }
     }
 
-    fn get_key(&self, index: usize) -> Option<KeyProxy<'_, K, V>> {
-        // Read n-th key
-        let key = *self.cache.borrow().keys().nth(index)?;
+    fn get_key(&self, internal_key: u64) -> Option<KeyProxy<'_, K, V>> {
         // Create key proxy object
-        match self.read(key) {
+        match self.read(internal_key) {
             None => None,
             Some(cell) => {
                 let key = KeyProxy {
@@ -355,11 +331,9 @@ where
         }
     }
 
-    fn get_value(&self, index: usize) -> Option<ValueProxy<'_, K, V>> {
-        // Read n-th key
-        let key = *self.cache.borrow().keys().nth(index)?;
+    fn get_value(&self, internal_key: u64) -> Option<ValueProxy<'_, K, V>> {
         // Create value proxy object
-        match self.read(key) {
+        match self.read(internal_key) {
             None => None,
             Some(cell) => {
                 let key = ValueProxy {
@@ -369,6 +343,12 @@ where
                 Some(key)
             }
         }
+    }
+
+    fn internal_keys(&self) -> Vec<u64> {
+        let cache = self.cache.borrow();
+        // Keys may be duplicated
+        cache.keys().chain(self.db_keys.iter()).cloned().collect()
     }
 
     fn extract_cell(rc: Rc<RefCell<KeyValue<K, V>>>) -> Option<V> {
