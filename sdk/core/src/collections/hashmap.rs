@@ -106,11 +106,10 @@ where
     }
 
     fn parse_value(value: Value, base_key: u64) -> anyhow::Result<Self> {
-        // TODO Test this
-        let values: Vec<KeyValue<K, V>> = serde_json::from_value(value)?;
+        let values: std::collections::HashMap<K, V> = serde_json::from_value(value)?;
         let mut out = Self::new(base_key);
         for v in values {
-            out.insert(v.pair.0, v.pair.1);
+            out.insert(v.0, v.1);
         }
         Ok(out)
     }
