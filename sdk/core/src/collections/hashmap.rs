@@ -48,10 +48,27 @@ where
     V: Serialize + DeserializeOwned,
 {
     fn to_payload(&self, path: &str) -> anyhow::Result<Option<String>> {
-        // As this is a map, there is no further nesting
+        use serde_json::to_string as to_str;
+        // Remove leading '/' if present
+        let path = path.strip_prefix('/').unwrap_or(path);
+
+        let (path, remainder) = match path.split_once('/') {
+            Some((path, remainder)) => (path, remainder),
+            None => (path, ""),
+        };
+
         if !path.is_empty() {
-            return Ok(None);
-        }
+            // Try to deserialize key (complex key types will fail)
+            let key: K = match serde_json::from_str(path) {
+                Ok(key) => key,
+                Err(_) => return Ok(None),
+            };
+
+            // Nest to the next to_payload()
+            return self
+                .get(key)
+                .map_or(Ok(None), |val| (*val).to_payload(remainder));
+        };
         // We build the json output manually to save performance
         let n_items = self.len();
         if n_items == 0 {
@@ -60,7 +77,6 @@ where
         let first = self.iter().next().unwrap(); // We checked empty
         let complex_key = matches!(serde_json::to_value(first.key())?, Value::Object(_));
 
-        use serde_json::to_string as to_str;
         let entries: Vec<String> = self
             .iter()
             .map(|item| {
@@ -78,9 +94,10 @@ where
 
         let body = entries.join(",");
 
-        let out = match complex_key {
-            true => format!("[{}]", body),
-            false => format!("{{{}}}", body),
+        let out = if complex_key {
+            format!("[{}]", body)
+        } else {
+            format!("{{{}}}", body)
         };
 
         Ok(Some(out))
