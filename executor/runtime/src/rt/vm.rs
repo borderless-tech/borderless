@@ -301,7 +301,7 @@ impl<S: Db> VmState<S> {
         self.registers.get(&register_id).map(|v| v.borrow().clone())
     }
 
-    // Clears the registers from REGISTER_CURSOR until 2^64 -1
+    /// Clears the registers from REGISTER_CURSOR until 2^64 -1
     fn clear_registers(&mut self) -> Result<()> {
         self.registers.retain(|&k, _| k < REGISTER_CURSOR);
         Ok(())
