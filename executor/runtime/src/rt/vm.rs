@@ -17,11 +17,11 @@ use borderless::{
 };
 use wasmtime::{Caller, Extern, Memory};
 
+use borderless::__private::registers::REGISTER_CURSOR;
+use borderless_kv_store::*;
 use log::{debug, warn};
 use nohash::IntMap;
 use rand::Rng;
-
-use borderless_kv_store::*;
 
 use crate::{
     controller::{write_introduction, write_revocation, Controller},
@@ -101,6 +101,7 @@ impl<S: Db> VmState<S> {
 
         // Reset everything
         self.active = ActiveEntity::None;
+        self.clear_registers()?;
         self.log_buffer.clear();
 
         result
@@ -221,6 +222,7 @@ impl<S: Db> VmState<S> {
             return Err(Error::msg("Cannot clear non existing contract or sw-agent"));
         }
         self.active = ActiveEntity::None;
+        self.clear_registers()?;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
@@ -276,6 +278,7 @@ impl<S: Db> VmState<S> {
             txn.commit()?;
         }
 
+        self.clear_registers()?;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
@@ -296,6 +299,12 @@ impl<S: Db> VmState<S> {
     /// Returns a value from a register
     pub fn get_register(&self, register_id: u64) -> Option<Vec<u8>> {
         self.registers.get(&register_id).map(|v| v.borrow().clone())
+    }
+
+    // Clears the registers from REGISTER_CURSOR until 2^64 -1
+    fn clear_registers(&mut self) -> Result<()> {
+        self.registers.retain(|&k, _| k < REGISTER_CURSOR);
+        Ok(())
     }
 
     /// Removes a value from a register
