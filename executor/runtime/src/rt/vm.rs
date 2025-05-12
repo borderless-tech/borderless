@@ -50,6 +50,8 @@ pub struct VmState<S: Db> {
 
     /// Currently active contract or sw-agent
     active: ActiveEntity,
+
+    _async: Option<AsyncState>,
 }
 
 impl<S: Db> VmState<S> {
@@ -61,6 +63,23 @@ impl<S: Db> VmState<S> {
             last_timer: None,
             log_buffer: Vec::new(),
             active: ActiveEntity::None,
+            _async: None,
+        }
+    }
+
+    pub fn new_async(
+        db: S,
+        db_ptr: S::Handle,
+        ws_sender: std::sync::mpsc::Sender<(AgentId, String)>,
+    ) -> Self {
+        VmState {
+            registers: Default::default(),
+            db,
+            db_ptr,
+            last_timer: None,
+            log_buffer: Vec::new(),
+            active: ActiveEntity::None,
+            _async: Some(AsyncState { ws: ws_sender }),
         }
     }
 
@@ -312,6 +331,12 @@ impl<S: Db> VmState<S> {
     pub fn len_actions(&self, cid: &ContractId) -> Result<u64> {
         ActionLog::new(&self.db, *cid).len()
     }
+}
+
+/// Parts of `VmState` that are only relevant for async execution
+struct AsyncState {
+    /// Websocket sender
+    ws: std::sync::mpsc::Sender<(AgentId, String)>,
 }
 
 /// Helper function to get the linear memory of the wasm module
@@ -590,6 +615,37 @@ pub mod async_abi {
         Client, Method as ReqwestMethod, Request, Response,
     };
     use std::{result::Result, str::FromStr};
+
+    pub async fn send_ws_msg(
+        mut caller: Caller<'_, VmState<impl Db>>,
+        msg_ptr: u64,
+        msg_len: u64,
+    ) -> wasmtime::Result<u64> {
+        let agent_id = caller
+            .data()
+            .active
+            .is_agent()
+            .ok_or_else(|| wasmtime::Error::msg("only sw-agents can send ws-msgs"))?;
+
+        let memory = get_memory(&mut caller)?;
+
+        // Read memory
+        let data = memory
+            .data(&mut caller)
+            .get(msg_ptr as usize..(msg_ptr + msg_len) as usize)
+            .ok_or_else(|| wasmtime::Error::msg("Memory access out of bounds"))?
+            .to_vec();
+
+        let msg = match String::from_utf8(data) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!("send_ws_msg failed for agent {agent_id}: {e}");
+                return Ok(1);
+            }
+        };
+
+        Ok(0)
+    }
 
     pub async fn send_http_rq(
         mut caller: Caller<'_, VmState<impl Db>>,
@@ -887,6 +943,13 @@ impl ActiveEntity {
 
     pub fn is_none(&self) -> bool {
         matches!(self, ActiveEntity::None)
+    }
+
+    pub fn is_agent(&self) -> Option<AgentId> {
+        match self {
+            ActiveEntity::Agent { aid, .. } => Some(*aid),
+            _ => None,
+        }
     }
 
     /// Returns the storage key for the active entity

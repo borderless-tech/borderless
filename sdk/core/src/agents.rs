@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::events::{CallAction, MethodOrId};
 
+// TODO: Are schedules completely static ?
+// Or do we want to enable temporary schedules,
+// that can be registered on runtime by other schedules ?
 /// Schedules are functions that are executed periodically.
 ///
 /// This struct is the equivalent of [`CallAction`], just for schedules.

@@ -52,6 +52,9 @@ extern "C" {
     // Returns the current timestamp as milliseconds since epoch
     pub fn timestamp() -> i64;
 
+    // Send a (string) message via websocket
+    pub fn send_ws_msg(msg_ptr: u64, msg_len: u64) -> u64;
+
     // Create a new schedule that should be called regularly
     pub fn register_schedule();
 
