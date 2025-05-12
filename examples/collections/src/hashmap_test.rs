@@ -1,4 +1,4 @@
-use crate::product::Product;
+use crate::product::{Code, Product};
 use borderless::__private::dev::rand;
 use borderless::collections::hashmap::HashMap;
 use borderless::ensure;
@@ -143,7 +143,7 @@ pub(crate) fn values(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn add_product(hashmap: &mut HashMap<String, Product>) -> Result<()> {
+pub(crate) fn add_product(hashmap: &mut HashMap<Code, Product>) -> Result<()> {
     info!("Number of products BEFORE: {}", hashmap.len());
     if hashmap.len() > 100000 {
         warn!("Too many products! Clearing...");
@@ -155,11 +155,11 @@ pub(crate) fn add_product(hashmap: &mut HashMap<String, Product>) -> Result<()> 
     let end = start + N;
 
     for i in start..end {
+        let code = Code::new(i, 'A');
         let product = Product::generate_product();
-        let key = format!("{}{}", product.name, i);
-        hashmap.insert(key.clone(), product.clone());
+        hashmap.insert(code.clone(), product.clone());
 
-        let from_map = hashmap.get(key).unwrap();
+        let from_map = hashmap.get(code).unwrap();
         if *from_map != product {
             return Err(new_error!("{} !== {}", *from_map, product));
         }

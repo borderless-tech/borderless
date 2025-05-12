@@ -4,7 +4,7 @@ mod product;
 
 #[borderless::contract]
 pub mod collections {
-    use crate::product::Product;
+    use crate::product::{Code, Product};
     use borderless::collections::hashmap::HashMap;
     use borderless::collections::lazyvec::LazyVec;
 
@@ -20,7 +20,7 @@ pub mod collections {
         catalog: LazyVec<Product>,
         records: LazyVec<u64>,
         points: HashMap<u64, u64>,
-        listing: HashMap<String, Product>,
+        listing: HashMap<Code, Product>,
     }
 
     impl State {
