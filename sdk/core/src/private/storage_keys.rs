@@ -57,6 +57,7 @@
 //! ```
 
 use borderless_id_types::{aid_prefix, cid_prefix, AgentId};
+use std::array::TryFromSliceError;
 
 use crate::ContractId;
 
@@ -238,6 +239,13 @@ impl StorageKey {
         id
     }
 
+    /// Extracts the ID + base key prefix from the key
+    pub fn get_prefix(&self) -> [u8; 24] {
+        let mut id = [0u8; 24];
+        id.copy_from_slice(&self.0[0..24]);
+        id
+    }
+
     /// Extracts the base key (u64) from the key.
     pub fn base_key(&self) -> u64 {
         u64::from_be_bytes(self.0[16..24].try_into().expect("base_key slice invalid"))
@@ -266,6 +274,15 @@ impl StorageKey {
     /// Returns `true` if the key belongs to a sw-agent
     pub fn is_agent_key(&self) -> bool {
         aid_prefix(self.0)
+    }
+}
+
+impl TryFrom<&[u8]> for StorageKey {
+    type Error = TryFromSliceError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let buf = value.try_into()?;
+        Ok(StorageKey(buf))
     }
 }
 

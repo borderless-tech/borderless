@@ -1,4 +1,4 @@
-use crate::product::Product;
+use crate::product::{Code, Product};
 use borderless::__private::dev::rand;
 use borderless::collections::hashmap::HashMap;
 use borderless::ensure;
@@ -7,7 +7,8 @@ use std::collections::HashMap as StdHashMap;
 
 const N: u64 = 5000;
 
-pub(crate) fn is_empty(hashmap: &HashMap<u64, u64>) -> Result<()> {
+pub(crate) fn is_empty(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
     ensure!(hashmap.is_empty(), "Test [is_empty] failed");
     Ok(())
 }
@@ -24,6 +25,7 @@ pub(crate) fn clear(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
 }
 
 pub(crate) fn len(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
     for i in 0..N {
         // Check integrity
         ensure!(hashmap.len() == i as usize, "Error 1 in [len]");
@@ -34,6 +36,7 @@ pub(crate) fn len(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
 }
 
 pub(crate) fn contains_key(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
     for i in 0..N {
         let random = rand(0, u64::MAX);
         hashmap.insert(i, random);
@@ -49,6 +52,7 @@ pub(crate) fn contains_key(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
 }
 
 pub(crate) fn insert(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
     // A trusted reference used to know what the correct behavior should be
     let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
 
@@ -66,6 +70,7 @@ pub(crate) fn insert(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
 }
 
 pub(crate) fn remove(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
     // A trusted reference used to know what the correct behavior should be
     let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
 
@@ -83,7 +88,27 @@ pub(crate) fn remove(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn iter(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
+    // A trusted reference used to know what the correct behavior should be
+    let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+    for i in 0..N {
+        let random = rand(0, u64::MAX);
+        hashmap.insert(i, random);
+        oracle.insert(i, random);
+    }
+    // Collect and sort both key-lists
+    let mut hashmap_pairs: Vec<(u64, u64)> = hashmap.iter().map(|e| *e).collect();
+    let mut oracle_pairs: Vec<(u64, u64)> = oracle.iter().map(|(k, v)| (*k, *v)).collect();
+    hashmap_pairs.sort_unstable();
+    oracle_pairs.sort_unstable();
+    // Check integrity
+    assert_eq!(hashmap_pairs, oracle_pairs);
+    Ok(())
+}
+
 pub(crate) fn keys(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
     // A trusted reference used to know what the correct behavior should be
     let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
 
@@ -102,7 +127,23 @@ pub(crate) fn keys(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn add_product(hashmap: &mut HashMap<String, Product>) -> Result<()> {
+pub(crate) fn values(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
+    hashmap.clear();
+    // A trusted reference used to know what the correct behavior should be
+    let mut oracle = Vec::with_capacity(N as usize);
+
+    for i in 0..N {
+        let random = rand(0, u64::MAX);
+        hashmap.insert(i, random);
+        oracle.push(random);
+    }
+    for v in hashmap.values() {
+        assert!(oracle.contains(&*v));
+    }
+    Ok(())
+}
+
+pub(crate) fn add_product(hashmap: &mut HashMap<Code, Product>) -> Result<()> {
     info!("Number of products BEFORE: {}", hashmap.len());
     if hashmap.len() > 100000 {
         warn!("Too many products! Clearing...");
@@ -114,11 +155,11 @@ pub(crate) fn add_product(hashmap: &mut HashMap<String, Product>) -> Result<()> 
     let end = start + N;
 
     for i in start..end {
+        let code = Code::new(i, 'A');
         let product = Product::generate_product();
-        let key = format!("{}{}", product.name, i);
-        hashmap.insert(key.clone(), product.clone());
+        hashmap.insert(code.clone(), product.clone());
 
-        let from_map = hashmap.get(key).unwrap();
+        let from_map = hashmap.get(code).unwrap();
         if *from_map != product {
             return Err(new_error!("{} !== {}", *from_map, product));
         }

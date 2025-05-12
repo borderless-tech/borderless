@@ -2,6 +2,18 @@ use borderless::__private::dev::rand;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
+#[derive(Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Code {
+    digits: u64,
+    character: char,
+}
+
+impl Code {
+    pub(crate) fn new(digits: u64, character: char) -> Self {
+        Code { digits, character }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Product {
     pub(crate) name: String,

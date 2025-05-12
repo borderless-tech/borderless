@@ -170,6 +170,10 @@ pub fn storage_remove(base_key: u64, sub_key: u64) {
     }
 }
 
+pub fn storage_cursor(base_key: u64) -> u64 {
+    unsafe { abi::storage_cursor(base_key) }
+}
+
 pub fn storage_has_key(base_key: u64, sub_key: u64) -> bool {
     unsafe {
         match abi::storage_has_key(base_key, sub_key) {

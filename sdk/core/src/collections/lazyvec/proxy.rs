@@ -15,7 +15,7 @@ pub struct Proxy<'a, V> {
 impl<'a, V> AsRef<V> for Proxy<'a, V> {
     fn as_ref(&self) -> &V {
         // TODO - check if this causes UB !
-        let p = unsafe { &mut *self.node_ptr.as_ptr() };
+        let p = unsafe { &*self.node_ptr.as_ptr() };
         &p.values[self.elem_idx]
     }
 }
