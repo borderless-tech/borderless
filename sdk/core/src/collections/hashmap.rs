@@ -58,25 +58,31 @@ where
             return Ok(Some("{}".to_string()));
         }
         let first = self.iter().next().unwrap(); // We checked empty
-        use serde_json::to_string as str;
-        // To pre-allocate the output string, we encode one object and use this as a reference
-        let encoded = format!("\"{}\": \"{}\"", str(first.key())?, str(first.value())?);
+        let complex_key = matches!(serde_json::to_value(first.key())?, Value::Object(_));
 
-        // for N items: N * ITEM_LENGTH + (N-1) (commas) + 2 ('{}'); add some padding just in case
-        let mut buf = String::with_capacity(encoded.len() * n_items + n_items + 10);
+        use serde_json::to_string as to_str;
+        let entries: Vec<String> = self
+            .iter()
+            .map(|item| {
+                let k = to_str(item.key()).expect("Key serialization error");
+                let v = to_str(item.value()).expect("Value serialization error");
 
-        buf.push('{');
-        for item in self.iter() {
-            let encoded = format!("\"{}\": \"{}\"", str(item.key())?, str(item.value())?);
-            buf.push_str(&encoded);
-            buf.push(',');
-        }
-        // Remove trailing ','
-        if n_items > 0 {
-            buf.pop();
-        }
-        buf.push('}');
-        Ok(Some(buf))
+                if complex_key {
+                    format!("[{}, {}]", k, v)
+                } else {
+                    format!("\"{}\": {}", k, v)
+                }
+            })
+            .collect();
+
+        let body = entries.join(",");
+
+        let out = match complex_key {
+            true => format!("[{}]", body),
+            false => format!("{{{}}}", body),
+        };
+
+        Ok(Some(out))
     }
 }
 
