@@ -70,7 +70,8 @@ where
                 if complex_key {
                     format!("[{}, {}]", k, v)
                 } else {
-                    format!("\"{}\": {}", k, v)
+                    let k = to_str(&k).unwrap(); // Escape key
+                    format!("{}: {}", k, v)
                 }
             })
             .collect();
