@@ -226,8 +226,8 @@ where
         self.operations.clear();
         self.cache = RefCell::default();
         // Flag keys to be removed
-        // TODO Enhance?
-        let db_keys: Vec<u64> = self.db_keys().iter().cloned().collect();
+        // TODO Enhance to avoid cloning the keys
+        let db_keys: Vec<u64> = self.db_keys().to_vec();
         for key in db_keys {
             self.operations.insert(key, CacheOp::Remove);
         }
