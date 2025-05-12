@@ -130,10 +130,24 @@ where
     }
 
     fn parse_value(value: Value, base_key: u64) -> anyhow::Result<Self> {
-        let values: std::collections::HashMap<K, V> = serde_json::from_value(value)?;
         let mut out = Self::new(base_key);
-        for v in values {
-            out.insert(v.0, v.1);
+
+        match value.clone() {
+            Value::Array(_) => {
+                // A HashMap with a complex key type is serialized as an array of [key, value]
+                let pairs: Vec<(K, V)> = serde_json::from_value(value)?;
+                for (k, v) in pairs {
+                    out.insert(k, v);
+                }
+            }
+            Value::Object(_) => {
+                // A HashMap with a simple key type is serialized as a regular HashMap
+                let map: std::collections::HashMap<K, V> = serde_json::from_value(value)?;
+                for pair in map {
+                    out.insert(pair.0, pair.1);
+                }
+            }
+            _ => unreachable!(),
         }
         Ok(out)
     }
