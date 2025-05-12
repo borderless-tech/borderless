@@ -13,7 +13,8 @@ use super::TxCtx;
 //
 // Couldn't we do something that let's us do EUR( 32_50 ) ?
 // Or use parse trait ... "32,50€".parse()?
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Currency {
     /// Albanian Lek
     ALL = 8,
@@ -127,19 +128,32 @@ pub trait Account: Copy {
     }
 }
 
+impl Account for BorderlessId {
+    fn settle_debt(&self, debitor: Self) -> TransferBuilder<Self> {
+        TransferBuilder {
+            party_a: *self,
+            party_b: debitor,
+        }
+    }
+
+    fn transfer(&self, other: Self) -> TransferBuilder<Self> {
+        TransferBuilder {
+            party_a: other,
+            party_b: *self,
+        }
+    }
+}
+
 pub struct TransferBuilder<A: Account> {
     party_a: A,
     party_b: A,
 }
 
 impl TransferBuilder<BorderlessId> {
-    pub fn amount(self, amount: u64, currency: Currency) {
-        todo!("create transfer between the two parties")
+    pub fn amount(self, amount: i64, currency: Currency) -> crate::Result<()> {
+        Ledger::open(self.party_a, self.party_b).push(amount, currency)
     }
 }
-
-const SUB_KEY_STATE = 0;
-const SUB_KEY_LEN = u64::MAX;
 
 pub struct Ledger {
     party_a: BorderlessId,
@@ -147,9 +161,12 @@ pub struct Ledger {
     base_key: u64,
 }
 
+const SUB_KEY_STATE: u64 = 0;
+const SUB_KEY_LEN: u64 = u64::MAX;
+
 impl Ledger {
     pub fn open(party_a: BorderlessId, party_b: BorderlessId) -> Self {
-        let base_key = party_a.merge_compact(party_b) & BASE_KEY_MASK_LEDGER;
+        let base_key = party_a.merge_compact(&party_b) & BASE_KEY_MASK_LEDGER;
         Ledger {
             party_a,
             party_b,
@@ -180,28 +197,29 @@ impl Ledger {
     }
 
     // TODO: This could be its own error type tbh
-    pub fn push(&mut self, state: LedgerState) -> crate::Result<()> {
+    pub fn push(&mut self, amount: i64, currency: Currency) -> crate::Result<()> {
         let prev = self.state();
-        if prev.currency != state.currency {
+        if prev.currency != currency {
             return Err(anyhow!("ledger currency mismatch"));
-        }
-
-        if prev.party_a != state.party_a || prev.party_a != state.party_b || prev.party_b != state.party_b {
-            return Err(anyhow!("ledger party mismatch"));
         }
 
         // Record the new state
         let new_state = LedgerState {
-            party_a: state.party_a,
-            party_b: state.party_b,
-            currency: state.currency,
-            balance: prev + state.balance,
+            party_a: prev.party_a,
+            party_b: prev.party_b,
+            currency,
+            balance: prev.balance + amount,
         };
         write_field(self.base_key, SUB_KEY_STATE, &new_state);
 
         // Record the transfer plus the metadata
         let transfer = LedgerStateMeta {
-            transfer: state,
+            transfer: LedgerState {
+                party_a: prev.party_a,
+                party_b: prev.party_b,
+                currency,
+                balance: amount,
+            },
             tx_ctx: super::env::tx_ctx(),
             block_ts: super::env::block_timestamp(),
         };
@@ -209,7 +227,7 @@ impl Ledger {
         write_field(self.base_key, sub_key, &transfer);
 
         // Adjust len ( the sub_key for the record is the new len )
-        write_field(self.base_key, SUB_KEY_LEN, sub_key);
+        write_field(self.base_key, SUB_KEY_LEN, &sub_key);
         Ok(())
     }
 

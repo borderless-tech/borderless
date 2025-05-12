@@ -10,7 +10,7 @@ use crate::{events::Sink, BorderlessId, ContractId};
 /// Contract Environment
 pub mod env;
 
-// pub mod ledger;
+pub mod ledger;
 
 /// Maps a `BorderlessId` to a role in a smart-contract
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -17,11 +17,11 @@ use borderless::{
 };
 use wasmtime::{Caller, Extern, Memory};
 
-use borderless::__private::registers::REGISTER_CURSOR;
-use borderless_kv_store::*;
 use log::{debug, warn};
 use nohash::IntMap;
 use rand::Rng;
+
+use borderless_kv_store::*;
 
 use crate::{
     controller::{write_introduction, write_revocation, Controller},
@@ -42,14 +42,14 @@ pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
     db: S,
     db_ptr: S::Handle,
-    db_acid_txn_buffer: Option<Vec<StorageOp>>,
+
     last_timer: Option<Instant>,
 
     /// Current buffer of log output for the given contract
     log_buffer: Vec<LogLine>,
 
-    // Currently active contract or sw-agent
-    active_item: ActiveItem,
+    /// Currently active contract or sw-agent
+    active: ActiveEntity,
 }
 
 impl<S: Db> VmState<S> {
@@ -58,10 +58,9 @@ impl<S: Db> VmState<S> {
             registers: Default::default(),
             db,
             db_ptr,
-            db_acid_txn_buffer: None,
             last_timer: None,
             log_buffer: Vec::new(),
-            active_item: ActiveItem::None,
+            active: ActiveEntity::None,
         }
     }
 
@@ -71,7 +70,7 @@ impl<S: Db> VmState<S> {
     ///
     /// Calling this function while the `VmState` already has an active contract results in an error.
     pub fn begin_mutable_exec(&mut self, cid: ContractId) -> Result<()> {
-        if self.active_item.is_some() {
+        if self.active.is_some() {
             return Err(Error::msg(
                 "Cannot start a new execution while something else is still active",
             ));
@@ -79,9 +78,11 @@ impl<S: Db> VmState<S> {
         if Controller::new(&self.db).contract_revoked(&cid)? {
             return Err(ErrorKind::RevokedContract { cid }.into());
         }
-        self.active_item = ActiveItem::Contract { cid, mutable: true };
+        self.active = ActiveEntity::Contract {
+            cid,
+            db_txns: Some(Vec::new()),
+        };
         self.log_buffer.clear();
-        self.db_acid_txn_buffer = Some(Vec::new());
         Ok(())
     }
 
@@ -99,35 +100,35 @@ impl<S: Db> VmState<S> {
         let result = self.finish_mut_exec_inner(commit);
 
         // Reset everything
-        self.active_item = ActiveItem::None;
+        self.active = ActiveEntity::None;
         self.log_buffer.clear();
-        self.clear_registers()?;
 
         result
     }
 
     // Inner wrapper, so we can return the result, but also perform the cleanup afterwards in case of an error
     fn finish_mut_exec_inner(&mut self, commit: Commit) -> Result<()> {
-        let cid = match self.active_item {
-            ActiveItem::Contract { cid, mutable } => {
-                if !mutable {
+        let active = std::mem::replace(&mut self.active, ActiveEntity::None);
+        let (cid, buf) = match active {
+            ActiveEntity::Contract { cid, db_txns } => {
+                if let Some(db_txns) = db_txns {
+                    (cid, db_txns)
+                } else {
                     return Err(Error::msg("Contract execution was marked as immutable"));
                 }
-                cid
             }
-            ActiveItem::Agent { .. } => {
+            ActiveEntity::Agent { .. } => {
                 return Err(Error::msg(
                     "Cannot finish a contract while a sw-agent is active",
                 ));
             }
-            ActiveItem::None => {
+            ActiveEntity::None => {
                 return Err(Error::msg("No active contract"));
             }
         };
         let now = Instant::now();
 
         // Commit storage buffer
-        let buf = std::mem::take(&mut self.db_acid_txn_buffer).unwrap_or_default();
         let mut txn = self.db.begin_rw_txn()?;
         for op in buf.into_iter() {
             // Check, that all keys are user-keys - ignore system-keys.
@@ -191,15 +192,14 @@ impl<S: Db> VmState<S> {
     ///
     /// Calling this function while the `VmState` already has an active contract results in an error.
     pub fn begin_immutable_exec(&mut self, cid: ContractId) -> Result<()> {
-        if self.active_item.is_some() {
+        if self.active.is_some() {
             return Err(Error::msg("Cannot overwrite active contract"));
         }
-        self.active_item = ActiveItem::Contract {
+        self.active = ActiveEntity::Contract {
             cid,
-            mutable: false,
+            db_txns: Some(Vec::new()),
         };
         self.log_buffer.clear();
-        self.db_acid_txn_buffer = None;
         Ok(())
     }
 
@@ -217,73 +217,75 @@ impl<S: Db> VmState<S> {
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
     pub fn finish_immutable_exec(&mut self) -> Result<Vec<LogLine>> {
-        if self.active_item.is_none() {
+        if self.active.is_none() {
             return Err(Error::msg("Cannot clear non existing contract or sw-agent"));
         }
-        self.active_item = ActiveItem::None;
-        self.db_acid_txn_buffer = None;
-        self.clear_registers()?;
+        self.active = ActiveEntity::None;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
 
     pub fn begin_agent_exec(&mut self, aid: AgentId, mutable: bool) -> Result<()> {
-        if self.active_item.is_some() {
+        if self.active.is_some() {
             return Err(Error::msg(
                 "Cannot start a new execution while something else is still active",
             ));
         }
-        self.active_item = ActiveItem::Agent { aid, mutable };
+        let db_txns = if mutable { Some(Vec::new()) } else { None };
+        self.active = ActiveEntity::Agent { aid, db_txns };
         self.log_buffer.clear();
-        self.db_acid_txn_buffer = None;
         Ok(())
     }
 
     pub fn finish_agent_exec(&mut self, commit_state: bool) -> Result<Vec<LogLine>> {
-        let aid = match self.active_item {
-            ActiveItem::Contract { .. } => {
+        let active = std::mem::replace(&mut self.active, ActiveEntity::None);
+        let (aid, buf) = match active {
+            ActiveEntity::Contract { .. } => {
                 return Err(Error::msg(
                     "cannot finish an agent while a contract is still running",
                 ))
             }
-            ActiveItem::Agent { mutable, aid } => {
-                if !mutable && commit_state {
+            ActiveEntity::Agent { aid, db_txns } => {
+                if db_txns.is_none() && commit_state {
                     return Err(Error::msg("Agent execution was marked as immutable"));
                 }
-                aid
+                (aid, db_txns)
             }
-            ActiveItem::None => {
+            ActiveEntity::None => {
                 return Err(Error::msg("No active sw-agent"));
             }
         };
         if commit_state {
             let mut txn = self.db.begin_rw_txn()?;
+            // Apply storage operations
+            for op in buf.unwrap().into_iter() {
+                // Check, that all keys are user-keys - ignore system-keys.
+                if !op.is_userspace() {
+                    warn!("Agent tried to write or remove a value with a storage-key that is not in user-space");
+                    continue;
+                }
+                match op {
+                    StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
+                    StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
+                }
+            }
+
             // Flush log
             let logger = Logger::new(&self.db, aid);
             logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
             txn.commit()?;
         }
 
-        self.active_item = ActiveItem::None;
-        self.db_acid_txn_buffer = None;
-        self.clear_registers()?;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
-    }
-
-    // Clears the registers from REGISTER_CURSOR until 2^64 -1
-    fn clear_registers(&mut self) -> Result<()> {
-        self.registers.retain(|&k, _| k < REGISTER_CURSOR);
-        Ok(())
     }
 
     /// Generates the storage key based on the currently active contract.
     ///
     /// Note: This function only generates user-keys, as values with system-keys must be commited by the host.
     fn get_storage_key(&self, base_key: u64, sub_key: u64) -> wasmtime::Result<StorageKey> {
-        self.active_item
-            .storage_key(base_key, sub_key)
-            .ok_or_else(|| wasmtime::Error::msg("no contract has been activated"))
+        let key = self.active.storage_key(base_key, sub_key)?;
+        Ok(key)
     }
 
     /// Writes the given value into the register.
@@ -473,7 +475,7 @@ pub fn storage_write(
     value_ptr: u64,
     value_len: u64,
 ) -> wasmtime::Result<()> {
-    if caller.data().active_item.is_immutable() {
+    if caller.data().active.is_immutable() {
         return Ok(());
     }
     // Get memory
@@ -485,11 +487,11 @@ pub fn storage_write(
     // Build key
     let key = caller.data().get_storage_key(base_key, sub_key)?;
 
-    // Check, if there is an acid txn, and if so, commit the changes to that:
-    let caller_data = &mut caller.data_mut();
-    if let Some(buf) = &mut caller_data.db_acid_txn_buffer {
-        buf.push(StorageOp::write(key, value));
-    }
+    // Push storage operation
+    caller
+        .data_mut()
+        .active
+        .push_storage(StorageOp::write(key, value))?;
     Ok(())
 }
 
@@ -525,7 +527,7 @@ pub fn storage_remove(
     base_key: u64,
     sub_key: u64,
 ) -> wasmtime::Result<()> {
-    if caller.data().active_item.is_immutable() {
+    if caller.data().active.is_immutable() {
         return Ok(());
     }
 
@@ -536,53 +538,8 @@ pub fn storage_remove(
     let caller_data = &mut caller.data_mut();
 
     // Write changes to storage-buffer
-    if let Some(buf) = &mut caller_data.db_acid_txn_buffer {
-        // txn.delete(&caller_data.db_ptr, &key)?;
-        buf.push(StorageOp::remove(key));
-    }
+    caller_data.active.push_storage(StorageOp::remove(key))?;
     Ok(())
-}
-
-pub fn storage_cursor(
-    mut caller: Caller<'_, VmState<impl Db>>,
-    base_key: u64,
-) -> wasmtime::Result<u64> {
-    // Build key (skips base_key)
-    let key = caller.data().get_storage_key(base_key, 1)?;
-    let tgt_prefix = key.get_prefix();
-
-    // Set up DB access
-    let db = &caller.data().db;
-    let db_ptr = &caller.data().db_ptr;
-    let txn = db.begin_ro_txn()?;
-
-    // 1 - Move cursor at target key
-    // 2 - Convert DB keys into StorageKey
-    // 3 - Fetch all the keys matching the target prefix
-    // 4 - For each resulting key, extract its sub-key
-    let mut cursor = txn.ro_cursor(db_ptr)?;
-    let keys: Vec<u64> = cursor
-        .iter_from(&key)
-        .map(|(key, _)| StorageKey::try_from(key).expect("Slice length error"))
-        .take_while(|key| {
-            let key_prefix = key.get_prefix();
-            key_prefix.starts_with(&tgt_prefix)
-        })
-        .map(|key| key.sub_key())
-        .collect();
-
-    drop(cursor);
-    drop(txn);
-
-    let caller_data = &mut caller.data_mut();
-
-    // Write keys into the registers
-    for (i, key) in keys.iter().enumerate() {
-        let bytes = key.to_le_bytes().to_vec();
-        caller_data.set_register(REGISTER_CURSOR.saturating_add(i as u64), bytes);
-    }
-    // Return number of keys
-    Ok(keys.len() as u64)
 }
 
 pub fn storage_has_key(
@@ -740,12 +697,16 @@ pub mod async_abi {
         }
 
         // Build the request
-        let rq = client
-            .request(method, uri)
-            .headers(headers)
-            .body(body)
+        let rq = {
+            let client = client.request(method, uri).headers(headers);
+            if !body.is_empty() {
+                client.body(body)
+            } else {
+                client
+            }
             .build()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?
+        };
 
         Ok(rq)
     }
@@ -897,41 +858,71 @@ pub enum Commit {
     },
 }
 
-/// Represents the different states of an active contract
+/// Represents an executable entity in the VmState.
 ///
-/// A contract can be executed with a mutable or immutable state.
-/// Processing a chain-transaction requires a mutable state,
+/// An entity can be executed with a mutable or immutable state.
+/// Processing a chain-transaction on a contract requires a mutable state e.g.,
 /// as this means the state of the contract can change and changes are written to the database.
 ///
-/// An immutable contract execution is e.g. required for handling http-requests or performing dry-runs.
-/// In such a case, calls to `storage_write` will result in an error.
-enum ActiveItem {
-    Contract { cid: ContractId, mutable: bool },
-    Agent { aid: AgentId, mutable: bool },
+/// An immutable execution is e.g. required for handling http-requests or performing dry-runs.
+/// In such a case, calls to `storage_write` will be simply ignored.
+enum ActiveEntity {
+    Contract {
+        cid: ContractId,
+        // 'None', if immutable
+        db_txns: Option<Vec<StorageOp>>,
+    },
+    Agent {
+        aid: AgentId,
+        // 'None', if immutable
+        db_txns: Option<Vec<StorageOp>>,
+    },
     None,
 }
 
-impl ActiveItem {
+impl ActiveEntity {
     pub fn is_some(&self) -> bool {
         !self.is_none()
     }
 
     pub fn is_none(&self) -> bool {
-        matches!(self, ActiveItem::None)
+        matches!(self, ActiveEntity::None)
     }
 
-    pub fn storage_key(&self, base_key: u64, sub_key: u64) -> Option<StorageKey> {
+    /// Returns the storage key for the active entity
+    pub fn storage_key(&self, base_key: u64, sub_key: u64) -> Result<StorageKey> {
         match self {
-            ActiveItem::Contract { cid, .. } => Some(StorageKey::new(cid, base_key, sub_key)),
-            ActiveItem::Agent { aid, .. } => Some(StorageKey::new(aid, base_key, sub_key)),
-            ActiveItem::None => None,
+            ActiveEntity::Contract { cid, .. } => Ok(StorageKey::new(cid, base_key, sub_key)),
+            ActiveEntity::Agent { aid, .. } => Ok(StorageKey::new(aid, base_key, sub_key)),
+            ActiveEntity::None => Err(ErrorKind::NoActiveEntity.into()),
         }
     }
 
+    /// Returns `true` if the active entity is immutable
     pub fn is_immutable(&self) -> bool {
         match self {
-            ActiveItem::Contract { mutable, .. } | ActiveItem::Agent { mutable, .. } => !*mutable,
-            ActiveItem::None => false,
+            ActiveEntity::Contract { db_txns, .. } | ActiveEntity::Agent { db_txns, .. } => {
+                db_txns.is_none()
+            }
+            ActiveEntity::None => false,
+        }
+    }
+
+    /// Pushes a storage operation to the storage buffer - if any
+    ///
+    /// Returns an error if there is either no active entity
+    /// or if the active entity is immutable.
+    pub fn push_storage(&mut self, op: StorageOp) -> Result<()> {
+        match self {
+            ActiveEntity::Contract { db_txns, .. } | ActiveEntity::Agent { db_txns, .. } => {
+                if let Some(db_txns) = db_txns {
+                    db_txns.push(op);
+                    Ok(())
+                } else {
+                    Err(ErrorKind::Immutable.into())
+                }
+            }
+            ActiveEntity::None => Err(ErrorKind::NoActiveEntity.into()),
         }
     }
 }
@@ -941,7 +932,9 @@ impl ActiveItem {
 /// All storage operations are commited to the key-value-store
 /// once the contract finished its execution.
 enum StorageOp {
+    /// Writes the given value to the storage key
     Write { key: StorageKey, value: Vec<u8> },
+    /// Removes the value at the given storage key
     Remove { key: StorageKey },
 }
 

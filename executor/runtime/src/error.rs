@@ -101,6 +101,12 @@ pub(crate) enum ErrorKind {
     },
 
     // --- VmState errors
+    #[error("running entity in VmState is marked 'immutable' - cannot mutate state or storage")]
+    Immutable,
+
+    #[error("no active entity in VmState")]
+    NoActiveEntity,
+
     /// Generic error message - useful for communicating more complicated errors
     #[error("{0}")]
     Msg(String),
