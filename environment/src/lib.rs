@@ -15,17 +15,17 @@ cfg_if! {
 }
 
 pub trait StorageHandler {
-    fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
+    fn read_field<Value>(&self, base_key: u64, sub_key: u64) -> Option<Value>
     where
         Value: DeserializeOwned;
 
-    fn write_field<Value>(base_key: u64, sub_key: u64, value: &Value)
+    fn write_field<Value>(&mut self, base_key: u64, sub_key: u64, value: &Value)
     where
         Value: Serialize;
 
-    fn storage_remove(base_key: u64, sub_key: u64);
+    fn storage_remove(&mut self, base_key: u64, sub_key: u64);
 
-    fn storage_has_key(base_key: u64, sub_key: u64) -> bool;
+    fn storage_has_key(&self, base_key: u64, sub_key: u64) -> bool;
 
     fn storage_gen_sub_key() -> u64;
 
