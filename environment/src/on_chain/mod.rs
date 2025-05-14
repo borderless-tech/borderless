@@ -6,10 +6,8 @@ use serde::Serialize;
 /// Register used for atomic operations
 pub(crate) const REGISTER_ATOMIC_OP: u64 = u64::MAX - 1;
 
-/// The off_chain environment
-pub struct EnvInstance {
-    // TODO Simulates a Database
-}
+/// The on_chain environment
+pub struct EnvInstance;
 
 impl StorageHandler for EnvInstance {
     /// Reads a value from the storage via the register.
