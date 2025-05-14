@@ -103,7 +103,7 @@ pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
     }
 }
 
-pub fn register_len(register_id: u64) -> Option<u64> {
+fn register_len(register_id: u64) -> Option<u64> {
     #[cfg(target_arch = "wasm32")]
     unsafe {
         let len = abi::register_len(register_id);
@@ -150,14 +150,14 @@ pub fn write_string_to_register(register_id: u64, string: impl AsRef<str>) {
     write_register(register_id, string.as_ref());
 }
 
-pub fn storage_write(base_key: u64, sub_key: u64, value: impl AsRef<[u8]>) {
+fn storage_write(base_key: u64, sub_key: u64, value: impl AsRef<[u8]>) {
     let value = value.as_ref();
     unsafe {
         abi::storage_write(base_key, sub_key, value.as_ptr() as _, value.len() as _);
     }
 }
 
-pub fn storage_read(base_key: u64, sub_key: u64) -> Option<Vec<u8>> {
+fn storage_read(base_key: u64, sub_key: u64) -> Option<Vec<u8>> {
     unsafe {
         abi::storage_read(base_key, sub_key, REGISTER_ATOMIC_OP);
     }

@@ -804,7 +804,10 @@ dependencies = [
 name = "environment"
 version = "0.1.0"
 dependencies = [
+ "borderless-abi",
  "cfg-if",
+ "postcard",
+ "serde",
 ]
 
 [[package]]
