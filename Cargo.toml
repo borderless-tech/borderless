@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "environment",
   "examples/abi-test",
   "examples/abi-test-swagent",
   "examples/collections",
@@ -38,3 +39,4 @@ thiserror = "2.0"
 uuid = "1.16"
 nohash-hasher = "0.2.0"
 xxhash-rust = { version = "0.8.12", features = ["const_xxh3", "xxh32", "xxh64"] }
+cfg-if = "1.0.0"
