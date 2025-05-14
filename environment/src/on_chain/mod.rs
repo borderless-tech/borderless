@@ -6,7 +6,8 @@ use serde::Serialize;
 /// Register used for atomic operations
 pub(crate) const REGISTER_ATOMIC_OP: u64 = u64::MAX - 1;
 
-/// The on_chain environment
+/// The on_chain environment.
+/// Acts as a zero-sized wrapper around the low-level ABI functions
 pub struct EnvInstance;
 
 impl StorageHandler for EnvInstance {
