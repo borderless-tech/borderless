@@ -1,3 +1,5 @@
+pub mod api;
+
 use cfg_if::cfg_if;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -27,11 +29,11 @@ pub trait StorageHandler {
 
     fn storage_has_key(&self, base_key: u64, sub_key: u64) -> bool;
 
-    fn storage_gen_sub_key() -> u64;
+    fn storage_gen_sub_key(&self) -> u64;
 
-    fn storage_cursor(base_key: u64) -> u64;
+    fn storage_cursor(&self, base_key: u64) -> u64;
 
-    fn rand(min: u64, max: u64) -> u64;
+    fn rand(&self, min: u64, max: u64) -> u64;
 }
 
 pub trait OnInstance: StorageHandler {

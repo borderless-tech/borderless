@@ -70,15 +70,15 @@ impl StorageHandler for EnvInstance {
         self.database.contains_key(&key)
     }
 
-    fn storage_gen_sub_key() -> u64 {
-        Self::rand(0, u64::MAX)
+    fn storage_gen_sub_key(&self) -> u64 {
+        Self::rand(self, 0, u64::MAX)
     }
 
-    fn storage_cursor(base_key: u64) -> u64 {
+    fn storage_cursor(&self, base_key: u64) -> u64 {
         todo!()
     }
 
-    fn rand(min: u64, max: u64) -> u64 {
+    fn rand(&self, min: u64, max: u64) -> u64 {
         let mut range = rand::rng();
         range.random_range(min..max)
     }

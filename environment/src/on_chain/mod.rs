@@ -70,15 +70,15 @@ impl StorageHandler for EnvInstance {
         }
     }
 
-    fn storage_gen_sub_key() -> u64 {
+    fn storage_gen_sub_key(&self) -> u64 {
         unsafe { abi::storage_gen_sub_key() }
     }
 
-    fn storage_cursor(base_key: u64) -> u64 {
+    fn storage_cursor(&self, base_key: u64) -> u64 {
         unsafe { abi::storage_cursor(base_key) }
     }
 
-    fn rand(min: u64, max: u64) -> u64 {
+    fn rand(&self, min: u64, max: u64) -> u64 {
         unsafe { abi::rand(min, max) }
     }
 }
