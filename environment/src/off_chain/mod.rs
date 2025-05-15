@@ -1,4 +1,4 @@
-use crate::StorageHandler;
+use crate::{OnInstance, StorageHandler};
 use rand::Rng;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -8,6 +8,30 @@ use std::collections::HashMap;
 pub struct EnvInstance {
     /// Simulates a Database
     database: HashMap<Vec<u8>, Vec<u8>>,
+}
+
+impl EnvInstance {
+    pub fn new() -> Self {
+        Self {
+            database: HashMap::new(),
+        }
+    }
+}
+
+impl OnInstance for EnvInstance {
+    fn on_instance<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        use core::cell::RefCell;
+
+        thread_local!(
+            static INSTANCE: RefCell<EnvInstance> = RefCell::new(
+                EnvInstance::new()
+            )
+        );
+        INSTANCE.with(|instance| f(&mut instance.borrow_mut()))
+    }
 }
 
 impl StorageHandler for EnvInstance {
