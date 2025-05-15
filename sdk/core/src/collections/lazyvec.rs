@@ -738,10 +738,6 @@ where
         unreachable!("Insert_internal() and remove_internal() always use a valid index")
     }
 
-    pub fn exists(&self) -> bool {
-        self.cache.exists()
-    }
-
     fn new_key(&mut self) -> u64 {
         self.cache.new_key()
     }
@@ -762,11 +758,13 @@ where
         self.cache.flag_write(leaf_key);
     }
 
-    // Fetches all the nodes from the DB, loading them in the cache
     fn load(&mut self, key: u64) {
-        let node = self.cache.read(key);
-        for child in node.borrow().children.iter() {
-            self.load(*child);
+        // Fetches all the nodes from the DB, loading them in the cache
+        if self.cache.exists() {
+            let node = self.cache.read(key);
+            for child in node.borrow().children.iter() {
+                self.load(*child);
+            }
         }
     }
 
