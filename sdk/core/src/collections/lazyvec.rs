@@ -126,6 +126,7 @@ where
             return Ok(Some("[]".to_string()));
         }
         let first = self.iter().next().unwrap(); // We checked empty
+
         // To pre-allocate the output string, we encode one object and use this as a reference
         let encoded = serde_json::to_string(first.as_ref())?;
 
@@ -777,4 +778,137 @@ where
     // pub fn iter_mut(&mut self) -> LazyVecItMut<V, ORDER, BASE_KEY> {
     //     LazyVecItMut::new(self)
     // }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod tests {
+    use crate::collections::lazyvec::LazyVec;
+    use anyhow::Context;
+    use environment::rand;
+    const KEY: u64 = 123456;
+    const N: usize = 5000;
+
+    #[test]
+    fn is_empty() -> anyhow::Result<()> {
+        let vec: LazyVec<u64> = LazyVec::new(KEY);
+        assert!(vec.is_empty(), "LazyVec must be empty");
+        Ok(())
+    }
+
+    #[test]
+    fn clear() -> anyhow::Result<()> {
+        let mut vec: LazyVec<u64> = LazyVec::new(KEY);
+        for _ in 0..N {
+            let random = rand(0, u64::MAX);
+            vec.push(random);
+        }
+        vec.clear();
+        assert!(vec.is_empty(), "LazyVec clear() failed");
+        Ok(())
+    }
+
+    #[test]
+    fn contains() -> anyhow::Result<()> {
+        let mut vec: LazyVec<u64> = LazyVec::new(KEY);
+        for _ in 0..N {
+            vec.push(0);
+        }
+        let pos = 700;
+        let target: u64 = 1;
+        assert!(!vec.contains(target), "Vector must not contain target");
+        vec.insert(pos, target);
+        assert!(vec.contains(target), "Vector must contain target");
+        vec.remove(pos);
+        assert!(!vec.contains(target), "Vector must not contain target");
+        Ok(())
+    }
+
+    #[test]
+    fn push() -> anyhow::Result<()> {
+        let mut vec: LazyVec<u64> = LazyVec::new(KEY);
+        let mut oracle = Vec::with_capacity(N);
+        for _ in 0..N {
+            let random = rand(0, u64::MAX);
+            vec.push(random);
+            oracle.push(random);
+        }
+        assert_eq!(vec.len(), oracle.len(), "Length mismatch");
+
+        // Check integrity
+        for i in 0..N {
+            let val = vec.get(i).context("Get({i}) must return some value")?;
+            assert_eq!(oracle.get(i), Some(&*val), "Element mismatch")
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn pop() -> anyhow::Result<()> {
+        let mut vec: LazyVec<u64> = LazyVec::new(KEY);
+        let mut oracle = Vec::with_capacity(N);
+        for _ in 0..N {
+            let random = rand(0, u64::MAX);
+            vec.push(random);
+            oracle.push(random);
+        }
+        assert_eq!(vec.len(), oracle.len(), "Length mismatch");
+
+        // Check integrity
+        for _ in 0..N {
+            assert_eq!(vec.pop(), oracle.pop(), "Element mismatch")
+        }
+        assert!(vec.is_empty(), "Vector must be empty");
+        assert!(vec.pop().is_none(), "None must be returned");
+        Ok(())
+    }
+
+    #[test]
+    pub(crate) fn insert() -> anyhow::Result<()> {
+        let mut vec: LazyVec<u64> = LazyVec::new(KEY);
+        let mut oracle = Vec::with_capacity(N);
+        // Insert some values so the data structures are not empty before the test
+        for _ in 0..N {
+            let random = rand(0, u64::MAX);
+            vec.push(random);
+            oracle.push(random);
+        }
+        assert_eq!(vec.len(), oracle.len(), "Length mismatch");
+
+        // Insert new elements to random positions
+        for _ in 0..N {
+            let pos = rand(0, vec.len() as u64) as usize;
+            let random = rand(0, u64::MAX);
+            vec.insert(pos, random);
+            oracle.insert(pos, random)
+        }
+        assert_eq!(vec.len(), oracle.len(), "Length mismatch 2");
+
+        // Check integrity
+        let end = vec.len();
+        for i in 0..end {
+            let val = vec.get(i).context("Get({i}) must return some value")?;
+            assert_eq!(oracle.get(i), Some(&*val), "Element mismatch")
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn remove() -> anyhow::Result<()> {
+        let mut vec: LazyVec<u64> = LazyVec::new(KEY);
+        let mut oracle = Vec::with_capacity(N);
+        for _ in 0..N {
+            let random = rand(0, u64::MAX);
+            vec.push(random);
+            oracle.push(random);
+        }
+        assert_eq!(vec.len(), oracle.len(), "Length mismatch");
+
+        for _ in 0..N {
+            let pos: usize = rand(0, vec.len() as u64) as usize;
+            assert_eq!(vec.remove(pos), oracle.remove(pos), "Element mismatch");
+        }
+        assert!(vec.is_empty(), "Vector must be empty");
+        Ok(())
+    }
 }
