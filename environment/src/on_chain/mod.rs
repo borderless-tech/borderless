@@ -1,4 +1,4 @@
-use crate::StorageHandler;
+use crate::{OnInstance, StorageHandler};
 use borderless_abi as abi;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -9,6 +9,17 @@ pub(crate) const REGISTER_ATOMIC_OP: u64 = u64::MAX - 1;
 /// The on_chain environment.
 /// Acts as a zero-sized wrapper around the low-level ABI functions
 pub struct EnvInstance;
+
+impl OnInstance for EnvInstance {
+    fn on_instance<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        static mut INSTANCE: EnvInstance = EnvInstance;
+        #[allow(static_mut_refs)]
+        f(unsafe { &mut INSTANCE })
+    }
+}
 
 impl StorageHandler for EnvInstance {
     /// Reads a value from the storage via the register.
