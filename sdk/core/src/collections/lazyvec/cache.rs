@@ -4,9 +4,7 @@ use std::rc::Rc;
 use super::cache::CacheOp::{Remove, Update};
 use super::node::Node;
 use super::{ORDER, ROOT_KEY};
-use crate::__private::{
-    read_field, storage_gen_sub_key, storage_has_key, storage_remove, write_field,
-};
+use environment as env;
 use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -39,7 +37,7 @@ where
     }
 
     pub(crate) fn exists(&self) -> bool {
-        storage_has_key(self.base_key, ROOT_KEY)
+        env::storage_has_key(self.base_key, ROOT_KEY)
     }
 
     pub(crate) fn init(&mut self) {
@@ -54,14 +52,14 @@ where
     }
 
     pub(crate) fn new_key(&mut self) -> u64 {
-        storage_gen_sub_key()
+        env::storage_gen_sub_key()
     }
 
     // TODO
     // pub(crate) fn get_mut(&mut self, key: u64, index: usize) -> Option<&mut V> {
     //     if let None = self.map.get(&key) {
     //         // Add the node to the in-memory mirror
-    //         let node = read_field::<Node<V>>(self.base_key, key).unwrap();
+    //         let node = env::read_field::<Node<V>>(self.base_key, key).unwrap();
     //         self.map.insert(key, Rc::new(node));
     //     }
     //     let leaf = self.map.get_mut(&key).unwrap();
@@ -73,7 +71,7 @@ where
             return node.clone();
         };
         // Add the node to the in-memory mirror
-        let node = read_field::<Node<V>>(self.base_key, key).unwrap();
+        let node = env::read_field::<Node<V>>(self.base_key, key).unwrap();
         let node = Rc::new(RefCell::new(node));
         self.map.borrow_mut().insert(key, node.clone());
         node
@@ -120,9 +118,9 @@ where
                 Update => {
                     let map = self.map.borrow();
                     let node = map.get(key).expect("Cache corruption");
-                    write_field(self.base_key, *key, node.as_ref());
+                    env::write_field(self.base_key, *key, node.as_ref());
                 }
-                Remove => storage_remove(self.base_key, *key),
+                Remove => env::storage_remove(self.base_key, *key),
             }
         }
     }
