@@ -807,6 +807,7 @@ dependencies = [
  "borderless-abi",
  "cfg-if",
  "postcard",
+ "rand 0.9.0",
  "serde",
 ]
 
