@@ -1,5 +1,5 @@
 use crate::StorageHandler;
-use borderless_abi::panic;
+use rand::Rng;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -55,7 +55,8 @@ impl StorageHandler for EnvInstance {
     }
 
     fn rand(min: u64, max: u64) -> u64 {
-        todo!()
+        let mut range = rand::rng();
+        range.random_range(min..max)
     }
 }
 
