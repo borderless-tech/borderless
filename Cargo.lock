@@ -278,6 +278,7 @@ dependencies = [
  "borderless-hash",
  "borderless-id-types",
  "borderless-sdk-macros",
+ "environment",
  "http",
  "nohash-hasher",
  "postcard",

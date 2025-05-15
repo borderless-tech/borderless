@@ -19,6 +19,7 @@ resolver = "2"
 
 [workspace.dependencies]
 # Export own crates
+environment = { path = "environment" }
 borderless = { path = "sdk/core" }
 borderless-abi = { path = "sdk/abi" }
 borderless-sdk-macros = { path = "sdk/macros" }
