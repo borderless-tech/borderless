@@ -408,3 +408,108 @@ where
         h.digest()
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod tests {
+    use crate::collections::hashmap::HashMap;
+    use anyhow::Context;
+    use environment::rand;
+    use std::collections::HashMap as StdHashMap;
+
+    const KEY: u64 = 123456;
+    const N: u64 = 5000;
+
+    #[test]
+    fn is_empty() -> anyhow::Result<()> {
+        let map: HashMap<u64, u64> = HashMap::new(KEY);
+        assert!(map.is_empty(), "HashMap must be empty");
+        Ok(())
+    }
+
+    fn clear() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+        }
+        map.clear();
+        // Check integrity
+        assert!(map.is_empty(), "HashMap must be empty");
+        Ok(())
+    }
+
+    #[test]
+    fn len() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        for i in 0..N {
+            // Check integrity
+            assert_eq!(map.len(), i as usize, "Length mismatch");
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn contains_key() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+        }
+        // Check integrity
+        let target: u64 = 30000;
+        assert!(
+            !map.contains_key(target),
+            "HashMap must not contain the key"
+        );
+        map.insert(target, 0);
+        assert!(map.contains_key(target), "HashMap must contain the key");
+        map.remove(target);
+        assert!(
+            !map.contains_key(target),
+            "HashMap must not contain the key"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn insert() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        // A trusted reference used to know what the correct behavior should be
+        let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+            oracle.insert(i, random);
+        }
+        // Check integrity
+        for i in 0..N {
+            let val = map.get(i).context("Get({i}) must return some value")?;
+            assert_eq!(oracle.get(&i), Some(&*val), "Element mismatch")
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn remove() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        // A trusted reference used to know what the correct behavior should be
+        let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+            oracle.insert(i, random);
+        }
+        // Check integrity
+        for i in 0..N {
+            let x = map.remove(i);
+            let y = oracle.remove(&i);
+            assert_eq!(x, y, "Element mismatch")
+        }
+        Ok(())
+    }
+}
