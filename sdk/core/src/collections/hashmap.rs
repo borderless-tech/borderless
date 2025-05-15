@@ -8,10 +8,9 @@ use super::hashmap::proxy::{
 };
 use crate::__private::registers::REGISTER_CURSOR;
 use crate::__private::storage_traits::private::Sealed;
-use crate::__private::{
-    read_field, read_register, storage_cursor, storage_remove, storage_traits, write_field,
-};
+use crate::__private::{read_register, storage_traits};
 use crate::collections::hashmap::iterator::{HashMapIt, Keys, Values};
+use environment as env;
 use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -174,7 +173,7 @@ where
 
     pub(crate) fn open(base_key: u64) -> Self {
         // Read number of entries from the DB
-        let entries = read_field::<usize>(base_key, 0).unwrap();
+        let entries = env::read_field::<usize>(base_key, 0).unwrap();
         HashMap {
             base_key,
             cache: RefCell::default(),
@@ -289,7 +288,7 @@ where
 
     fn commit(self) {
         // Store the entries counter in the DB
-        write_field(self.base_key, 0, &self.entries);
+        env::write_field(self.base_key, 0, &self.entries);
 
         // Sync the in-memory mirror with the DB state
         for (key, op) in &self.operations {
@@ -297,9 +296,9 @@ where
                 CacheOp::Update => {
                     let cache = self.cache.borrow();
                     let cell = cache.get(key).expect("Cache corruption");
-                    write_field(self.base_key, *key, cell.as_ref());
+                    env::write_field(self.base_key, *key, cell.as_ref());
                 }
-                CacheOp::Remove => storage_remove(self.base_key, *key),
+                CacheOp::Remove => env::storage_remove(self.base_key, *key),
             }
         }
     }
@@ -315,7 +314,7 @@ where
             return Some(cell.clone());
         }
         // Fallback to DB
-        match read_field::<KeyValue<K, V>>(self.base_key, key) {
+        match env::read_field::<KeyValue<K, V>>(self.base_key, key) {
             None => None,
             Some(keypair) => {
                 let cell = Rc::new(RefCell::new(keypair));
@@ -375,7 +374,7 @@ where
     fn db_keys(&self) -> &Vec<u64> {
         self.db_keys.get_or_init(|| {
             // Load entries from DB
-            let entries = storage_cursor(self.base_key) as usize;
+            let entries = env::storage_cursor(self.base_key) as usize;
 
             // Load DB keys
             let mut db_keys: Vec<u64> = Vec::with_capacity(entries);
