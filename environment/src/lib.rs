@@ -33,3 +33,9 @@ pub trait StorageHandler {
 
     fn rand(min: u64, max: u64) -> u64;
 }
+
+pub trait OnInstance: StorageHandler {
+    fn on_instance<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut Self) -> R;
+}
