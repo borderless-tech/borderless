@@ -1,4 +1,6 @@
 pub mod api;
+// Re-export symbols to flatten the API
+pub use api::*;
 
 use cfg_if::cfg_if;
 use serde::de::DeserializeOwned;
