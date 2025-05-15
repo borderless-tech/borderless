@@ -47,7 +47,7 @@ impl StorageHandler for EnvInstance {
     }
 
     fn storage_gen_sub_key() -> u64 {
-        todo!()
+        Self::rand(0, u64::MAX)
     }
 
     fn storage_cursor(base_key: u64) -> u64 {
