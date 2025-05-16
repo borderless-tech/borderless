@@ -380,7 +380,7 @@ where
             let mut db_keys: Vec<u64> = Vec::with_capacity(entries);
             for i in 0..entries {
                 // Read content from register
-                let bytes = read_register(REGISTER_CURSOR.saturating_add(i as u64))
+                let bytes = env::read_register(REGISTER_CURSOR.saturating_add(i as u64))
                     .expect("Fail to read register");
                 // Convert into the sub-key
                 let arr: [u8; 8] = bytes.as_slice().try_into().expect("Slice length error");
