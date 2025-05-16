@@ -82,16 +82,26 @@ impl StorageHandler for EnvInstance {
     }
 
     fn storage_cursor(&mut self, base_key: u64) -> u64 {
-        let _ = base_key; // Suppress unused warning
+        // Discard the HashMap's number of elements
+        let sub_key = calc_storage_key(base_key, 0);
+        self.database.remove(&sub_key);
+
+        // Clear registers content
+        self.registers.retain(|&k, _| k < REGISTER_CURSOR);
 
         // Dump database content into registers starting at position REGISTER_CURSOR
-        let size = self.database.len();
-        for i in 0..size {
-            let value = self.database.iter().nth(i).unwrap().1;
+        for (i, (bytes, _)) in self.database.iter().enumerate() {
+            // Extract the sub-key bytes
+            let mut bytes: [u8; 8] = bytes[8..16].try_into().unwrap();
+            // Reinterpret bytes as little-endian
+            bytes.reverse();
+            // Insert sub-key into registers
             self.registers
-                .insert(REGISTER_CURSOR.saturating_add(i as u64), value.clone());
+                .insert(REGISTER_CURSOR.saturating_add(i as u64), bytes.to_vec());
         }
-        size as u64
+
+        // Return number of elements in DB
+        self.database.len() as u64
     }
 
     fn rand(&self, min: u64, max: u64) -> u64 {
