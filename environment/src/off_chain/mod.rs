@@ -16,6 +16,12 @@ pub struct EnvInstance {
     registers: IntMap<u64, Vec<u8>>,
 }
 
+impl Default for EnvInstance {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EnvInstance {
     pub fn new() -> Self {
         Self {
@@ -49,7 +55,7 @@ impl StorageHandler for EnvInstance {
         let key = calc_storage_key(base_key, sub_key);
 
         self.database.get(&key).and_then(|bytes| {
-            postcard::from_bytes::<Value>(&bytes).ok() // TODO Handle error?
+            postcard::from_bytes::<Value>(bytes).ok() // TODO Handle error?
         })
     }
 
@@ -110,9 +116,7 @@ impl StorageHandler for EnvInstance {
     }
 
     fn read_register(&self, register_id: u64) -> Option<Vec<u8>> {
-        self.registers
-            .get(&register_id)
-            .and_then(|vec| Some(vec.clone()))
+        self.registers.get(&register_id).cloned()
     }
 }
 
