@@ -518,6 +518,7 @@ mod tests {
             map.insert(i, random);
             oracle.insert(i, random);
         }
+
         // Collect and sort both key-lists
         let mut hashmap_pairs: Vec<(u64, u64)> = map.iter().map(|e| *e).collect();
         let mut oracle_pairs: Vec<(u64, u64)> = oracle.iter().map(|(k, v)| (*k, *v)).collect();
@@ -539,6 +540,7 @@ mod tests {
             map.insert(i, random);
             oracle.insert(i, random);
         }
+
         // Collect and sort both key-lists
         let mut hashmap_keys: Vec<u64> = map.keys().map(|p| *p).collect();
         let mut oracle_keys: Vec<u64> = oracle.keys().cloned().collect();
@@ -553,16 +555,21 @@ mod tests {
     fn values() -> anyhow::Result<()> {
         let mut map: HashMap<u64, u64> = HashMap::new(KEY);
         // A trusted reference used to know what the correct behavior should be
-        let mut oracle = Vec::with_capacity(N as usize);
+        let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
 
         for i in 0..N {
             let random = rand(0, u64::MAX);
             map.insert(i, random);
-            oracle.push(random);
+            oracle.insert(i, random);
         }
-        for v in map.values() {
-            assert!(oracle.contains(&*v));
-        }
+
+        // Collect and sort both values-lists
+        let mut hashmap_values: Vec<u64> = map.values().map(|p| *p).collect();
+        let mut oracle_values: Vec<u64> = oracle.values().cloned().collect();
+        hashmap_values.sort_unstable();
+        oracle_values.sort_unstable();
+        // Check integrity
+        assert_eq!(hashmap_values, oracle_values);
         Ok(())
     }
 }
