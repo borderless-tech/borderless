@@ -807,6 +807,7 @@ version = "0.1.0"
 dependencies = [
  "borderless-abi",
  "cfg-if",
+ "nohash-hasher",
  "postcard",
  "rand 0.9.0",
  "serde",

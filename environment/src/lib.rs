@@ -33,7 +33,7 @@ pub trait StorageHandler {
 
     fn storage_gen_sub_key(&self) -> u64;
 
-    fn storage_cursor(&self, base_key: u64) -> u64;
+    fn storage_cursor(&mut self, base_key: u64) -> u64;
 
     fn rand(&self, min: u64, max: u64) -> u64;
 }

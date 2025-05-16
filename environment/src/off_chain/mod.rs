@@ -1,19 +1,27 @@
 use crate::{OnInstance, StorageHandler};
+use nohash_hasher::IntMap;
 use rand::Rng;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::collections::HashMap;
+
+// Cursor content start from this register
+pub const REGISTER_CURSOR: u64 = 2 << 32;
 
 /// The off_chain environment
 pub struct EnvInstance {
     /// Simulates a Database
     database: HashMap<Vec<u8>, Vec<u8>>,
+    /// Simulates the WASM memory
+    registers: IntMap<u64, Vec<u8>>,
 }
 
 impl EnvInstance {
     pub fn new() -> Self {
         Self {
             database: HashMap::new(),
+            registers: IntMap::default(),
         }
     }
 }
@@ -74,8 +82,17 @@ impl StorageHandler for EnvInstance {
         Self::rand(self, 0, u64::MAX)
     }
 
-    fn storage_cursor(&self, base_key: u64) -> u64 {
-        todo!()
+    fn storage_cursor(&mut self, base_key: u64) -> u64 {
+        let _ = base_key; // Suppress unused warning
+
+        // Dump database content into registers starting at position REGISTER_CURSOR
+        let size = self.database.len();
+        for i in 0..size {
+            let value = self.database.iter().nth(i).unwrap().1;
+            self.registers
+                .insert(REGISTER_CURSOR.saturating_add(i as u64), value.clone());
+        }
+        size as u64
     }
 
     fn rand(&self, min: u64, max: u64) -> u64 {

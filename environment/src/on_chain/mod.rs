@@ -74,7 +74,7 @@ impl StorageHandler for EnvInstance {
         unsafe { abi::storage_gen_sub_key() }
     }
 
-    fn storage_cursor(&self, base_key: u64) -> u64 {
+    fn storage_cursor(&mut self, base_key: u64) -> u64 {
         unsafe { abi::storage_cursor(base_key) }
     }
 
