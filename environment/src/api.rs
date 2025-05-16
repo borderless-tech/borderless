@@ -39,3 +39,7 @@ pub fn storage_cursor(base_key: u64) -> u64 {
 pub fn rand(min: u64, max: u64) -> u64 {
     <EnvInstance as OnInstance>::on_instance(|instance| StorageHandler::rand(instance, min, max))
 }
+
+pub fn read_register(register_id: u64) -> Option<Vec<u8>> {
+    EnvInstance::on_instance(|instance| StorageHandler::read_register(instance, register_id))
+}

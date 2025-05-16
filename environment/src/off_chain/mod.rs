@@ -99,6 +99,12 @@ impl StorageHandler for EnvInstance {
         let mut range = rand::rng();
         range.random_range(min..max)
     }
+
+    fn read_register(&self, register_id: u64) -> Option<Vec<u8>> {
+        self.registers
+            .get(&register_id)
+            .and_then(|vec| Some(vec.clone()))
+    }
 }
 
 /// Calculates a storage key from base key, and sub key (ignoring the contract-id).

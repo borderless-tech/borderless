@@ -81,6 +81,17 @@ impl StorageHandler for EnvInstance {
     fn rand(&self, min: u64, max: u64) -> u64 {
         unsafe { abi::rand(min, max) }
     }
+
+    #[allow(clippy::uninit_vec)]
+    fn read_register(&self, register_id: u64) -> Option<Vec<u8>> {
+        unsafe {
+            let len = register_len(register_id)?;
+            let mut buf = Vec::with_capacity(len as usize);
+            buf.set_len(len as usize);
+            abi::read_register(register_id, buf.as_mut_ptr() as _);
+            Some(buf)
+        }
+    }
 }
 
 /// Internal methods
@@ -107,17 +118,6 @@ fn register_len(register_id: u64) -> Option<u64> {
         } else {
             Some(len)
         }
-    }
-}
-
-#[allow(clippy::uninit_vec)]
-pub fn read_register(register_id: u64) -> Option<Vec<u8>> {
-    unsafe {
-        let len = register_len(register_id)?;
-        let mut buf = Vec::with_capacity(len as usize);
-        buf.set_len(len as usize);
-        abi::read_register(register_id, buf.as_mut_ptr() as _);
-        Some(buf)
     }
 }
 

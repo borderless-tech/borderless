@@ -36,6 +36,8 @@ pub trait StorageHandler {
     fn storage_cursor(&mut self, base_key: u64) -> u64;
 
     fn rand(&self, min: u64, max: u64) -> u64;
+
+    fn read_register(&self, register_id: u64) -> Option<Vec<u8>>;
 }
 
 pub trait OnInstance: StorageHandler {
