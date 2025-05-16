@@ -578,15 +578,12 @@ mod tests {
     fn cursor() -> anyhow::Result<()> {
         // Create new map
         let mut map: HashMap<u64, u64> = HashMap::new(KEY);
-
         for i in 0..N {
             let random = rand(0, u64::MAX);
             map.insert(i, random);
         }
-
         // Commit changes to DB
         map.commit();
-
         // Reopen map
         let mut map: HashMap<u64, u64> = HashMap::open(KEY);
 
@@ -595,7 +592,6 @@ mod tests {
             let random = rand(0, u64::MAX);
             map.insert(i, random);
         }
-
         let map_values: Vec<u64> = map.values().map(|p| *p).collect();
         // Check integrity
         assert_eq!(map_values.len(), m as usize);
