@@ -3,7 +3,6 @@ use nohash_hasher::IntMap;
 use rand::Rng;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::cell::RefCell;
 use std::collections::HashMap;
 
 // Cursor content start from this register
