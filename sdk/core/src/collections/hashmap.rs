@@ -576,25 +576,35 @@ mod tests {
 
     #[test]
     fn cursor() -> anyhow::Result<()> {
-        // Create new map
         let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        // A trusted reference used to know what the correct behavior should be
+        let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+
         for i in 0..N {
             let random = rand(0, u64::MAX);
             map.insert(i, random);
+            oracle.insert(i, random);
         }
         // Commit changes to DB
         map.commit();
+
         // Reopen map
         let mut map: HashMap<u64, u64> = HashMap::open(KEY);
-
+        // Insert new elements
         let m = N * 2;
         for i in N..m {
             let random = rand(0, u64::MAX);
             map.insert(i, random);
+            oracle.insert(i, random);
         }
-        let map_values: Vec<u64> = map.values().map(|p| *p).collect();
+
+        // Collect and sort both values-lists
+        let mut map_keys: Vec<u64> = map.keys().map(|p| *p).collect();
+        let mut oracle_keys: Vec<u64> = oracle.keys().cloned().collect();
+        map_keys.sort_unstable();
+        oracle_keys.sort_unstable();
         // Check integrity
-        assert_eq!(map_values.len(), m as usize);
+        assert_eq!(map_keys, oracle_keys, "Integrity check failed");
         Ok(())
     }
 }
