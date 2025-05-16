@@ -7,8 +7,8 @@ use super::hashmap::proxy::{
     Entry as EntryProxy, Key as KeyProxy, Value as ValueProxy, ValueMut as ValueMutProxy,
 };
 use crate::__private::registers::REGISTER_CURSOR;
-use crate::__private::storage_traits::private::Sealed;
 use crate::__private::storage_traits;
+use crate::__private::storage_traits::private::Sealed;
 use crate::collections::hashmap::iterator::{HashMapIt, Keys, Values};
 use environment as env;
 use nohash_hasher::IntMap;
@@ -509,6 +509,65 @@ mod tests {
             let x = map.remove(i);
             let y = oracle.remove(&i);
             assert_eq!(x, y, "Element mismatch")
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn iter() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        // A trusted reference used to know what the correct behavior should be
+        let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+            oracle.insert(i, random);
+        }
+        // Collect and sort both key-lists
+        let mut hashmap_pairs: Vec<(u64, u64)> = map.iter().map(|e| *e).collect();
+        let mut oracle_pairs: Vec<(u64, u64)> = oracle.iter().map(|(k, v)| (*k, *v)).collect();
+        hashmap_pairs.sort_unstable();
+        oracle_pairs.sort_unstable();
+        // Check integrity
+        assert_eq!(hashmap_pairs, oracle_pairs);
+        Ok(())
+    }
+
+    #[test]
+    fn keys() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        // A trusted reference used to know what the correct behavior should be
+        let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+            oracle.insert(i, random);
+        }
+        // Collect and sort both key-lists
+        let mut hashmap_keys: Vec<u64> = map.keys().map(|p| *p).collect();
+        let mut oracle_keys: Vec<u64> = oracle.keys().cloned().collect();
+        hashmap_keys.sort_unstable();
+        oracle_keys.sort_unstable();
+        // Check integrity
+        assert_eq!(hashmap_keys, oracle_keys);
+        Ok(())
+    }
+
+    #[test]
+    fn values() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        // A trusted reference used to know what the correct behavior should be
+        let mut oracle = Vec::with_capacity(N as usize);
+
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+            oracle.push(random);
+        }
+        for v in map.values() {
+            assert!(oracle.contains(&*v));
         }
         Ok(())
     }
