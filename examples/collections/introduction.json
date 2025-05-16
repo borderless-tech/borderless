@@ -5,8 +5,17 @@
     "counter": 0,
     "catalog": [],
     "records": [],
-    "points": [],
-    "listing": []
+    "points": {"0": 0, "90": 90},
+    "listing": [
+      [
+        {"digits":3,"character":"A"},
+        {"name":"Computer","price":791,"available":true,"related":[]}
+      ],
+      [
+        {"digits":2,"character":"B"},
+        {"name":"Toy","price":948,"available":false,"related":[]}
+      ]
+    ]
   },
   "roles": [],
   "sinks": [],

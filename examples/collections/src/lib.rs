@@ -4,7 +4,7 @@ mod product;
 
 #[borderless::contract]
 pub mod collections {
-    use crate::product::Product;
+    use crate::product::{Code, Product};
     use borderless::collections::hashmap::HashMap;
     use borderless::collections::lazyvec::LazyVec;
 
@@ -20,16 +20,16 @@ pub mod collections {
         catalog: LazyVec<Product>,
         records: LazyVec<u64>,
         points: HashMap<u64, u64>,
-        listing: HashMap<String, Product>,
+        listing: HashMap<Code, Product>,
     }
 
     impl State {
         #[action]
         fn run_basics(&mut self) -> Result<()> {
             // Run LazyVec basics
-            info!(" -------------------------------- ");
+            info!("--------------------------------- ");
             info!("Running LazyVec basics action");
-            vec::is_empty(&self.records)?;
+            vec::is_empty(&mut self.records)?;
             vec::clear(&mut self.records)?;
             vec::contains(&mut self.records)?;
             vec::push(&mut self.records)?;
@@ -38,31 +38,33 @@ pub mod collections {
             vec::remove(&mut self.records)?;
 
             // Run HashMap basics
-            info!(" -------------------------------- ");
+            info!("--------------------------------- ");
             info!("Running HashMap basics action");
-            map::is_empty(&self.points)?;
+            map::is_empty(&mut self.points)?;
             map::clear(&mut self.points)?;
             map::len(&mut self.points)?;
             map::contains_key(&mut self.points)?;
             map::insert(&mut self.points)?;
             map::remove(&mut self.points)?;
+            map::iter(&mut self.points)?;
             map::keys(&mut self.points)?;
+            map::values(&mut self.points)?;
 
-            info!(" -------------------------------- ");
-            info!("All basic tests run successfully!"); // TODO Why is it not displayed?
+            info!("--------------------------------- ");
+            info!("All basic tests run successfully!");
             Ok(())
         }
 
         #[action]
         fn run_complex(&mut self) -> Result<()> {
             // Run LazyVec complex
-            info!(" -------------------------------- ");
+            info!("--------------------------------- ");
             info!("Running LazyVec add_product action");
             vec::add_product(&mut self.catalog)?;
-            info!(" -------------------------------- ");
+            info!("--------------------------------- ");
             info!("Running Hashmap add_product action");
             map::add_product(&mut self.listing)?;
-            info!(" -------------------------------- ");
+            info!("--------------------------------- ");
             info!("All complex tests run successfully!");
             Ok(())
         }

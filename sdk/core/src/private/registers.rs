@@ -54,3 +54,6 @@ pub const REGISTER_RESPONSE_HEAD: u64 = 4098;
 
 /// Contains the body of an http-request
 pub const REGISTER_RESPONSE_BODY: u64 = 4099;
+
+// Cursor content start from this register
+pub const REGISTER_CURSOR: u64 = 2 << 32;

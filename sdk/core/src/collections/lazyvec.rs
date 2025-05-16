@@ -125,24 +125,21 @@ where
         if n_items == 0 {
             return Ok(Some("[]".to_string()));
         }
-        let mut items = self.iter();
-        let first = items.next().unwrap(); // We checked empty
-
+        let first = self.iter().next().unwrap(); // We checked empty
         // To pre-allocate the output string, we encode one object and use this as a reference
         let encoded = serde_json::to_string(first.as_ref())?;
 
         // for N items: N * ITEM_LENGTH + (N-1) (commas) + 2 ('[]'); add some padding just in case
         let mut buf = String::with_capacity(encoded.len() * n_items + n_items + 10);
+
         buf.push('[');
-        buf.push_str(&encoded);
-        buf.push(',');
-        for item in items {
+        for item in self.iter() {
             let encoded = serde_json::to_string(item.as_ref())?;
             buf.push_str(&encoded);
             buf.push(',');
         }
         // Remove trailing ','
-        if n_items > 1 {
+        if n_items > 0 {
             buf.pop();
         }
         buf.push(']');

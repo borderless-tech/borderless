@@ -114,6 +114,11 @@ impl<S: Db> Runtime<S> {
                 vm::storage_has_key(caller, base_key, sub_key)
             },
         )?;
+        linker.func_wrap(
+            "env",
+            "storage_cursor",
+            |caller: Caller<'_, VmState<S>>, base_key| vm::storage_cursor(caller, base_key),
+        )?;
 
         // NOTE: Those functions introduce side-effects;
         // they should only be used by us or during development of a contract
