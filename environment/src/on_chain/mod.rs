@@ -99,7 +99,7 @@ fn storage_read(base_key: u64, sub_key: u64) -> Option<Vec<u8>> {
     unsafe {
         abi::storage_read(base_key, sub_key, REGISTER_ATOMIC_OP);
     }
-    read_register(REGISTER_ATOMIC_OP)
+    crate::read_register(REGISTER_ATOMIC_OP)
 }
 
 fn storage_write(base_key: u64, sub_key: u64, value: impl AsRef<[u8]>) {

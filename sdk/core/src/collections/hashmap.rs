@@ -8,7 +8,7 @@ use super::hashmap::proxy::{
 };
 use crate::__private::registers::REGISTER_CURSOR;
 use crate::__private::storage_traits::private::Sealed;
-use crate::__private::{read_register, storage_traits};
+use crate::__private::storage_traits;
 use crate::collections::hashmap::iterator::{HashMapIt, Keys, Values};
 use environment as env;
 use nohash_hasher::IntMap;
