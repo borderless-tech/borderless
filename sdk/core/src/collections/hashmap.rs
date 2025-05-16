@@ -427,6 +427,7 @@ mod tests {
         Ok(())
     }
 
+    #[test]
     fn clear() -> anyhow::Result<()> {
         let mut map: HashMap<u64, u64> = HashMap::new(KEY);
         for i in 0..N {
@@ -570,6 +571,34 @@ mod tests {
         oracle_values.sort_unstable();
         // Check integrity
         assert_eq!(hashmap_values, oracle_values);
+        Ok(())
+    }
+
+    #[test]
+    fn cursor() -> anyhow::Result<()> {
+        // Create new map
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+        }
+
+        // Commit changes to DB
+        map.commit();
+
+        // Reopen map
+        let mut map: HashMap<u64, u64> = HashMap::open(KEY);
+
+        let m = N * 2;
+        for i in N..m {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+        }
+
+        let map_values: Vec<u64> = map.values().map(|p| *p).collect();
+        // Check integrity
+        assert_eq!(map_values.len(), m as usize);
         Ok(())
     }
 }
