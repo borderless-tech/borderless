@@ -14,7 +14,6 @@ cfg_if! {
     } else {
         // Use off_chain environment
         mod off_chain;
-        pub use off_chain::EnvInstance;
     }
 }
 
