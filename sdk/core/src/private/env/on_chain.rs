@@ -1,4 +1,5 @@
 use crate::__private::REGISTER_ATOMIC_OP;
+use crate::error;
 use borderless_abi as abi;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -11,8 +12,8 @@ where
     let bytes = storage_read(base_key, sub_key)?;
     let value = match postcard::from_bytes::<Value>(&bytes) {
         Ok(value) => value,
-        Err(_) => {
-            //error!("SYSTEM: read-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
+        Err(e) => {
+            error!("SYSTEM: read-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
             abort()
         }
     };
@@ -25,8 +26,8 @@ where
 {
     let value = match postcard::to_allocvec::<Value>(value) {
         Ok(value) => value,
-        Err(_) => {
-            //error!("SYSTEM: write-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
+        Err(e) => {
+            error!("SYSTEM: write-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
             abort()
         }
     };
@@ -45,7 +46,7 @@ pub fn storage_has_key(base_key: u64, sub_key: u64) -> bool {
             0 => false,
             1 => true,
             _ => {
-                //error!("SYSTEM: invalid return code in 'storage_has_key' func");
+                error!("SYSTEM: invalid return code in 'storage_has_key' func");
                 abort()
             }
         }
