@@ -308,11 +308,11 @@ pub fn write_metadata_client(introduction: &Introduction) {
 pub fn abort() -> ! {
     #[cfg(target_arch = "wasm32")]
     {
-        core::arch::wasm32::unreachable()
+        env::on_chain::abort()
     }
     #[cfg(not(target_arch = "wasm32"))]
-    unsafe {
-        abi::panic()
+    {
+        env::off_chain::abort()
     }
 }
 
