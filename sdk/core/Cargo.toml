@@ -10,6 +10,7 @@ borderless-abi.workspace = true
 borderless-id-types.workspace = true
 borderless-sdk-macros.workspace = true
 borderless-hash.workspace = true
+cfg-if.workspace = true
 postcard.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
@@ -18,9 +19,12 @@ nohash-hasher.workspace = true
 xxhash-rust.workspace = true
 http = "1.3.1"
 
+# Dependencies required by native compilation
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rand.workspace = true
+
 [dev-dependencies]
 borderless-id-types = { workspace = true, features = [ "generate_ids" ] }
-rand.workspace = true
 
 [features]
 default = []

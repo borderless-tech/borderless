@@ -8,6 +8,9 @@ pub mod storage_keys;
 #[path = "private/storage_traits.rs"]
 pub mod storage_traits;
 
+#[path = "private/env/mod.rs"]
+mod env;
+
 use borderless_abi as abi;
 
 use registers::*;
@@ -152,43 +155,76 @@ pub fn write_string_to_register(register_id: u64, string: impl AsRef<str>) {
 
 fn storage_write(base_key: u64, sub_key: u64, value: impl AsRef<[u8]>) {
     let value = value.as_ref();
-    unsafe {
-        abi::storage_write(base_key, sub_key, value.as_ptr() as _, value.len() as _);
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::storage_write(base_key, sub_key, value)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        todo!()
     }
 }
 
 fn storage_read(base_key: u64, sub_key: u64) -> Option<Vec<u8>> {
-    unsafe {
-        abi::storage_read(base_key, sub_key, REGISTER_ATOMIC_OP);
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::storage_read(base_key, sub_key)
     }
-    read_register(REGISTER_ATOMIC_OP)
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        todo!()
+    }
 }
 
 pub fn storage_remove(base_key: u64, sub_key: u64) {
-    unsafe {
-        abi::storage_remove(base_key, sub_key);
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::storage_remove(base_key, sub_key)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::storage_remove(base_key, sub_key)
     }
 }
 
 pub fn storage_cursor(base_key: u64) -> u64 {
-    unsafe { abi::storage_cursor(base_key) }
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::storage_cursor(base_key)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::storage_cursor(base_key)
+    }
 }
 
 pub fn storage_has_key(base_key: u64, sub_key: u64) -> bool {
-    unsafe {
-        match abi::storage_has_key(base_key, sub_key) {
-            0 => false,
-            1 => true,
-            _ => {
-                error!("SYSTEM: invalid return code in 'storage_has_key' func");
-                abort()
-            }
-        }
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::storage_has_key(base_key, sub_key)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::storage_has_key(base_key, sub_key)
     }
 }
 
 pub fn storage_gen_sub_key() -> u64 {
-    unsafe { abi::storage_gen_sub_key() }
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::storage_gen_sub_key()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::storage_gen_sub_key()
+    }
 }
 
 /// Reads a value from the storage via the register.
@@ -198,29 +234,30 @@ pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
 where
     Value: DeserializeOwned,
 {
-    let bytes = storage_read(base_key, sub_key)?;
-    let value = match postcard::from_bytes::<Value>(&bytes) {
-        Ok(value) => value,
-        Err(e) => {
-            error!("SYSTEM: read-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
-            abort()
-        }
-    };
-    Some(value)
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::read_field(base_key, sub_key)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::read_field(base_key, sub_key)
+    }
 }
 
 pub fn write_field<Value>(base_key: u64, sub_key: u64, value: &Value)
 where
     Value: Serialize,
 {
-    let value = match postcard::to_allocvec::<Value>(value) {
-        Ok(value) => value,
-        Err(e) => {
-            error!("SYSTEM: write-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
-            abort()
-        }
-    };
-    storage_write(base_key, sub_key, value);
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::write_field(base_key, sub_key, value)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::write_field(base_key, sub_key, value)
+    }
 }
 
 // TODO: Remove ! Introductions should be commited by the host !
@@ -285,6 +322,7 @@ pub fn abort() -> ! {
 pub mod dev {
     use std::time::Duration;
 
+    use crate::__private::env;
     use borderless_abi as abi;
 
     pub fn tic() {
@@ -297,6 +335,14 @@ pub mod dev {
     }
 
     pub fn rand(min: u64, max: u64) -> u64 {
-        unsafe { abi::rand(min, max) }
+        #[cfg(target_arch = "wasm32")]
+        {
+            env::on_chain::rand(min, max)
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            env::off_chain::rand(min, max)
+        }
     }
 }
