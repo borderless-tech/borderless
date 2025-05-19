@@ -107,20 +107,13 @@ pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
 }
 
 fn register_len(register_id: u64) -> Option<u64> {
-    #[cfg(target_arch = "wasm32")]
-    unsafe {
-        let len = abi::register_len(register_id);
-        // Check, if the register exists
-        if len == u64::MAX {
-            None
-        } else {
-            Some(len)
-        }
+    #[cfg(target_arch = "wasm32")] {
+        env::on_chain::register_len(register_id)
     }
+
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = register_id; // remove unused warning
-        panic!("this method can just be called from within a wasm32 target")
+        env::off_chain::register_len(register_id)
     }
 }
 
