@@ -105,14 +105,6 @@ pub fn write_register(register_id: u64, data: impl AsRef<[u8]>) {
     });
 }
 
-/// Calculates a storage key from base key, and sub key (ignoring the contract-id).
-pub fn calc_storage_key(base_key: u64, sub_key: u64) -> Vec<u8> {
-    let mut out = Vec::with_capacity(16);
-    out.extend_from_slice(&base_key.to_be_bytes());
-    out.extend_from_slice(&sub_key.to_be_bytes());
-    out
-}
-
 pub fn tic() {
     TIMER.with(|timer| {
         *timer.borrow_mut() = Instant::now();
@@ -126,4 +118,57 @@ pub fn toc() -> Duration {
 pub fn rand(min: u64, max: u64) -> u64 {
     let mut range = rand::rng();
     range.random_range(min..max)
+}
+
+/// Calculates a storage key from base key, and sub key (ignoring the contract-id).
+fn calc_storage_key(base_key: u64, sub_key: u64) -> Vec<u8> {
+    let mut out = Vec::with_capacity(16);
+    out.extend_from_slice(&base_key.to_be_bytes());
+    out.extend_from_slice(&sub_key.to_be_bytes());
+    out
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod tests {
+    use crate::__private::env::off_chain::DATABASE;
+    use crate::__private::env::off_chain::{
+        calc_storage_key, rand, storage_read, storage_remove, storage_write,
+    };
+
+    #[test]
+    fn rand_test() -> anyhow::Result<()> {
+        let v = rand(0, 10);
+        assert!((0..10).contains(&v), "The generated scalar is out of range");
+        Ok(())
+    }
+
+    #[test]
+    fn basic_crud_test() -> anyhow::Result<()> {
+        let base_key = 10;
+        let sub_key = 20;
+        let key = calc_storage_key(base_key, sub_key);
+        let dummy = vec![1, 2, 3];
+        // Write to database
+        storage_write(base_key, sub_key, dummy.clone());
+
+        DATABASE.with(|db| {
+            let db = db.borrow();
+            // Check database contains key
+            assert!(db.contains_key(&key));
+            // Read from database
+            let value = storage_read(base_key, sub_key);
+            assert_eq!(value, Some(dummy), "Values do not match");
+        });
+
+        // Remove value from database
+        storage_remove(base_key, sub_key);
+
+        DATABASE.with(|db| {
+            let db = db.borrow();
+            // Check database does NOT contain key
+            assert!(!db.contains_key(&key));
+        });
+        Ok(())
+    }
 }
