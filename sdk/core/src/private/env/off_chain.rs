@@ -138,10 +138,6 @@ pub fn calc_storage_key(base_key: u64, sub_key: u64) -> Vec<u8> {
     out
 }
 
-pub fn abort() -> ! {
-    std::process::abort()
-}
-
 pub fn tic() {
     TIMER.with(|timer| {
         *timer.borrow_mut() = Instant::now();

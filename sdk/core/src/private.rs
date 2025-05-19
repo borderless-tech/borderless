@@ -16,10 +16,9 @@ use borderless_abi as abi;
 use registers::*;
 use serde::{de::DeserializeOwned, Serialize};
 
+use crate::{contracts::Introduction, error};
 pub use postcard::from_bytes as from_postcard_bytes;
 pub use postcard::to_allocvec as to_postcard_bytes;
-
-use crate::{contracts::Introduction, error};
 
 // --- PLAYGROUND FOR NEW ABI STUFF
 
@@ -307,7 +306,7 @@ pub fn abort() -> ! {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        env::off_chain::abort()
+        panic!();
     }
 }
 

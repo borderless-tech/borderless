@@ -9,7 +9,6 @@ borderless-abi.workspace = true
 borderless-id-types.workspace = true
 borderless-sdk-macros.workspace = true
 borderless-hash.workspace = true
-cfg-if.workspace = true
 postcard.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
