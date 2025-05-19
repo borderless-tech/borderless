@@ -33,7 +33,9 @@ where
     Value: DeserializeOwned,
 {
     storage_read(base_key, sub_key).and_then(|bytes| {
-        postcard::from_bytes::<Value>(bytes.as_slice()).ok() // TODO Handle error?
+        postcard::from_bytes::<Value>(bytes.as_slice())
+            .inspect_err(|e| print(abi::LogLevel::Error, format!("Deserialization error: {e}")))
+            .ok()
     })
 }
 
