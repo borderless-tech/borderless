@@ -141,12 +141,14 @@ pub fn read_string_from_register(register_id: u64) -> Option<String> {
 }
 
 pub fn write_register(register_id: u64, data: impl AsRef<[u8]>) {
-    unsafe {
-        abi::write_register(
-            register_id,
-            data.as_ref().as_ptr() as _,
-            data.as_ref().len() as _,
-        );
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::write_register(register_id, data)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::write_register(register_id, data)
     }
 }
 

@@ -77,6 +77,16 @@ pub fn read_register(register_id: u64) -> Option<Vec<u8>> {
     }
 }
 
+pub fn write_register(register_id: u64, data: impl AsRef<[u8]>) {
+    unsafe {
+        abi::write_register(
+            register_id,
+            data.as_ref().as_ptr() as _,
+            data.as_ref().len() as _,
+        );
+    }
+}
+
 pub fn storage_read(base_key: u64, sub_key: u64) -> Option<Vec<u8>> {
     unsafe {
         abi::storage_read(base_key, sub_key, REGISTER_ATOMIC_OP);

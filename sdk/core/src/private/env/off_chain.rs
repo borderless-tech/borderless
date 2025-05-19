@@ -115,6 +115,13 @@ pub fn read_register(register_id: u64) -> Option<Vec<u8>> {
     })
 }
 
+pub fn write_register(register_id: u64, data: impl AsRef<[u8]>) {
+    REGISTERS.with(|registers| {
+        let mut registers = registers.borrow_mut();
+        registers.insert(register_id, data.as_ref().to_vec())
+    });
+}
+
 /// Calculates a storage key from base key, and sub key (ignoring the contract-id).
 pub fn calc_storage_key(base_key: u64, sub_key: u64) -> Vec<u8> {
     let mut out = Vec::with_capacity(16);
