@@ -20,7 +20,7 @@ thread_local! {
 
 thread_local! {
     /// Simulates a timer
-    pub static TIMER: RefCell<u64> = RefCell::new(Instant::now());
+        pub static TIMER: RefCell<Instant> = RefCell::new(Instant::now());
 }
 
 pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
@@ -139,15 +139,13 @@ pub fn abort() -> ! {
 
 pub fn tic() {
     TIMER.with(|timer| {
-        let timer = timer.borrow_mut();
-        *timer = Instant::now();
+        *timer.borrow_mut() = Instant::now();
     })
 }
 
 pub fn toc() -> Duration {
     TIMER.with(|timer| {
-        let timer = timer.borrow();
-        Duration::from_nanos(*timer)
+        Instant::now().duration_since(*timer.borrow())
     })
 }
 
