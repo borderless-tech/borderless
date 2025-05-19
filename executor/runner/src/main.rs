@@ -310,6 +310,8 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
             // Clone runtime
             let sched_rt = rt.clone();
 
+            // NOTE: This could move to the runtime crate !
+            //
             // Spin up a dedicated task to handle the schedules
             let handle = tokio::spawn(async move {
                 let rt = sched_rt;
@@ -338,6 +340,7 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
 
                         let mut interval =
                             tokio::time::interval(Duration::from_secs(period as u64));
+                        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
                         loop {
                             interval.tick().await;
