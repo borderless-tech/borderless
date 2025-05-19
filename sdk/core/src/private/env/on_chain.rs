@@ -3,6 +3,7 @@ use crate::error;
 use borderless_abi as abi;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::time::Duration;
 
 // The on_chain environment.
 pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
@@ -61,10 +62,6 @@ pub fn storage_cursor(base_key: u64) -> u64 {
     unsafe { abi::storage_cursor(base_key) }
 }
 
-pub fn rand(min: u64, max: u64) -> u64 {
-    unsafe { abi::rand(min, max) }
-}
-
 #[allow(clippy::uninit_vec)]
 pub fn read_register(register_id: u64) -> Option<Vec<u8>> {
     unsafe {
@@ -114,4 +111,17 @@ pub fn register_len(register_id: u64) -> Option<u64> {
 
 pub fn abort() -> ! {
     core::arch::wasm32::unreachable()
+}
+
+pub fn tic() {
+    unsafe { abi::tic() }
+}
+
+pub fn toc() -> Duration {
+    let dur = unsafe { abi::toc() };
+    Duration::from_nanos(dur)
+}
+
+pub fn rand(min: u64, max: u64) -> u64 {
+    unsafe { abi::rand(min, max) }
 }

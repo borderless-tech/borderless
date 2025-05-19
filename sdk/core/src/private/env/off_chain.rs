@@ -5,6 +5,7 @@ use rand::Rng;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 // The off_chain environment
 thread_local! {
@@ -15,6 +16,11 @@ thread_local! {
 thread_local! {
     /// Simulates the WASM memory
     pub static REGISTERS: RefCell<IntMap<u64, Vec<u8>>> = RefCell::new(IntMap::default());
+}
+
+thread_local! {
+    /// Simulates a timer
+    pub static TIMER: RefCell<u64> = RefCell::new(Instant::now());
 }
 
 pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
@@ -101,11 +107,6 @@ pub fn storage_write(base_key: u64, sub_key: u64, value: impl AsRef<[u8]>) {
     })
 }
 
-pub fn rand(min: u64, max: u64) -> u64 {
-    let mut range = rand::rng();
-    range.random_range(min..max)
-}
-
 pub fn read_register(register_id: u64) -> Option<Vec<u8>> {
     REGISTERS.with(|registers| {
         let registers = registers.borrow();
@@ -134,4 +135,23 @@ pub fn calc_storage_key(base_key: u64, sub_key: u64) -> Vec<u8> {
 
 pub fn abort() -> ! {
     std::process::abort()
+}
+
+pub fn tic() {
+    TIMER.with(|timer| {
+        let timer = timer.borrow_mut();
+        *timer = Instant::now();
+    })
+}
+
+pub fn toc() -> Duration {
+    TIMER.with(|timer| {
+        let timer = timer.borrow();
+        Duration::from_nanos(*timer)
+    })
+}
+
+pub fn rand(min: u64, max: u64) -> u64 {
+    let mut range = rand::rng();
+    range.random_range(min..max)
 }

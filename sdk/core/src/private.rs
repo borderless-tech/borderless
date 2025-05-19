@@ -302,18 +302,31 @@ pub fn abort() -> ! {
 }
 
 pub mod dev {
+    use crate::__private::env;
     use std::time::Duration;
 
-    use crate::__private::env;
-    use borderless_abi as abi;
-
     pub fn tic() {
-        unsafe { abi::tic() }
+        #[cfg(target_arch = "wasm32")]
+        {
+            env::on_chain::tic()
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            env::off_chain::tic()
+        }
     }
 
     pub fn toc() -> Duration {
-        let dur = unsafe { abi::toc() };
-        Duration::from_nanos(dur)
+        #[cfg(target_arch = "wasm32")]
+        {
+            env::on_chain::toc()
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            env::off_chain::toc()
+        }
     }
 
     pub fn rand(min: u64, max: u64) -> u64 {
