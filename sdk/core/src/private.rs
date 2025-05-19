@@ -8,7 +8,7 @@ pub mod storage_keys;
 #[path = "private/storage_traits.rs"]
 pub mod storage_traits;
 
-#[path = "private/env/mod.rs"]
+#[path = "private/env.rs"]
 mod env;
 
 use borderless_abi as abi;
