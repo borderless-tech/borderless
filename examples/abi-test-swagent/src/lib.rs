@@ -1,4 +1,6 @@
 use borderless::__private::{registers::*, *};
+use borderless::agents::{Init, Schedule};
+use borderless::events::MethodOrId;
 use borderless::http::{as_json, as_text, get, post_json, send_request, Json, Method, Request};
 use borderless::serialize::Value;
 use borderless::time::SystemTime;
@@ -14,6 +16,50 @@ pub extern "C" fn process_action() {
         Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
         Err(e) => error!("execution failed: {e:?}"),
     }
+}
+
+/// Function that is called by the host when the agent is initialized
+#[no_mangle]
+pub extern "C" fn on_init() {
+    dev::tic();
+    let result = exec_init();
+    let elapsed = dev::toc();
+    match result {
+        Ok(()) => info!("initialization successful. Time elapsed: {elapsed:?}"),
+        Err(e) => error!("initialization failed: {e:?}"),
+    }
+}
+
+fn exec_init() -> Result<()> {
+    let mut my_init = Init {
+        schedules: Vec::new(),
+    };
+    my_init.schedules.push(Schedule {
+        method: MethodOrId::ByName {
+            method: "schedule-1".to_string(),
+        },
+        period: 5,
+        delay: 1,
+        immediate: false,
+    });
+    my_init.schedules.push(Schedule {
+        method: MethodOrId::ByName {
+            method: "schedule-2".to_string(),
+        },
+        period: 10,
+        delay: 0,
+        immediate: true,
+    });
+
+    let bytes = my_init.to_bytes()?;
+    write_register(REGISTER_OUTPUT, &bytes);
+    Ok(())
+}
+
+/// Function that is called by the host when the agent is shut down
+#[no_mangle]
+pub extern "C" fn on_shutdown() {
+    todo!()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -121,6 +167,12 @@ fn exec_run() -> Result<()> {
             let updated: PostRes =
                 post_json(post, "https://jsonplaceholder.typicode.com/posts").and_then(as_json)?;
             info!("{updated:?}");
+        }
+        "schedule-1" => {
+            info!("This is schedule-1!");
+        }
+        "schedule-2" => {
+            info!("This is schedule-2!");
         }
         other => return Err(new_error!("unknown method: {other}")),
     }

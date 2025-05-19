@@ -106,7 +106,7 @@ enum AgentAction {
         /// Input file containing introduction data
         introduction: PathBuf,
     },
-    /// Execute the given action on the contract
+    /// Execute the given action on the agent
     Process {
         /// Input file containing action data
         action: PathBuf,
@@ -117,11 +117,14 @@ enum AgentAction {
         revocation: PathBuf,
     },
 
+    /// Executes the agent in the background while also providing api access
+    Run,
+
     /// Prints out all logs for this agent
     Logs,
 
     // TODO: Make this also a top-level command maybe ?
-    /// Start a webserver which exposes the agent-api
+    /// Only provides API access but does not spin up the agent
     Api,
 }
 
@@ -297,6 +300,10 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
             log.into_iter().for_each(print_log_line);
         }
         AgentAction::Revoke { revocation } => todo!(),
+        AgentAction::Run => {
+            let init = rt.initialize(&aid).await?;
+            dbg!(init);
+        }
         AgentAction::Logs => todo!(),
         AgentAction::Api => todo!(),
     }

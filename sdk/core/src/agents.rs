@@ -9,7 +9,7 @@ use crate::events::{CallAction, MethodOrId};
 /// They are executed by injecting a [`CallAction`] object with the correct method name and an empty `params` field.
 ///
 /// Like `CallAction` the `Schedule` struct is always serialized and deserialized as json.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Schedule {
     /// Method that is called periodically
     #[serde(flatten)]
@@ -39,6 +39,7 @@ impl Schedule {
 }
 
 /// Capabilities of a SW-Agent
+#[derive(Serialize, Deserialize)]
 pub struct Capabilities {
     /// Weather or not the agent is allowed to make http-calls
     pub network: bool,
@@ -49,6 +50,7 @@ pub struct Capabilities {
 }
 
 /// Websocket configuration
+#[derive(Serialize, Deserialize)]
 pub struct WsConfig {
     /// Websocket URL
     pub url: String,
@@ -61,6 +63,8 @@ pub struct WsConfig {
     /// Can be configured to handle different proxy timeout configurations.
     pub ping_interval: u32,
 }
+// NOTE: We could maybe wrap the WsConfig in an AdvancedConfig object,
+// which contains also the addresses of the WebsocketHandler functions ?
 
 pub trait WebsocketHandler {
     /// Constructor function that is called before the connection is opened.
@@ -84,5 +88,21 @@ pub trait WebsocketHandler {
     fn send_msg(&self, message: String) {
         // TODO: This has to use some internal functions that do that
         todo!()
+    }
+}
+
+/// Return value of the init function
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Init {
+    pub schedules: Vec<Schedule>,
+}
+
+impl Init {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
     }
 }

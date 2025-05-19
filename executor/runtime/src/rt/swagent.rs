@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use borderless::__private::registers::*;
+use borderless::agents::Init;
 use borderless::contracts::{Introduction, Revocation, Symbols};
 use borderless::events::Events;
 use borderless::{events::CallAction, AgentId, BorderlessId};
@@ -172,6 +173,31 @@ impl<S: Db> Runtime<S> {
         let bytes = executor_id.into_bytes().to_vec();
         self.store.data_mut().set_register(REGISTER_EXECUTOR, bytes);
         Ok(())
+    }
+
+    pub async fn initialize(&mut self, aid: &AgentId) -> Result<Init> {
+        let instance = self
+            .contract_store
+            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
+            .await?
+            .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
+
+        // Call the actual function on the wasm side
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, "on_init")?;
+        self.store.data_mut().begin_agent_exec(*aid, false)?;
+
+        if let Err(e) = func.call_async(&mut self.store, ()).await {
+            warn!("initialize failed with error: {e}");
+        }
+        self.store.data_mut().finish_agent_exec(false)?;
+
+        // Return output events
+        let bytes = self
+            .store
+            .data()
+            .get_register(REGISTER_OUTPUT)
+            .ok_or_else(|| ErrorKind::MissingRegisterValue("init-output"))?;
+        Ok(Init::from_bytes(&bytes)?)
     }
 
     // OK; Just to get some stuff going; I want to just simply call an action, and execute an http-request with it.
