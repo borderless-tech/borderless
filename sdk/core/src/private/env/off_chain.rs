@@ -1,10 +1,8 @@
 use crate::__private::REGISTER_CURSOR;
-use borderless_abi as abi;
+use borderless_abi::LogLevel;
 use core::cell::RefCell;
 use nohash_hasher::IntMap;
 use rand::Rng;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -24,29 +22,8 @@ thread_local! {
     pub static TIMER: RefCell<Instant> = RefCell::new(Instant::now());
 }
 
-pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
+pub fn print(level: LogLevel, msg: impl AsRef<str>) {
     println!("[{:?}] {}", level, msg.as_ref())
-}
-
-pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
-where
-    Value: DeserializeOwned,
-{
-    storage_read(base_key, sub_key).and_then(|bytes| {
-        postcard::from_bytes::<Value>(bytes.as_slice())
-            .inspect_err(|e| print(abi::LogLevel::Error, format!("Deserialization error: {e}")))
-            .ok()
-    })
-}
-
-pub fn write_field<Value>(base_key: u64, sub_key: u64, value: &Value)
-where
-    Value: Serialize,
-{
-    match postcard::to_allocvec::<Value>(value) {
-        Ok(bytes) => storage_write(base_key, sub_key, bytes),
-        Err(_) => panic!("Serialization error"),
-    }
 }
 
 pub fn storage_remove(base_key: u64, sub_key: u64) {
