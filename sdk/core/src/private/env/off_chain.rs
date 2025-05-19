@@ -20,7 +20,7 @@ thread_local! {
 
 thread_local! {
     /// Simulates a timer
-        pub static TIMER: RefCell<Instant> = RefCell::new(Instant::now());
+    pub static TIMER: RefCell<Instant> = RefCell::new(Instant::now());
 }
 
 pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
@@ -144,9 +144,7 @@ pub fn tic() {
 }
 
 pub fn toc() -> Duration {
-    TIMER.with(|timer| {
-        Instant::now().duration_since(*timer.borrow())
-    })
+    TIMER.with(|timer| Instant::now().duration_since(*timer.borrow()))
 }
 
 pub fn rand(min: u64, max: u64) -> u64 {
