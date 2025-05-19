@@ -21,21 +21,6 @@ pub use postcard::to_allocvec as to_postcard_bytes;
 
 use crate::{contracts::Introduction, error};
 
-// NOTE: Maybe we can use conditional compilation, to guard all functions that must only be called from the webassembly code:
-//
-//    #[cfg(target_arch = "wasm32")]
-//    {
-//        core::arch::wasm32::unreachable()
-//    }
-//    #[cfg(not(target_arch = "wasm32"))]
-//    unsafe {
-//        panic!("this is not allowed!")
-//    }
-//
-// Maybe we can utilize this in a way, that makes our wasm code testable ?
-// Because without links to the abi, we cannot really test all this..
-//
-
 // --- PLAYGROUND FOR NEW ABI STUFF
 
 pub fn send_http_rq(
