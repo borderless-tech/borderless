@@ -176,7 +176,7 @@ fn storage_read(base_key: u64, sub_key: u64) -> Option<Vec<u8>> {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        todo!()
+        env::off_chain::storage_read(base_key, sub_key)
     }
 }
 

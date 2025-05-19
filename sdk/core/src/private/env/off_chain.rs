@@ -23,13 +23,8 @@ pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
 where
     Value: DeserializeOwned,
 {
-    let key = calc_storage_key(base_key, sub_key);
-
-    DATABASE.with(|db| {
-        let db = db.borrow();
-        db.get(&key).and_then(|bytes| {
-            postcard::from_bytes::<Value>(bytes).ok() // TODO Handle error?
-        })
+    storage_read(base_key, sub_key).and_then(|bytes| {
+        postcard::from_bytes::<Value>(bytes.as_slice()).ok() // TODO Handle error?
     })
 }
 
@@ -92,11 +87,19 @@ pub fn storage_cursor(base_key: u64) -> u64 {
     })
 }
 
+pub fn storage_read(base_key: u64, sub_key: u64) -> Option<Vec<u8>> {
+    let key = calc_storage_key(base_key, sub_key);
+    DATABASE.with(|db| {
+        let db = db.borrow();
+        db.get(&key).cloned()
+    })
+}
+
 pub fn storage_write(base_key: u64, sub_key: u64, value: impl AsRef<[u8]>) {
     let key = calc_storage_key(base_key, sub_key);
     DATABASE.with(|db| {
         let mut db = db.borrow_mut();
-        db.insert(key, value);
+        db.insert(key, value.as_ref().to_vec());
     })
 }
 
