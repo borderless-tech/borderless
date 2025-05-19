@@ -82,12 +82,14 @@ fn required<T, S: AsRef<str>>(value: Option<T>, msg: S) -> T {
 // ---
 
 pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
-    unsafe {
-        abi::print(
-            msg.as_ref().as_ptr() as _,
-            msg.as_ref().len() as _,
-            level as u32,
-        );
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::print(level, msg)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::print(level, msg)
     }
 }
 

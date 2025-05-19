@@ -1,4 +1,5 @@
 use crate::__private::REGISTER_CURSOR;
+use borderless_abi as abi;
 use core::cell::RefCell;
 use nohash_hasher::IntMap;
 use rand::Rng;
@@ -21,6 +22,10 @@ thread_local! {
 thread_local! {
     /// Simulates a timer
     pub static TIMER: RefCell<Instant> = RefCell::new(Instant::now());
+}
+
+pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
+    println!("[{:?}] {}", level, msg.as_ref())
 }
 
 pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>

@@ -6,6 +6,16 @@ use serde::Serialize;
 use std::time::Duration;
 
 // The on_chain environment.
+
+pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
+    unsafe {
+        abi::print(
+            msg.as_ref().as_ptr() as _,
+            msg.as_ref().len() as _,
+            level as u32,
+        );
+    }
+}
 pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
 where
     Value: DeserializeOwned,
