@@ -1,12 +1,10 @@
+use crate::__private::REGISTER_CURSOR;
 use core::cell::RefCell;
 use nohash_hasher::IntMap;
 use rand::Rng;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::collections::HashMap;
-
-// Cursor content start from this register
-pub const REGISTER_CURSOR: u64 = 2 << 32;
 
 // The off_chain environment
 thread_local! {

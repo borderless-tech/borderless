@@ -1,9 +1,7 @@
+use crate::__private::REGISTER_ATOMIC_OP;
 use borderless_abi as abi;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-
-/// Register used for atomic operations
-pub(crate) const REGISTER_ATOMIC_OP: u64 = u64::MAX - 1;
 
 // The on_chain environment.
 pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
@@ -101,7 +99,7 @@ pub fn storage_write(base_key: u64, sub_key: u64, value: impl AsRef<[u8]>) {
     }
 }
 
-fn register_len(register_id: u64) -> Option<u64> {
+pub fn register_len(register_id: u64) -> Option<u64> {
     unsafe {
         let len = abi::register_len(register_id);
         // Check, if the register exists

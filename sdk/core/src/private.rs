@@ -107,7 +107,8 @@ pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
 }
 
 fn register_len(register_id: u64) -> Option<u64> {
-    #[cfg(target_arch = "wasm32")] {
+    #[cfg(target_arch = "wasm32")]
+    {
         env::on_chain::register_len(register_id)
     }
 
