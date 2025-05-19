@@ -37,13 +37,8 @@ pub fn write_field<Value>(base_key: u64, sub_key: u64, value: &Value)
 where
     Value: Serialize,
 {
-    let key = calc_storage_key(base_key, sub_key);
-
     match postcard::to_allocvec::<Value>(value) {
-        Ok(bytes) => DATABASE.with(|db| {
-            let mut db = db.borrow_mut();
-            db.insert(key, bytes);
-        }),
+        Ok(bytes) => storage_write(base_key, sub_key, bytes),
         Err(_) => panic!("Serialization error"),
     }
 }
@@ -94,6 +89,14 @@ pub fn storage_cursor(base_key: u64) -> u64 {
 
         // Return number of elements in DB
         db.len() as u64
+    })
+}
+
+pub fn storage_write(base_key: u64, sub_key: u64, value: impl AsRef<[u8]>) {
+    let key = calc_storage_key(base_key, sub_key);
+    DATABASE.with(|db| {
+        let mut db = db.borrow_mut();
+        db.insert(key, value);
     })
 }
 

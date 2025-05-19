@@ -164,7 +164,7 @@ fn storage_write(base_key: u64, sub_key: u64, value: impl AsRef<[u8]>) {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        todo!()
+        env::off_chain::storage_write(base_key, sub_key, value)
     }
 }
 
