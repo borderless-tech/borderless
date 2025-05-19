@@ -3,7 +3,8 @@ use std::{
     ops::DerefMut,
     path::PathBuf,
     str::FromStr,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    sync::Arc,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result};
@@ -24,6 +25,7 @@ use clap::{Parser, Subcommand};
 
 use log::info;
 use server::start_contract_server;
+use tokio::task::JoinSet;
 
 mod server;
 
@@ -302,9 +304,66 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
         AgentAction::Revoke { revocation } => todo!(),
         AgentAction::Run => {
             let init = rt.initialize(&aid).await?;
-            dbg!(init);
+            dbg!(&init);
+            let rt = Arc::new(tokio::sync::Mutex::new(rt));
+
+            // Clone runtime
+            let sched_rt = rt.clone();
+
+            // Spin up a dedicated task to handle the schedules
+            let handle = tokio::spawn(async move {
+                let rt = sched_rt;
+                let mut join_set = JoinSet::new();
+
+                for sched in init.schedules {
+                    let db = db.clone();
+                    let rt = rt.clone();
+                    let aid = aid.clone();
+                    let action = sched.get_action();
+                    let period = sched.period;
+                    let delay = sched.delay;
+                    let immediate = sched.immediate;
+
+                    join_set.spawn(async move {
+                        if immediate {
+                            // TODO: Dispatch output events
+                            let _ = rt.lock().await.process_action(&aid, action.clone()).await;
+                            let log = Logger::new(&db, aid).get_last_log().unwrap();
+                            log.into_iter().for_each(print_log_line);
+                        }
+
+                        if !immediate && delay > 0 {
+                            tokio::time::sleep(Duration::from_secs(delay as u64)).await;
+                        }
+
+                        let mut interval =
+                            tokio::time::interval(Duration::from_secs(period as u64));
+
+                        loop {
+                            interval.tick().await;
+                            // TODO: Dispatch output events
+                            let _ = rt.lock().await.process_action(&aid, action.clone()).await;
+                            let log = Logger::new(&db, aid).get_last_log().unwrap();
+                            log.into_iter().for_each(print_log_line);
+                        }
+                    });
+                }
+
+                // This loop will run forever unless the outer task is cancelled.
+                // If the outer task is aborted, all spawned tasks inside JoinSet are also dropped.
+                while let Some(res) = join_set.join_next().await {
+                    // Optional: log errors if any task fails (though they are infinite loops)
+                    if let Err(e) = res {
+                        eprintln!("A schedule task failed: {:?}", e);
+                    }
+                }
+            });
+            handle.await;
         }
-        AgentAction::Logs => todo!(),
+        AgentAction::Logs => {
+            let log = Logger::new(&db, aid).get_full_log()?;
+            log.into_iter().for_each(print_log_line);
+        }
         AgentAction::Api => todo!(),
     }
     Ok(())

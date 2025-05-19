@@ -88,16 +88,29 @@ impl<S: Db> CodeStore<S> {
         if let Some(instance) = self.cache.lock().get(aid.as_bytes()) {
             return Ok(Some(*instance));
         }
+        let module = match self.read_module(aid, engine)? {
+            Some(m) => m,
+            None => return Ok(None),
+        };
+        let instance = linker.instantiate_async(store, &module).await?;
+        self.cache.lock().push(*aid.as_bytes(), instance);
+        Ok(Some(instance))
+    }
+
+    /// Helper function to read a module from the kv-storage
+    ///
+    /// Note: This helper function is required, because otherwise the compiler might complain
+    /// that `RoTx` does not implement `Send`, as it cannot figure out on its own,
+    /// that the transaction is dropped before the next `.await` point.
+    fn read_module(&mut self, key: impl AsRef<[u8]>, engine: &Engine) -> Result<Option<Module>> {
         let txn = self.db.begin_ro_txn()?;
-        let module_bytes = txn.read(&self.db_ptr, aid)?;
+        let module_bytes = txn.read(&self.db_ptr, &key)?;
         let module = match module_bytes {
             Some(bytes) => unsafe { Module::deserialize(engine, bytes)? },
             None => return Ok(None),
         };
         txn.commit()?;
-        let instance = linker.instantiate_async(store, &module).await?;
-        self.cache.lock().push(*aid.as_bytes(), instance);
-        Ok(Some(instance))
+        Ok(Some(module))
     }
 
     pub fn available_contracts(&self) -> Result<Vec<ContractId>> {
