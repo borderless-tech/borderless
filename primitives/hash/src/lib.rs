@@ -709,4 +709,26 @@ mod tests {
         let hash = Hash256::digest(b"hash");
         assert_eq!(json, hash);
     }
+
+    #[test]
+    fn debug_output() {
+        let hash = Hash256::digest(b"hash");
+        let dbg = format!("{hash:?}");
+        assert_eq!(dbg, "Hash256 { bytes: [215, 51, 62, 152, 245, 61, 223, 29, 231, 13, 217, 134, 246, 167, 63, 12, 13, 146, 249, 40, 69, 136, 115, 176, 210, 168, 160, 154, 194, 44, 25, 26] }");
+    }
+
+    #[test]
+    fn fb_generated_interfaces() {
+        let bytes = [42u8; 32];
+        let mut hash = Hash256::new(&bytes);
+        assert_eq!(hash.0, bytes);
+
+        for v in hash.bytes().iter() {
+            assert_eq!(v, 42);
+        }
+
+        let other = [1u8; 32];
+        hash.set_bytes(&other);
+        assert_eq!(hash.0, other);
+    }
 }
