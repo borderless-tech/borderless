@@ -126,12 +126,14 @@ fn register_len(register_id: u64) -> Option<u64> {
 
 #[allow(clippy::uninit_vec)]
 pub fn read_register(register_id: u64) -> Option<Vec<u8>> {
-    unsafe {
-        let len = register_len(register_id)?;
-        let mut buf = Vec::with_capacity(len as usize);
-        buf.set_len(len as usize);
-        abi::read_register(register_id, buf.as_mut_ptr() as _);
-        Some(buf)
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::read_register(register_id)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::read_register(register_id)
     }
 }
 
