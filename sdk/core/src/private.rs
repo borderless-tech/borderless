@@ -29,17 +29,25 @@ pub fn send_http_rq(
 ) -> Result<(String, Vec<u8>), String> {
     write_string_to_register(REGISTER_REQUEST_HEAD, rq_head);
     write_register(REGISTER_REQUEST_BODY, &rq_body);
-    let result = unsafe {
-        abi::send_http_rq(
-            REGISTER_REQUEST_HEAD,
-            REGISTER_REQUEST_BODY,
-            REGISTER_RESPONSE_HEAD,
-            REGISTER_RESPONSE_BODY,
-            REGISTER_ATOMIC_OP,
-        )
+
+    // TODO: We also have to provide a mock implementation for this,
+    // otherwise the testing would not work
+    let _result = {
+        #[cfg(target_arch = "wasm32")]
+        unsafe {
+            abi::send_http_rq(
+                REGISTER_REQUEST_HEAD,
+                REGISTER_REQUEST_BODY,
+                REGISTER_RESPONSE_HEAD,
+                REGISTER_RESPONSE_BODY,
+                REGISTER_ATOMIC_OP,
+            )
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        panic!("not-yet-implemented")
     };
 
-    match result {
+    match _result {
         0 => {
             let rs_head = required(
                 read_string_from_register(REGISTER_RESPONSE_HEAD),
