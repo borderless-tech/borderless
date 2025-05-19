@@ -131,9 +131,8 @@ fn calc_storage_key(base_key: u64, sub_key: u64) -> Vec<u8> {
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
-    use crate::__private::env::off_chain::DATABASE;
     use crate::__private::env::off_chain::{
-        calc_storage_key, rand, storage_read, storage_remove, storage_write,
+        calc_storage_key, rand, storage_has_key, storage_read, storage_remove, storage_write,
     };
 
     #[test]
@@ -149,26 +148,21 @@ mod tests {
         let sub_key = 20;
         let key = calc_storage_key(base_key, sub_key);
         let dummy = vec![1, 2, 3];
-        // Write to database
+        // Create value
         storage_write(base_key, sub_key, dummy.clone());
 
-        DATABASE.with(|db| {
-            let db = db.borrow();
-            // Check database contains key
-            assert!(db.contains_key(&key));
-            // Read from database
-            let value = storage_read(base_key, sub_key);
-            assert_eq!(value, Some(dummy), "Values do not match");
-        });
+        // Check database contains key
+        assert!(storage_has_key(base_key, sub_key));
 
-        // Remove value from database
+        // Read value
+        let value = storage_read(base_key, sub_key);
+        assert_eq!(value, Some(dummy), "Values do not match");
+
+        // Delete value
         storage_remove(base_key, sub_key);
 
-        DATABASE.with(|db| {
-            let db = db.borrow();
-            // Check database does NOT contain key
-            assert!(!db.contains_key(&key));
-        });
+        // Check database does NOT contain key
+        assert!(!storage_has_key(base_key, sub_key));
         Ok(())
     }
 }
