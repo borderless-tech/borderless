@@ -7,10 +7,11 @@ use super::hashmap::proxy::{
     Entry as EntryProxy, Key as KeyProxy, Value as ValueProxy, ValueMut as ValueMutProxy,
 };
 use crate::__private::registers::REGISTER_CURSOR;
-use crate::__private::storage_traits;
 use crate::__private::storage_traits::private::Sealed;
+use crate::__private::{
+    read_field, read_register, storage_cursor, storage_remove, storage_traits, write_field,
+};
 use crate::collections::hashmap::iterator::{HashMapIt, Keys, Values};
-use environment as env;
 use nohash_hasher::IntMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -173,7 +174,7 @@ where
 
     pub(crate) fn open(base_key: u64) -> Self {
         // Read number of entries from the DB
-        let entries = env::read_field::<usize>(base_key, 0).unwrap();
+        let entries = read_field::<usize>(base_key, 0).unwrap();
         HashMap {
             base_key,
             cache: RefCell::default(),
@@ -288,7 +289,7 @@ where
 
     fn commit(self) {
         // Store the entries counter in the DB
-        env::write_field(self.base_key, 0, &self.entries);
+        write_field(self.base_key, 0, &self.entries);
 
         // Sync the in-memory mirror with the DB state
         for (key, op) in &self.operations {
@@ -296,9 +297,9 @@ where
                 CacheOp::Update => {
                     let cache = self.cache.borrow();
                     let cell = cache.get(key).expect("Cache corruption");
-                    env::write_field(self.base_key, *key, cell.as_ref());
+                    write_field(self.base_key, *key, cell.as_ref());
                 }
-                CacheOp::Remove => env::storage_remove(self.base_key, *key),
+                CacheOp::Remove => storage_remove(self.base_key, *key),
             }
         }
     }
@@ -314,7 +315,7 @@ where
             return Some(cell.clone());
         }
         // Fallback to DB
-        match env::read_field::<KeyValue<K, V>>(self.base_key, key) {
+        match read_field::<KeyValue<K, V>>(self.base_key, key) {
             None => None,
             Some(keypair) => {
                 let cell = Rc::new(RefCell::new(keypair));
@@ -374,13 +375,13 @@ where
     fn db_keys(&self) -> &Vec<u64> {
         self.db_keys.get_or_init(|| {
             // Load entries from DB
-            let entries = env::storage_cursor(self.base_key) as usize;
+            let entries = storage_cursor(self.base_key) as usize;
 
             // Load DB keys
             let mut db_keys: Vec<u64> = Vec::with_capacity(entries);
             for i in 0..entries {
                 // Read content from register
-                let bytes = env::read_register(REGISTER_CURSOR.saturating_add(i as u64))
+                let bytes = read_register(REGISTER_CURSOR.saturating_add(i as u64))
                     .expect("Fail to read register");
                 // Convert into the sub-key
                 let arr: [u8; 8] = bytes.as_slice().try_into().expect("Slice length error");
@@ -412,9 +413,9 @@ where
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
+    use crate::__private::dev::rand;
     use crate::collections::hashmap::HashMap;
     use anyhow::Context;
-    use environment::rand;
     use std::collections::HashMap as StdHashMap;
 
     const KEY: u64 = 123456;

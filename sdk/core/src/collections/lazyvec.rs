@@ -781,9 +781,10 @@ where
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
+    use crate::__private::dev::rand;
     use crate::collections::lazyvec::LazyVec;
     use anyhow::Context;
-    use environment::rand;
+
     const KEY: u64 = 123456;
     const N: usize = 5000;
 

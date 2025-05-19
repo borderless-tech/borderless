@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
-environment.workspace = true
 borderless-abi.workspace = true
 borderless-id-types.workspace = true
 borderless-sdk-macros.workspace = true
