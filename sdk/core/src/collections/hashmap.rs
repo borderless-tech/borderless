@@ -409,3 +409,203 @@ where
         h.digest()
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod tests {
+    use crate::__private::dev::rand;
+    use crate::collections::hashmap::HashMap;
+    use anyhow::Context;
+    use std::collections::HashMap as StdHashMap;
+
+    const KEY: u64 = 123456;
+    const N: u64 = 5000;
+
+    #[test]
+    fn is_empty() -> anyhow::Result<()> {
+        let map: HashMap<u64, u64> = HashMap::new(KEY);
+        assert!(map.is_empty(), "HashMap must be empty");
+        Ok(())
+    }
+
+    #[test]
+    fn clear() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+        }
+        map.clear();
+        // Check integrity
+        assert!(map.is_empty(), "HashMap must be empty");
+        Ok(())
+    }
+
+    #[test]
+    fn len() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        for i in 0..N {
+            // Check integrity
+            assert_eq!(map.len(), i as usize, "Length mismatch");
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn contains_key() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+        }
+        // Check integrity
+        let target: u64 = 30000;
+        assert!(!map.contains_key(target), "HashMap contains wrong key");
+        map.insert(target, 0);
+        assert!(map.contains_key(target), "HashMap must contain the key");
+        map.remove(target);
+        assert!(!map.contains_key(target), "HashMap contains wrong key");
+        Ok(())
+    }
+
+    #[test]
+    fn insert() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        // A trusted reference used to know what the correct behavior should be
+        let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+            oracle.insert(i, random);
+        }
+        // Check integrity
+        for i in 0..N {
+            let val = map.get(i).context("Get({i}) must return some value")?;
+            assert_eq!(oracle.get(&i), Some(&*val), "Element mismatch")
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn remove() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        // A trusted reference used to know what the correct behavior should be
+        let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+            oracle.insert(i, random);
+        }
+        // Check integrity
+        for i in 0..N {
+            let x = map.remove(i);
+            let y = oracle.remove(&i);
+            assert_eq!(x, y, "Element mismatch")
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn iter() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        // A trusted reference used to know what the correct behavior should be
+        let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+            oracle.insert(i, random);
+        }
+
+        // Collect and sort both key-lists
+        let mut hashmap_pairs: Vec<(u64, u64)> = map.iter().map(|e| *e).collect();
+        let mut oracle_pairs: Vec<(u64, u64)> = oracle.iter().map(|(k, v)| (*k, *v)).collect();
+        hashmap_pairs.sort_unstable();
+        oracle_pairs.sort_unstable();
+        // Check integrity
+        assert_eq!(hashmap_pairs, oracle_pairs);
+        Ok(())
+    }
+
+    #[test]
+    fn keys() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        // A trusted reference used to know what the correct behavior should be
+        let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+            oracle.insert(i, random);
+        }
+
+        // Collect and sort both key-lists
+        let mut hashmap_keys: Vec<u64> = map.keys().map(|p| *p).collect();
+        let mut oracle_keys: Vec<u64> = oracle.keys().cloned().collect();
+        hashmap_keys.sort_unstable();
+        oracle_keys.sort_unstable();
+        // Check integrity
+        assert_eq!(hashmap_keys, oracle_keys);
+        Ok(())
+    }
+
+    #[test]
+    fn values() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        // A trusted reference used to know what the correct behavior should be
+        let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+            oracle.insert(i, random);
+        }
+
+        // Collect and sort both values-lists
+        let mut hashmap_values: Vec<u64> = map.values().map(|p| *p).collect();
+        let mut oracle_values: Vec<u64> = oracle.values().cloned().collect();
+        hashmap_values.sort_unstable();
+        oracle_values.sort_unstable();
+        // Check integrity
+        assert_eq!(hashmap_values, oracle_values);
+        Ok(())
+    }
+
+    #[test]
+    fn cursor() -> anyhow::Result<()> {
+        let mut map: HashMap<u64, u64> = HashMap::new(KEY);
+        // A trusted reference used to know what the correct behavior should be
+        let mut oracle = StdHashMap::<u64, u64>::with_capacity(N as usize);
+
+        for i in 0..N {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+            oracle.insert(i, random);
+        }
+        // Commit changes to DB
+        map.commit();
+
+        // Reopen map
+        let mut map: HashMap<u64, u64> = HashMap::open(KEY);
+        // Insert new elements
+        let m = N * 2;
+        for i in N..m {
+            let random = rand(0, u64::MAX);
+            map.insert(i, random);
+            oracle.insert(i, random);
+        }
+
+        // Collect and sort both values-lists
+        let mut map_keys: Vec<u64> = map.keys().map(|p| *p).collect();
+        let mut oracle_keys: Vec<u64> = oracle.keys().cloned().collect();
+        map_keys.sort_unstable();
+        oracle_keys.sort_unstable();
+        // Check integrity
+        assert_eq!(map_keys, oracle_keys, "Integrity check failed");
+        Ok(())
+    }
+}

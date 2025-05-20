@@ -8,30 +8,17 @@ pub mod storage_keys;
 #[path = "private/storage_traits.rs"]
 pub mod storage_traits;
 
+#[path = "private/env.rs"]
+mod env;
+
 use borderless_abi as abi;
 
 use registers::*;
 use serde::{de::DeserializeOwned, Serialize};
 
+use crate::{contracts::Introduction, error};
 pub use postcard::from_bytes as from_postcard_bytes;
 pub use postcard::to_allocvec as to_postcard_bytes;
-
-use crate::{contracts::Introduction, error};
-
-// NOTE: Maybe we can use conditional compilation, to guard all functions that must only be called from the webassembly code:
-//
-//    #[cfg(target_arch = "wasm32")]
-//    {
-//        core::arch::wasm32::unreachable()
-//    }
-//    #[cfg(not(target_arch = "wasm32"))]
-//    unsafe {
-//        panic!("this is not allowed!")
-//    }
-//
-// Maybe we can utilize this in a way, that makes our wasm code testable ?
-// Because without links to the abi, we cannot really test all this..
-//
 
 // --- PLAYGROUND FOR NEW ABI STUFF
 
@@ -41,17 +28,25 @@ pub fn send_http_rq(
 ) -> Result<(String, Vec<u8>), String> {
     write_string_to_register(REGISTER_REQUEST_HEAD, rq_head);
     write_register(REGISTER_REQUEST_BODY, &rq_body);
-    let result = unsafe {
-        abi::send_http_rq(
-            REGISTER_REQUEST_HEAD,
-            REGISTER_REQUEST_BODY,
-            REGISTER_RESPONSE_HEAD,
-            REGISTER_RESPONSE_BODY,
-            REGISTER_ATOMIC_OP,
-        )
+
+    // TODO: We also have to provide a mock implementation for this,
+    // otherwise the testing would not work
+    let _result = {
+        #[cfg(target_arch = "wasm32")]
+        unsafe {
+            abi::send_http_rq(
+                REGISTER_REQUEST_HEAD,
+                REGISTER_REQUEST_BODY,
+                REGISTER_RESPONSE_HEAD,
+                REGISTER_RESPONSE_BODY,
+                REGISTER_ATOMIC_OP,
+            )
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        panic!("not-yet-implemented")
     };
 
-    match result {
+    match _result {
         0 => {
             let rs_head = required(
                 read_string_from_register(REGISTER_RESPONSE_HEAD),
@@ -94,41 +89,26 @@ fn required<T, S: AsRef<str>>(value: Option<T>, msg: S) -> T {
 // ---
 
 pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
-    unsafe {
-        abi::print(
-            msg.as_ref().as_ptr() as _,
-            msg.as_ref().len() as _,
-            level as u32,
-        );
-    }
-}
-
-pub fn register_len(register_id: u64) -> Option<u64> {
     #[cfg(target_arch = "wasm32")]
-    unsafe {
-        let len = abi::register_len(register_id);
-        // Check, if the register exists
-        if len == u64::MAX {
-            None
-        } else {
-            Some(len)
-        }
+    {
+        env::on_chain::print(level, msg)
     }
+
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = register_id; // remove unused warning
-        panic!("this method can just be called from within a wasm32 target")
+        env::off_chain::print(level, msg)
     }
 }
 
-#[allow(clippy::uninit_vec)]
 pub fn read_register(register_id: u64) -> Option<Vec<u8>> {
-    unsafe {
-        let len = register_len(register_id)?;
-        let mut buf = Vec::with_capacity(len as usize);
-        buf.set_len(len as usize);
-        abi::read_register(register_id, buf.as_mut_ptr() as _);
-        Some(buf)
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::read_register(register_id)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::read_register(register_id)
     }
 }
 
@@ -137,12 +117,14 @@ pub fn read_string_from_register(register_id: u64) -> Option<String> {
 }
 
 pub fn write_register(register_id: u64, data: impl AsRef<[u8]>) {
-    unsafe {
-        abi::write_register(
-            register_id,
-            data.as_ref().as_ptr() as _,
-            data.as_ref().len() as _,
-        );
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::write_register(register_id, data)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::write_register(register_id, data)
     }
 }
 
@@ -150,45 +132,78 @@ pub fn write_string_to_register(register_id: u64, string: impl AsRef<str>) {
     write_register(register_id, string.as_ref());
 }
 
-pub fn storage_write(base_key: u64, sub_key: u64, value: impl AsRef<[u8]>) {
+fn storage_write(base_key: u64, sub_key: u64, value: impl AsRef<[u8]>) {
     let value = value.as_ref();
-    unsafe {
-        abi::storage_write(base_key, sub_key, value.as_ptr() as _, value.len() as _);
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::storage_write(base_key, sub_key, value)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::storage_write(base_key, sub_key, value)
     }
 }
 
-pub fn storage_read(base_key: u64, sub_key: u64) -> Option<Vec<u8>> {
-    unsafe {
-        abi::storage_read(base_key, sub_key, REGISTER_ATOMIC_OP);
+fn storage_read(base_key: u64, sub_key: u64) -> Option<Vec<u8>> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::storage_read(base_key, sub_key)
     }
-    read_register(REGISTER_ATOMIC_OP)
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::storage_read(base_key, sub_key)
+    }
 }
 
 pub fn storage_remove(base_key: u64, sub_key: u64) {
-    unsafe {
-        abi::storage_remove(base_key, sub_key);
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::storage_remove(base_key, sub_key)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::storage_remove(base_key, sub_key)
     }
 }
 
 pub fn storage_cursor(base_key: u64) -> u64 {
-    unsafe { abi::storage_cursor(base_key) }
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::storage_cursor(base_key)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::storage_cursor(base_key)
+    }
 }
 
 pub fn storage_has_key(base_key: u64, sub_key: u64) -> bool {
-    unsafe {
-        match abi::storage_has_key(base_key, sub_key) {
-            0 => false,
-            1 => true,
-            _ => {
-                error!("SYSTEM: invalid return code in 'storage_has_key' func");
-                abort()
-            }
-        }
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::storage_has_key(base_key, sub_key)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::storage_has_key(base_key, sub_key)
     }
 }
 
 pub fn storage_gen_sub_key() -> u64 {
-    unsafe { abi::storage_gen_sub_key() }
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::storage_gen_sub_key()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::storage_gen_sub_key()
+    }
 }
 
 /// Reads a value from the storage via the register.
@@ -198,29 +213,24 @@ pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
 where
     Value: DeserializeOwned,
 {
-    let bytes = storage_read(base_key, sub_key)?;
-    let value = match postcard::from_bytes::<Value>(&bytes) {
-        Ok(value) => value,
-        Err(e) => {
-            error!("SYSTEM: read-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
-            abort()
-        }
-    };
-    Some(value)
+    storage_read(base_key, sub_key).and_then(|bytes| {
+        postcard::from_bytes::<Value>(bytes.as_slice())
+            .inspect_err(|e| print(abi::LogLevel::Error, format!("Deserialization error: {e}")))
+            .ok()
+    })
 }
 
 pub fn write_field<Value>(base_key: u64, sub_key: u64, value: &Value)
 where
     Value: Serialize,
 {
-    let value = match postcard::to_allocvec::<Value>(value) {
-        Ok(value) => value,
+    match postcard::to_allocvec::<Value>(value) {
+        Ok(bytes) => storage_write(base_key, sub_key, bytes),
         Err(e) => {
             error!("SYSTEM: write-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
             abort()
         }
-    };
-    storage_write(base_key, sub_key, value);
+    }
 }
 
 // TODO: Remove ! Introductions should be commited by the host !
@@ -274,29 +284,51 @@ pub fn write_metadata_client(introduction: &Introduction) {
 pub fn abort() -> ! {
     #[cfg(target_arch = "wasm32")]
     {
-        core::arch::wasm32::unreachable()
+        env::on_chain::abort()
     }
     #[cfg(not(target_arch = "wasm32"))]
-    unsafe {
-        abi::panic()
+    {
+        panic!();
     }
 }
 
 pub mod dev {
+    use crate::__private::env;
     use std::time::Duration;
 
-    use borderless_abi as abi;
-
     pub fn tic() {
-        unsafe { abi::tic() }
+        #[cfg(target_arch = "wasm32")]
+        {
+            env::on_chain::tic()
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            env::off_chain::tic()
+        }
     }
 
     pub fn toc() -> Duration {
-        let dur = unsafe { abi::toc() };
-        Duration::from_nanos(dur)
+        #[cfg(target_arch = "wasm32")]
+        {
+            env::on_chain::toc()
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            env::off_chain::toc()
+        }
     }
 
     pub fn rand(min: u64, max: u64) -> u64 {
-        unsafe { abi::rand(min, max) }
+        #[cfg(target_arch = "wasm32")]
+        {
+            env::on_chain::rand(min, max)
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            env::off_chain::rand(min, max)
+        }
     }
 }

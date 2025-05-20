@@ -74,6 +74,7 @@ extern "C" {
     pub fn register_hook();
 }
 
+#[derive(Debug)]
 #[repr(u32)]
 pub enum LogLevel {
     Trace = 0,

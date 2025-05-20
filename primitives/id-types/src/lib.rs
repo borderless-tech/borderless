@@ -466,6 +466,57 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
+    fn tx_id_encode_decode() {
+        let tx_id = TxIdentifier::new(1, 2, Hash256::empty());
+        let bytes = tx_id.to_bytes();
+        let result = TxIdentifier::from_bytes(bytes);
+        assert!(result.is_ok(), "decoding failed: {}", result.unwrap_err());
+        assert_eq!(result.unwrap(), tx_id);
+    }
+
+    #[test]
+    fn tx_id_display() {
+        let tx_id = TxIdentifier::new(1, 2, Hash256::empty());
+        assert_eq!(format!("{tx_id}"), "1.2.a7ffc6f8");
+    }
+
+    #[test]
+    fn block_id_encode_decode() {
+        let block_id = BlockIdentifier::new(1, 2, Hash256::empty());
+        let bytes = block_id.to_bytes();
+        let result = BlockIdentifier::from_bytes(bytes);
+        assert!(result.is_ok(), "decoding failed: {}", result.unwrap_err());
+        assert_eq!(result.unwrap(), block_id);
+    }
+
+    #[test]
+    fn block_id_display() {
+        let block_id = BlockIdentifier::new(1, 2, Hash256::empty());
+        assert_eq!(format!("{block_id}"), "1.2.a7ffc6f8");
+    }
+
+    #[test]
+    fn block_id_ordering() {
+        // Simple test
+        let first = BlockIdentifier::new(10, 20, Hash256::zero());
+        let last = BlockIdentifier::new(1, 2, Hash256::empty());
+        assert!(first < last);
+
+        // Do some fuzzing
+        for i in 0..1_000u64 {
+            let h1 = Hash256::digest(&i.to_be_bytes());
+            let h2 = Hash256::digest(&i.to_le_bytes());
+            let b1 = BlockIdentifier::new(i as u32, i, h1);
+            let b2 = BlockIdentifier::new(i as u32 + 1, i + 1, h2);
+            assert_eq!(
+                h1 < h2,
+                b1 < b2,
+                "block identifiers must be sorted based on their hash"
+            );
+        }
+    }
+
+    #[test]
     fn agent_id_prefix() {
         for _ in 0..1_000_000 {
             let base_id = Uuid::new_v4();
@@ -526,7 +577,7 @@ mod tests {
     }
 
     #[test]
-    fn did_prefix() {
+    fn decentralized_id_prefix() {
         for _ in 0..1_000_000 {
             let base_id = Uuid::new_v4();
             let asset_id = Did::from(base_id);
@@ -648,6 +699,7 @@ mod tests {
             assert!(!aid_prefix(&bid));
             assert!(!aid_prefix(&cid));
             assert!(!aid_prefix(&did));
+            assert!(!aid_prefix(&[]));
         }
     }
 
@@ -662,6 +714,7 @@ mod tests {
             assert!(bid_prefix(&bid));
             assert!(!bid_prefix(&cid));
             assert!(!bid_prefix(&did));
+            assert!(!bid_prefix(&[]));
         }
     }
 
@@ -676,6 +729,7 @@ mod tests {
             assert!(!cid_prefix(&bid));
             assert!(cid_prefix(&cid));
             assert!(!cid_prefix(&did));
+            assert!(!cid_prefix(&[]));
         }
     }
 
@@ -686,11 +740,48 @@ mod tests {
             let bid = BorderlessId::generate();
             let cid = ContractId::generate();
             let did = Did::generate();
-            assert!(!super::did_prefix(&aid));
-            assert!(!super::did_prefix(&bid));
-            assert!(!super::did_prefix(&cid));
-            assert!(super::did_prefix(&did));
+            assert!(!did_prefix(&aid));
+            assert!(!did_prefix(&bid));
+            assert!(!did_prefix(&cid));
+            assert!(did_prefix(&did));
+            assert!(!did_prefix(&[]));
         }
+    }
+
+    #[test]
+    fn string_representation() {
+        let aid = AgentId::generate();
+        let s1: String = aid.into();
+        let s2: String = (&aid).into();
+        assert_eq!(s1, s2);
+        let a1: Result<AgentId, _> = s1.try_into();
+        let a2: Result<AgentId, _> = s2.as_str().try_into();
+        assert!(a1.is_ok());
+        assert_eq!(a1, a2);
+    }
+
+    #[test]
+    fn uuid_conversion() {
+        let uid = Uuid::new_v4();
+        let aid: AgentId = uid.into();
+        let bid: BorderlessId = uid.into();
+        let cid: ContractId = uid.into();
+        let did: Did = uid.into();
+        // They must never match the uuid, because of the prefix
+        assert_ne!(aid.into_bytes(), uid.into_bytes());
+        assert_ne!(bid.into_bytes(), uid.into_bytes());
+        assert_ne!(cid.into_bytes(), uid.into_bytes());
+        assert_ne!(did.into_bytes(), uid.into_bytes());
+        assert_ne!(aid.into_uuid(), uid);
+        assert_ne!(bid.into_uuid(), uid);
+        assert_ne!(cid.into_uuid(), uid);
+        assert_ne!(did.into_uuid(), uid);
+
+        // But roundtrip will work
+        assert_eq!(AgentId::from(aid.into_uuid()), aid);
+        assert_eq!(BorderlessId::from(aid.into_uuid()), bid);
+        assert_eq!(ContractId::from(aid.into_uuid()), cid);
+        assert_eq!(Did::from(aid.into_uuid()), did);
     }
 
     #[test]
