@@ -10,7 +10,7 @@ mod vm;
 #[cfg(any(feature = "contracts", feature = "agents"))]
 pub use code_store::CodeStore;
 
-#[cfg(any(feature = "contracts", feature = "agents"))]
+#[cfg(feature = "code-store")]
 pub mod code_store {
     use super::vm::VmState;
     use borderless::{aid_prefix, cid_prefix, AgentId, ContractId};

@@ -20,14 +20,16 @@ parking_lot = "0.12"
 mime = { version = "0.3", optional = true }
 ahash = { version = "0.8", optional = true }
 lru = { version = "0.14", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
 serde_bytes.workspace = true
 thiserror.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+tokio = { version = "1", features = [], optional = true }
 
 
 [features]
-default = [ "http", "agents", "contracts" ] # for now we enable all features by default
-contracts = ["wasm_store"]
-agents = ["wasm_store", "dep:reqwest", ]
-wasm_store = ["dep:lru", "dep:ahash"]
+default = [ "http", "agents", "contracts", "agent-tasks" ] # for now we enable all features by default
+contracts = ["code-store"]
+agents = ["code-store", "dep:reqwest" ]
+agent-tasks = ["dep:tokio"]
+code-store = ["dep:lru", "dep:ahash"]
 http = ["dep:http", "dep:tower", "dep:mime"]

@@ -79,7 +79,7 @@ impl<S: Db> VmState<S> {
             last_timer: None,
             log_buffer: Vec::new(),
             active: ActiveEntity::None,
-            _async: Some(AsyncState { ws: ws_sender }),
+            _async: Some(AsyncState { _ws: ws_sender }),
         }
     }
 
@@ -345,7 +345,7 @@ impl<S: Db> VmState<S> {
 /// Parts of `VmState` that are only relevant for async execution
 struct AsyncState {
     /// Websocket sender
-    ws: std::sync::mpsc::Sender<(AgentId, String)>,
+    _ws: std::sync::mpsc::Sender<(AgentId, String)>,
 }
 
 /// Helper function to get the linear memory of the wasm module
@@ -689,7 +689,7 @@ pub mod async_abi {
             .ok_or_else(|| wasmtime::Error::msg("Memory access out of bounds"))?
             .to_vec();
 
-        let msg = match String::from_utf8(data) {
+        let _msg = match String::from_utf8(data) {
             Ok(s) => s,
             Err(e) => {
                 warn!("send_ws_msg failed for agent {agent_id}: {e}");

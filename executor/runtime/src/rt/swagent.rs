@@ -24,6 +24,8 @@ use crate::{
     CONTRACT_SUB_DB,
 };
 
+pub mod tasks;
+
 pub type SharedRuntime<S> = Arc<Mutex<Runtime<S>>>;
 
 // NOTE: I think we have to use a different runtime for Contracts and SW-Agents;
@@ -207,6 +209,7 @@ impl<S: Db> Runtime<S> {
 
     // OK; Just to get some stuff going; I want to just simply call an action, and execute an http-request with it.
     // That's more than enough to test stuff out.
+    // TODO: Logging ?
     pub async fn process_action(
         &mut self,
         aid: &AgentId,
