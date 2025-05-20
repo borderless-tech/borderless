@@ -23,7 +23,9 @@ lru = { version = "0.14", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
 serde_bytes.workspace = true
 thiserror.workspace = true
-tokio = { version = "1", features = [], optional = true }
+tokio = { version = "1", features = ["macros"], optional = true }
+tokio-tungstenite = { version = "0.26.2", features = ["rustls"] }
+futures-util = "0.3.31"
 
 
 [features]

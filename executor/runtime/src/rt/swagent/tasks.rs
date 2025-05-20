@@ -3,12 +3,16 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use borderless::{agents::Schedule, events::Events, AgentId};
+use borderless::{
+    agents::{Schedule, WsConfig},
+    events::Events,
+    AgentId,
+};
 use borderless_kv_store::Db;
-use log::{error, info};
+use log::{error, info, warn};
 use thiserror::Error;
 use tokio::{
-    sync::{mpsc, Mutex},
+    sync::{broadcast, mpsc, Mutex},
     task::JoinSet,
     time::{interval, sleep, MissedTickBehavior},
 };
@@ -86,4 +90,108 @@ where
         }
     }
     Ok(())
+}
+
+use futures_util::{stream::SplitSink, SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::{
+    http::{Method, Request},
+    Bytes, Message,
+};
+use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
+
+pub async fn handle_ws_connection<S>(
+    rt: Arc<Mutex<Runtime<S>>>,
+    aid: AgentId,
+    ws_config: WsConfig,
+    mut msg_rx: mpsc::Receiver<Vec<u8>>,
+    out_tx: mpsc::Sender<Events>,
+) where
+    S: Db + 'static,
+{
+    // Open websocket connection to given url
+    // TODO: Retry ? (add outer loop)
+    let result = connect_async(ws_config.url)
+        .await
+        .expect("failed to establish websocket connection");
+
+    let (stream, response) = result;
+    info!("{response:#?}");
+
+    // Set heartbeat timer
+    let mut heartbeat_timer = interval(Duration::from_secs(ws_config.ping_interval));
+
+    // Now start receiving messages from the websocket
+    let (mut tx, mut rx) = stream.split();
+
+    // main loop
+    loop {
+        tokio::select! {
+            biased;
+            // Check heartbeat timer
+            _ = heartbeat_timer.tick() => {
+                let msg = Message::Ping(Vec::new().into());
+                if let Err(e) = tx.send(msg).await {
+                    warn!("Error while sending heartbeat: {e}");
+                    break;
+                }
+            }
+            result = msg_rx.recv() => {
+                if result.is_none() {
+                    warn!("Websocket message receiver closed.");
+                    break;
+                }
+                let payload = result.unwrap();
+                let msg = if ws_config.binary {
+                    Message::Binary(payload.into())
+                } else {
+                    Message::Text(payload.try_into().unwrap())
+                };
+                // Send message
+                if let Err(e) = tx.send(msg).await {
+                    warn!("failed to send ws-msg: {e}");
+                }
+            }
+            // Check incoming messages
+            result = rx.next() => {
+                if result.is_none() {
+                    warn!("Websocket receiver closed.");
+                    break;
+                }
+                let msg = result.unwrap();
+                if msg.is_err() {
+                    warn!("Websocket-msg failure: {}", msg.unwrap_err());
+                    break;
+                }
+                let data = match msg.unwrap() {
+                    Message::Text(text) => {
+                        let bytes: Bytes = text.into();
+                        bytes.into()
+                    }
+                    Message::Binary(b) => b.into(),
+                    Message::Pong(_) => continue,
+                    Message::Close(frame) => {
+                        info!("Received closing frame: {frame:#?}");
+                        break;
+                    }
+                    other => {
+                        info!("receive other websocket msg: {other:#?}");
+                        continue
+                    }
+                };
+
+                // Apply message and dispatch output events
+                match rt.lock().await.process_ws_msg(&aid, data).await {
+                    Ok(Some(events)) => {
+                        // NOTE: We panic here to shutdown the entire task in case the receiver is closed
+                        out_tx
+                            .send(events)
+                            .await
+                            .expect("receiver dropped or closed");
+                    }
+                    Ok(None) => (),
+                    Err(e) => error!("failure while executing schedule: {e}"),
+                }
+            }
+        }
+    }
 }

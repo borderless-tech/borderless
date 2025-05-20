@@ -50,18 +50,25 @@ pub struct Capabilities {
 }
 
 /// Websocket configuration
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct WsConfig {
     /// Websocket URL
     pub url: String,
+
     /// Time in seconds until we disconnect, if we haven't received any messages from the other side
-    pub no_msg_timeout: u32,
+    pub no_msg_timeout: u64,
+
     /// Weather or not we will automatically reconnect if a connection was closed
     pub reconnect: bool,
+
     /// Time interval in seconds for the `Ping` messages
     ///
     /// Can be configured to handle different proxy timeout configurations.
-    pub ping_interval: u32,
+    pub ping_interval: u64,
+
+    /// Weather or not the messages over this channel are binary or text
+    #[serde(default)]
+    pub binary: bool,
 }
 // NOTE: We could maybe wrap the WsConfig in an AdvancedConfig object,
 // which contains also the addresses of the WebsocketHandler functions ?
@@ -95,6 +102,7 @@ pub trait WebsocketHandler {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Init {
     pub schedules: Vec<Schedule>,
+    pub ws_config: Option<WsConfig>,
 }
 
 impl Init {

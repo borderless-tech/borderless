@@ -208,6 +208,10 @@ impl<S: Db> Runtime<S> {
         Ok(Init::from_bytes(&bytes)?)
     }
 
+    pub async fn process_ws_msg(&mut self, aid: &AgentId, msg: Vec<u8>) -> Result<Option<Events>> {
+        Ok(None)
+    }
+
     // OK; Just to get some stuff going; I want to just simply call an action, and execute an http-request with it.
     // That's more than enough to test stuff out.
     // TODO: Logging ?
