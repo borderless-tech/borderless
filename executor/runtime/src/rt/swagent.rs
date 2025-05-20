@@ -46,10 +46,6 @@ where
     store: Store<VmState<S>>,
     engine: Engine,
     contract_store: CodeStore<S>,
-    // NOTE: We may need to change this later, because it does not prevent multiple separate runtimes
-    // to access the thing. Maybe we create a "MutBarrier" type for this, that we have to insert in the constructor ?
-    /// Synchronization mechanism to prevent multiple copies of the runtime to execute the same agent mutably.
-    mutable_exec: ahash::HashMap<AgentId, Mutex<()>>,
 }
 
 impl<S: Db> Runtime<S> {
@@ -159,7 +155,6 @@ impl<S: Db> Runtime<S> {
             store,
             engine,
             contract_store,
-            mutable_exec: ahash::HashMap::default(),
         })
     }
 
@@ -221,10 +216,6 @@ impl<S: Db> Runtime<S> {
         aid: &AgentId,
         action: CallAction,
     ) -> Result<Option<Events>> {
-        // Prevent mutable access from two threads
-        let mutex = self.mutable_exec.entry(*aid).or_default();
-        let _guard = mutex.lock().await;
-
         // Parse action
         let input = action.to_bytes()?;
 
