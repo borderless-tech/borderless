@@ -17,7 +17,7 @@ use borderless::{
 };
 use wasmtime::{Caller, Extern, Memory};
 
-use borderless::__private::registers::REGISTER_CURSOR;
+use borderless::__private::registers::*;
 use borderless_kv_store::*;
 use log::{debug, warn};
 use nohash::IntMap;
@@ -97,6 +97,10 @@ impl<S: Db> VmState<S> {
         if Controller::new(&self.db).contract_revoked(&cid)? {
             return Err(ErrorKind::RevokedContract { cid }.into());
         }
+
+        // Clear output register, just in case
+        self.registers.remove(&REGISTER_OUTPUT);
+
         self.active = ActiveEntity::Contract {
             cid,
             db_txns: Some(Vec::new()),
@@ -120,7 +124,7 @@ impl<S: Db> VmState<S> {
 
         // Reset everything
         self.active = ActiveEntity::None;
-        self.clear_registers()?;
+        self.clear_cursor_registers()?;
         self.log_buffer.clear();
 
         result
@@ -219,6 +223,9 @@ impl<S: Db> VmState<S> {
             cid,
             db_txns: Some(Vec::new()),
         };
+        // Clear http-output register, just in case
+        self.registers.remove(&REGISTER_OUTPUT_HTTP_STATUS);
+        self.registers.remove(&REGISTER_OUTPUT_HTTP_RESULT);
         self.log_buffer.clear();
         Ok(())
     }
@@ -241,7 +248,7 @@ impl<S: Db> VmState<S> {
             return Err(Error::msg("Cannot clear non existing contract or sw-agent"));
         }
         self.active = ActiveEntity::None;
-        self.clear_registers()?;
+        self.clear_cursor_registers()?;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
@@ -254,6 +261,14 @@ impl<S: Db> VmState<S> {
         }
         let db_txns = if mutable { Some(Vec::new()) } else { None };
         self.active = ActiveEntity::Agent { aid, db_txns };
+
+        // Clear output registers
+        if mutable {
+            self.registers.remove(&REGISTER_OUTPUT);
+        } else {
+            self.registers.remove(&REGISTER_OUTPUT_HTTP_STATUS);
+            self.registers.remove(&REGISTER_OUTPUT_HTTP_RESULT);
+        }
         self.log_buffer.clear();
         Ok(())
     }
@@ -297,7 +312,7 @@ impl<S: Db> VmState<S> {
             txn.commit()?;
         }
 
-        self.clear_registers()?;
+        self.clear_cursor_registers()?;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
@@ -321,7 +336,7 @@ impl<S: Db> VmState<S> {
     }
 
     /// Clears the registers from REGISTER_CURSOR until 2^64 -1
-    fn clear_registers(&mut self) -> Result<()> {
+    fn clear_cursor_registers(&mut self) -> Result<()> {
         self.registers.retain(|&k, _| k < REGISTER_CURSOR);
         Ok(())
     }

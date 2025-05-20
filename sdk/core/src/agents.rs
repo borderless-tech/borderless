@@ -19,12 +19,9 @@ pub struct Schedule {
     pub method: MethodOrId,
     /// Schedule period in seconds
     pub period: u32,
-    /// Delay in seconds for the first schedule execution. Has no meaning if `immediate=true`
+    /// Delay in seconds for the first schedule execution. Defaults to `0`.
     #[serde(default)]
     pub delay: u32,
-    /// Weather or not the schedule should be executed immediately after a sw-agent has started
-    #[serde(default)]
-    pub immediate: bool,
 }
 
 impl Schedule {

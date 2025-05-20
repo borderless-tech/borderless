@@ -1,8 +1,9 @@
-use std::{error::Error, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use borderless::{agents::Schedule, events::Events, AgentId};
 use borderless_kv_store::Db;
 use log::error;
+use thiserror::Error;
 use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
@@ -20,12 +21,17 @@ use super::Runtime;
 // We should therefore implement some mechanism, that prevent multiple runtimes from mutating the state at the same time !
 // -> Semaphore over the agent-id
 
+#[derive(Debug, Error)]
+#[error("Critical error in schedule task - forced to shutdown")]
+pub struct ScheduleError;
+
+/// Function to handle all schedules of a single sw-agent
 pub async fn handle_schedules<S>(
     rt: Arc<Mutex<Runtime<S>>>,
     aid: AgentId,
     schedules: Vec<Schedule>,
     out_tx: mpsc::Sender<Events>,
-) -> Result<(), Box<dyn Error>>
+) -> Result<(), ScheduleError>
 where
     S: Db + 'static,
 {
@@ -34,27 +40,30 @@ where
         let rt = rt.clone();
         let aid = aid.clone();
         let action = sched.get_action();
-        let period = sched.period;
-        let delay = sched.delay;
-        let immediate = sched.immediate;
+        let out_tx = out_tx.clone();
 
         join_set.spawn(async move {
-            if immediate {
-                // TODO: Dispatch output events
-                let _ = rt.lock().await.process_action(&aid, action.clone()).await;
+            if sched.delay > 0 {
+                sleep(Duration::from_secs(sched.delay as u64)).await;
             }
 
-            if !immediate && delay > 0 {
-                sleep(Duration::from_secs(delay as u64)).await;
-            }
-
-            let mut interval = interval(Duration::from_secs(period as u64));
+            let mut interval = interval(Duration::from_secs(sched.period as u64));
             interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
             loop {
                 interval.tick().await;
-                // TODO: Dispatch output events
-                let _ = rt.lock().await.process_action(&aid, action.clone()).await;
+                // Dispatch output events
+                match rt.lock().await.process_action(&aid, action.clone()).await {
+                    Ok(Some(events)) => {
+                        // NOTE: We panic here to shutdown the entire task in case the receiver is closed
+                        out_tx
+                            .send(events)
+                            .await
+                            .expect("receiver dropped or closed");
+                    }
+                    Ok(None) => continue,
+                    Err(e) => error!("failure while executing schedule: {e}"),
+                }
             }
         });
     }
@@ -62,9 +71,13 @@ where
     // This loop will run forever unless the outer task is cancelled.
     // If the outer task is aborted, all spawned tasks inside JoinSet are also dropped.
     while let Some(res) = join_set.join_next().await {
-        // Optional: log errors if any task fails (though they are infinite loops)
+        // Catch panics here and shutdown the entire task
         if let Err(e) = res {
             error!("A schedule task failed: {e}");
+            // Gracefully shut down all other tasks
+            join_set.abort_all();
+            // Return error
+            return Err(ScheduleError);
         }
     }
     Ok(())

@@ -40,7 +40,6 @@ fn exec_init() -> Result<()> {
         },
         period: 5,
         delay: 1,
-        immediate: false,
     });
     my_init.schedules.push(Schedule {
         method: MethodOrId::ByName {
@@ -48,7 +47,6 @@ fn exec_init() -> Result<()> {
         },
         period: 10,
         delay: 0,
-        immediate: true,
     });
 
     let bytes = my_init.to_bytes()?;
