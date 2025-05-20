@@ -10,7 +10,7 @@ use axum::{
 use borderless::{events::CallAction, hash::Hash256, BorderlessId, ContractId};
 use borderless_kv_store::Db;
 use borderless_runtime::{
-    http::{ActionWriter, ContractService, Service},
+    http::{contract::ContractService, ActionWriter, Service},
     CodeStore, Runtime, SharedRuntime,
 };
 use log::info;

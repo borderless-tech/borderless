@@ -26,7 +26,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 
 
 [features]
-default = [ "http", "agents", "contracts" ]
+default = [ "http", "agents", "contracts" ] # for now we enable all features by default
 contracts = ["wasm_store"]
 agents = ["wasm_store", "dep:reqwest", ]
 wasm_store = ["dep:lru", "dep:ahash"]

@@ -16,8 +16,8 @@ use borderless::{
 };
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_runtime::{
-    controller::Controller,
-    logger::{print_log_line, Logger},
+    db::controller::Controller,
+    db::logger::{print_log_line, Logger},
     swagent::Runtime as AgentRuntime,
     CodeStore, Runtime,
 };
