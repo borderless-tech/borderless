@@ -24,10 +24,10 @@ use nohash::IntMap;
 use rand::Rng;
 
 use crate::{
-    controller::{write_introduction, write_revocation, Controller},
+    db::action_log::{ActionLog, ActionRecord},
+    db::controller::{write_introduction, write_revocation, Controller},
+    db::logger::Logger,
     error::ErrorKind,
-    rt::action_log::{ActionLog, ActionRecord},
-    rt::logger::Logger,
     Error, Result,
 };
 
@@ -622,6 +622,7 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
 }
 
 /// Returns the current timestamp as milliseconds since epoch
+#[cfg(feature = "agents")]
 pub fn timestamp() -> wasmtime::Result<i64> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)?
@@ -631,6 +632,7 @@ pub fn timestamp() -> wasmtime::Result<i64> {
     Ok(timestamp)
 }
 
+#[cfg(feature = "agents")]
 pub mod async_abi {
     use borderless::Context;
 

@@ -14,12 +14,13 @@ use parking_lot::Mutex;
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
 
 use super::{
-    action_log::ActionRecord,
-    logger,
+    code_store::CodeStore,
     vm::{self, Commit, VmState},
-    CodeStore,
 };
-use crate::logger::print_log_line;
+use crate::db::{
+    action_log::ActionRecord,
+    logger::{self, print_log_line},
+};
 use crate::{
     error::{ErrorKind, Result},
     CONTRACT_SUB_DB,

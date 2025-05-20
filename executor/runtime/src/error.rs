@@ -46,6 +46,7 @@ impl From<wasmtime::Error> for Error {
 }
 
 #[derive(Debug, Error)]
+#[allow(dead_code)]
 pub(crate) enum ErrorKind {
     // --- High-level errors
     /// Storage errors

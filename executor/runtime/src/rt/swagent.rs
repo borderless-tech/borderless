@@ -15,11 +15,11 @@ use parking_lot::Mutex;
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
 
 use super::{
-    logger,
+    code_store::CodeStore,
     vm::{self, Commit, VmState},
-    CodeStore,
 };
 use crate::{
+    db::logger,
     error::{ErrorKind, Result},
     CONTRACT_SUB_DB,
 };
@@ -112,6 +112,11 @@ impl<S: Db> Runtime<S> {
             |caller: Caller<'_, VmState<S>>, base_key, sub_key| {
                 vm::storage_has_key(caller, base_key, sub_key)
             },
+        )?;
+        linker.func_wrap(
+            "env",
+            "storage_cursor",
+            |caller: Caller<'_, VmState<S>>, base_key| vm::storage_cursor(caller, base_key),
         )?;
 
         // NOTE: Those functions introduce side-effects;
