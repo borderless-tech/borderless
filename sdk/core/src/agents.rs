@@ -17,11 +17,11 @@ pub struct Schedule {
     /// Method that is called periodically
     #[serde(flatten)]
     pub method: MethodOrId,
-    /// Schedule period in seconds
-    pub period: u32,
-    /// Delay in seconds for the first schedule execution. Defaults to `0`.
+    /// Schedule period in milliseconds
+    pub period: u64,
+    /// Delay in milliseconds for the first schedule execution. Defaults to `0`.
     #[serde(default)]
-    pub delay: u32,
+    pub delay: u64,
 }
 
 impl Schedule {

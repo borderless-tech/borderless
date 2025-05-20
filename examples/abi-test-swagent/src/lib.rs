@@ -38,14 +38,14 @@ fn exec_init() -> Result<()> {
         method: MethodOrId::ByName {
             method: "schedule-1".to_string(),
         },
-        period: 5,
-        delay: 1,
+        period: 5_000,
+        delay: 1_000,
     });
     my_init.schedules.push(Schedule {
         method: MethodOrId::ByName {
             method: "schedule-2".to_string(),
         },
-        period: 10,
+        period: 10_000,
         delay: 0,
     });
 

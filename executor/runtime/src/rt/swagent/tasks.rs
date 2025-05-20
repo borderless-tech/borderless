@@ -47,10 +47,10 @@ where
 
         join_set.spawn(async move {
             if sched.delay > 0 {
-                sleep(Duration::from_secs(sched.delay as u64)).await;
+                sleep(Duration::from_millis(sched.delay)).await;
             }
 
-            let mut interval = interval(Duration::from_secs(sched.period as u64));
+            let mut interval = interval(Duration::from_millis(sched.period));
             interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
             loop {
