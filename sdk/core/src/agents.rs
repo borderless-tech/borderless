@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::events::{CallAction, Events, MethodOrId};
+use crate::{
+    __private::send_ws_msg,
+    events::{ActionOutput, CallAction, MethodOrId},
+};
 
 // TODO: Are schedules completely static ?
 // Or do we want to enable temporary schedules,
@@ -74,27 +77,28 @@ pub struct WsConfig {
 // which contains also the addresses of the WebsocketHandler functions ?
 
 pub trait WebsocketHandler {
+    type Err: std::fmt::Display + std::fmt::Debug;
+
     /// Constructor function that is called before the connection is opened.
     ///
     /// This function returns all required information to establish the websocket connection.
     fn open_ws() -> WsConfig;
 
     /// Called when a new connection is established (before any messages are exchanged).
-    fn on_open(&mut self);
+    fn on_open(&mut self) -> Result<Option<ActionOutput>, Self::Err>;
 
     /// Called whenever a message is received from the client.
-    fn on_message(&mut self, message: String) -> Option<Events>;
+    fn on_message(&mut self, msg: Vec<u8>) -> Result<Option<ActionOutput>, Self::Err>;
 
     /// Called when an error occurs on the connection.
-    fn on_error(&mut self) -> Option<Events>;
+    fn on_error(&mut self) -> Result<Option<ActionOutput>, Self::Err>;
 
     /// Called when the connection is cleanly closed (e.g., by the client).
-    fn on_close(&mut self, code: u16, reason: &str);
+    fn on_close(&mut self, code: u16, reason: &str) -> Result<Option<ActionOutput>, Self::Err>;
 
     /// Send a message to the other side
-    fn send_msg(&self, message: String) {
-        // TODO: This has to use some internal functions that do that
-        todo!()
+    fn send_msg(&self, msg: Vec<u8>) -> Result<(), anyhow::Error> {
+        send_ws_msg(msg)
     }
 }
 

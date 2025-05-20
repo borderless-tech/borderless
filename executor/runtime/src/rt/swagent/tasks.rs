@@ -120,6 +120,9 @@ pub async fn handle_ws_connection<S>(
     let (stream, response) = result;
     info!("{response:#?}");
 
+    // Call "on-open"
+    handle_events(rt.lock().await.on_ws_open(&aid).await, &out_tx).await;
+
     // Set heartbeat timer
     let mut heartbeat_timer = interval(Duration::from_secs(ws_config.ping_interval));
 
@@ -163,6 +166,8 @@ pub async fn handle_ws_connection<S>(
                 let msg = result.unwrap();
                 if msg.is_err() {
                     warn!("Websocket-msg failure: {}", msg.unwrap_err());
+                    // Call "on-error"
+                    handle_events(rt.lock().await.on_ws_error(&aid).await, &out_tx).await;
                     break;
                 }
                 let data = match msg.unwrap() {
@@ -174,6 +179,8 @@ pub async fn handle_ws_connection<S>(
                     Message::Pong(_) => continue,
                     Message::Close(frame) => {
                         info!("Received closing frame: {frame:#?}");
+                        // Call "on-close"
+                        handle_events(rt.lock().await.on_ws_close(&aid).await, &out_tx).await;
                         break;
                     }
                     other => {
@@ -183,18 +190,22 @@ pub async fn handle_ws_connection<S>(
                 };
 
                 // Apply message and dispatch output events
-                match rt.lock().await.process_ws_msg(&aid, data).await {
-                    Ok(Some(events)) => {
-                        // NOTE: We panic here to shutdown the entire task in case the receiver is closed
-                        out_tx
-                            .send(events)
-                            .await
-                            .expect("receiver dropped or closed");
-                    }
-                    Ok(None) => (),
-                    Err(e) => error!("failure while executing schedule: {e}"),
-                }
+                handle_events(rt.lock().await.process_ws_msg(&aid, data).await, &out_tx).await;
             }
         }
+    }
+}
+
+async fn handle_events(result: crate::Result<Option<Events>>, out_tx: &mpsc::Sender<Events>) {
+    match result {
+        Ok(Some(events)) => {
+            // NOTE: We panic here to shutdown the entire task in case the receiver is closed
+            out_tx
+                .send(events)
+                .await
+                .expect("receiver dropped or closed");
+        }
+        Ok(None) => (),
+        Err(e) => error!("failure while executing on-ws-msg: {e}"),
     }
 }

@@ -227,7 +227,19 @@ impl<S: Db> Runtime<S> {
     }
 
     pub async fn process_ws_msg(&mut self, aid: &AgentId, msg: Vec<u8>) -> Result<Option<Events>> {
-        self.call_mut(aid, msg, "process_ws_msg").await
+        self.call_mut(aid, msg, "on_ws_msg").await
+    }
+
+    pub async fn on_ws_open(&mut self, aid: &AgentId) -> Result<Option<Events>> {
+        self.call_mut(aid, Vec::new(), "on_ws_open").await
+    }
+
+    pub async fn on_ws_error(&mut self, aid: &AgentId) -> Result<Option<Events>> {
+        self.call_mut(aid, Vec::new(), "on_ws_error").await
+    }
+
+    pub async fn on_ws_close(&mut self, aid: &AgentId) -> Result<Option<Events>> {
+        self.call_mut(aid, Vec::new(), "on_ws_close").await
     }
 
     // OK; Just to get some stuff going; I want to just simply call an action, and execute an http-request with it.

@@ -18,17 +18,6 @@ pub extern "C" fn process_action() {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn process_ws_msg() {
-    dev::tic();
-    let result = exec_ws();
-    let elapsed = dev::toc();
-    match result {
-        Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
-        Err(e) => error!("execution failed: {e:?}"),
-    }
-}
-
 /// Function that is called by the host when the agent is initialized
 #[no_mangle]
 pub extern "C" fn on_init() {
@@ -39,6 +28,35 @@ pub extern "C" fn on_init() {
         Ok(()) => info!("initialization successful. Time elapsed: {elapsed:?}"),
         Err(e) => error!("initialization failed: {e:?}"),
     }
+}
+
+/// Function that is called by the host when the ws-connection is opened
+#[no_mangle]
+pub extern "C" fn on_ws_open() {
+    info!("-- on-ws-open");
+    send_ws_msg("called on-open from wasm").unwrap();
+}
+
+/// Function that is called on receiving a new websocket message
+#[no_mangle]
+pub extern "C" fn on_ws_msg() {
+    dev::tic();
+    let result = exec_ws();
+    let elapsed = dev::toc();
+    match result {
+        Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
+        Err(e) => error!("execution failed: {e:?}"),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn on_ws_error() {
+    error!("-- on-ws-error");
+}
+
+#[no_mangle]
+pub extern "C" fn on_ws_close() {
+    error!("-- on-ws-close");
 }
 
 fn exec_init() -> Result<()> {
