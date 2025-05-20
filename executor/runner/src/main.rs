@@ -3,7 +3,6 @@ use std::{
     ops::DerefMut,
     path::PathBuf,
     str::FromStr,
-    sync::Arc,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -306,16 +305,11 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
         AgentAction::Run => {
             let init = rt.initialize(&aid).await?;
             dbg!(&init);
-            let rt = Arc::new(tokio::sync::Mutex::new(rt));
+            let rt = rt.into_shared();
 
-            // Clone runtime
-            let sched_rt = rt.clone();
-
-            // NOTE: This could move to the runtime crate !
-            //
             // Spin up a dedicated task to handle the schedules
             let (tx, _rx) = tokio::sync::mpsc::channel(1);
-            let handle = tokio::spawn(handle_schedules(sched_rt, aid, init.schedules, tx));
+            let handle = tokio::spawn(handle_schedules(rt, aid, init.schedules, tx));
             handle.await;
         }
         AgentAction::Logs => {

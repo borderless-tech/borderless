@@ -11,13 +11,14 @@ use borderless::{events::CallAction, AgentId, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
 use log::{error, warn};
-use parking_lot::Mutex;
+use tokio::sync::Mutex;
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
 
 use super::{
     code_store::CodeStore,
     vm::{self, Commit, VmState},
 };
+use crate::db::logger::print_log_line;
 use crate::{
     db::logger,
     error::{ErrorKind, Result},
@@ -45,6 +46,10 @@ where
     store: Store<VmState<S>>,
     engine: Engine,
     contract_store: CodeStore<S>,
+    // NOTE: We may need to change this later, because it does not prevent multiple separate runtimes
+    // to access the thing. Maybe we create a "MutBarrier" type for this, that we have to insert in the constructor ?
+    /// Synchronization mechanism to prevent multiple copies of the runtime to execute the same agent mutably.
+    mutable_exec: ahash::HashMap<AgentId, Mutex<()>>,
 }
 
 impl<S: Db> Runtime<S> {
@@ -154,6 +159,7 @@ impl<S: Db> Runtime<S> {
             store,
             engine,
             contract_store,
+            mutable_exec: ahash::HashMap::default(),
         })
     }
 
@@ -215,6 +221,11 @@ impl<S: Db> Runtime<S> {
         aid: &AgentId,
         action: CallAction,
     ) -> Result<Option<Events>> {
+        // Prevent mutable access from two threads
+        let mutex = self.mutable_exec.entry(*aid).or_default();
+        let _guard = mutex.lock().await;
+
+        // Parse action
         let input = action.to_bytes()?;
 
         let instance = self
@@ -230,13 +241,15 @@ impl<S: Db> Runtime<S> {
         let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_action")?;
         self.store.data_mut().begin_agent_exec(*aid, true)?;
 
-        match func.call_async(&mut self.store, ()).await {
+        let logs = match func.call_async(&mut self.store, ()).await {
             Ok(()) => self.store.data_mut().finish_agent_exec(true)?,
             Err(e) => {
                 warn!("process_action failed with error: {e}");
                 self.store.data_mut().finish_agent_exec(false)?
             }
-        }; // TODO
+        };
+        // Just print the logs here
+        logs.into_iter().for_each(print_log_line);
 
         // Return output events
         match self.store.data().get_register(REGISTER_OUTPUT) {

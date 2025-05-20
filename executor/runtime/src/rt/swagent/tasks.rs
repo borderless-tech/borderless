@@ -1,8 +1,11 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
 use borderless::{agents::Schedule, events::Events, AgentId};
 use borderless_kv_store::Db;
-use log::error;
+use log::{error, info};
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, Mutex},
@@ -53,6 +56,7 @@ where
             loop {
                 interval.tick().await;
                 // Dispatch output events
+                let now = SystemTime::now();
                 match rt.lock().await.process_action(&aid, action.clone()).await {
                     Ok(Some(events)) => {
                         // NOTE: We panic here to shutdown the entire task in case the receiver is closed
@@ -61,9 +65,10 @@ where
                             .await
                             .expect("receiver dropped or closed");
                     }
-                    Ok(None) => continue,
+                    Ok(None) => (),
                     Err(e) => error!("failure while executing schedule: {e}"),
                 }
+                info!("-- Outer time elapsed: {:?}", now.elapsed().unwrap());
             }
         });
     }
