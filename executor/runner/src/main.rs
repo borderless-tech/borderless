@@ -19,7 +19,10 @@ use borderless_runtime::{
         controller::Controller,
         logger::{print_log_line, Logger},
     },
-    swagent::{tasks::handle_schedules, Runtime as AgentRuntime},
+    swagent::{
+        tasks::{handle_schedules, handle_ws_connection},
+        Runtime as AgentRuntime,
+    },
     CodeStore, Runtime,
 };
 use clap::{Parser, Subcommand};
@@ -309,7 +312,21 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
 
             // Spin up a dedicated task to handle the schedules
             let (tx, _rx) = tokio::sync::mpsc::channel(1);
-            let handle = tokio::spawn(handle_schedules(rt, aid, init.schedules, tx));
+            let handle = tokio::spawn(handle_schedules(
+                rt.clone(),
+                aid,
+                init.schedules,
+                tx.clone(),
+            ));
+
+            if let Some(ws_config) = init.ws_config {
+                // TODO: Dummy msg_rx - this has to be connected to the runtime somehow
+                let (_msg_tx, msg_rx) = tokio::sync::mpsc::channel(1);
+                let ws_handle = tokio::spawn(handle_ws_connection(rt, aid, ws_config, msg_rx, tx));
+                ws_handle.await;
+                _msg_tx.send(Vec::new());
+            }
+
             handle.await;
         }
         AgentAction::Logs => {

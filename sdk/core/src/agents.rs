@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::events::{CallAction, MethodOrId};
+use crate::events::{CallAction, Events, MethodOrId};
 
 // TODO: Are schedules completely static ?
 // Or do we want to enable temporary schedules,
@@ -83,10 +83,10 @@ pub trait WebsocketHandler {
     fn on_open(&mut self);
 
     /// Called whenever a message is received from the client.
-    fn on_message(&mut self, message: String);
+    fn on_message(&mut self, message: String) -> Option<Events>;
 
     /// Called when an error occurs on the connection.
-    fn on_error(&mut self);
+    fn on_error(&mut self) -> Option<Events>;
 
     /// Called when the connection is cleanly closed (e.g., by the client).
     fn on_close(&mut self, code: u16, reason: &str);

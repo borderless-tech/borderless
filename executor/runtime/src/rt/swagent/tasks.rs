@@ -110,6 +110,7 @@ pub async fn handle_ws_connection<S>(
 {
     // Open websocket connection to given url
     // TODO: Retry ? (add outer loop)
+    info!("opening websocket connection to '{}'", ws_config.url);
     let result = connect_async(ws_config.url)
         .await
         .expect("failed to establish websocket connection");

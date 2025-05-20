@@ -209,7 +209,7 @@ impl<S: Db> Runtime<S> {
     }
 
     pub async fn process_ws_msg(&mut self, aid: &AgentId, msg: Vec<u8>) -> Result<Option<Events>> {
-        Ok(None)
+        self.call_mut(aid, msg, "process_ws_msg").await
     }
 
     // OK; Just to get some stuff going; I want to just simply call an action, and execute an http-request with it.
@@ -222,7 +222,16 @@ impl<S: Db> Runtime<S> {
     ) -> Result<Option<Events>> {
         // Parse action
         let input = action.to_bytes()?;
+        self.call_mut(aid, input, "process_action").await
+    }
 
+    /// Helper function for mutable calls
+    async fn call_mut(
+        &mut self,
+        aid: &AgentId,
+        input: Vec<u8>,
+        method: &'static str,
+    ) -> Result<Option<Events>> {
         let instance = self
             .contract_store
             .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
@@ -233,13 +242,13 @@ impl<S: Db> Runtime<S> {
         self.store.data_mut().set_register(REGISTER_INPUT, input);
 
         // Call the actual function on the wasm side
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, "process_action")?;
+        let func = instance.get_typed_func::<(), ()>(&mut self.store, method)?;
         self.store.data_mut().begin_agent_exec(*aid, true)?;
 
         let logs = match func.call_async(&mut self.store, ()).await {
             Ok(()) => self.store.data_mut().finish_agent_exec(true)?,
             Err(e) => {
-                warn!("process_action failed with error: {e}");
+                warn!("{method} failed with error: {e}");
                 self.store.data_mut().finish_agent_exec(false)?
             }
         };
@@ -252,100 +261,6 @@ impl<S: Db> Runtime<S> {
             None => Ok(None),
         }
     }
-
-    // pub fn process_introduction(
-    //     &mut self,
-    //     introduction: Introduction,
-    //     writer: &BorderlessId,
-    //     tx_ctx: TxCtx,
-    // ) -> Result<()> {
-    //     let input = introduction.to_bytes()?;
-    //     self.store
-    //         .data_mut()
-    //         .begin_mutable_exec(introduction.contract_id)?;
-    //     self.process_chain_tx(
-    //         "process_introduction",
-    //         introduction.contract_id,
-    //         input,
-    //         *writer,
-    //         &tx_ctx,
-    //     )?;
-    //     self.store
-    //         .data_mut()
-    //         .finish_mutable_exec(Commit::Introduction {
-    //             introduction,
-    //             tx_ctx,
-    //         })?;
-    //     Ok(())
-    // }
-
-    // pub fn process_revocation(
-    //     &mut self,
-    //     revocation: Revocation,
-    //     writer: &BorderlessId,
-    //     tx_ctx: TxCtx,
-    // ) -> Result<()> {
-    //     let input = revocation.to_bytes()?;
-
-    //     self.store
-    //         .data_mut()
-    //         .begin_mutable_exec(revocation.contract_id)?;
-    //     self.process_chain_tx(
-    //         "process_revocation",
-    //         revocation.contract_id,
-    //         input,
-    //         *writer,
-    //         &tx_ctx,
-    //     )?;
-    //     self.store
-    //         .data_mut()
-    //         .finish_mutable_exec(Commit::Revocation { revocation, tx_ctx })?;
-    //     Ok(())
-    // }
-
-    // /// Abstraction over all possible chain transactions
-    // ///
-    // /// In case of an error, the `VmState` is reset by this function.
-    // fn process_chain_tx(
-    //     &mut self,
-    //     contract_method: &str,
-    //     aid: AgentId,
-    //     input: Vec<u8>,
-    //     writer: BorderlessId,
-    //     tx_ctx: &TxCtx,
-    // ) -> Result<Option<Events>> {
-    //     let instance = self
-    //         .contract_store
-    //         .get_contract(&aid, &self.engine, &mut self.store, &mut self.linker)?
-    //         .ok_or_else(|| ErrorKind::MissingAgent { aid })?;
-
-    //     // Prepare registers
-    //     self.store.data_mut().set_register(REGISTER_INPUT, input);
-    //     self.store
-    //         .data_mut()
-    //         .set_register(REGISTER_TX_CTX, tx_ctx.to_bytes()?);
-    //     self.store
-    //         .data_mut()
-    //         .set_register(REGISTER_WRITER, writer.into_bytes().into());
-
-    //     // Call the actual function on the wasm side
-    //     if let Err(e) = instance
-    //         .get_typed_func::<(), ()>(&mut self.store, contract_method)
-    //         .and_then(|func| func.call(&mut self.store, ()))
-    //     {
-    //         warn!("{contract_method} failed with error: {e}");
-    //         // NOTE: It is okay to abort the execution here with the finish_immutable_exec function,
-    //         // because we only get here, if the wasm execution has failed. Therefore there are no
-    //         // logs or actions to be commited to the database. We simply need this line to 'reset' the VmState for the next execution.
-    //         self.store.data_mut().finish_immutable_exec()?;
-    //     }
-
-    //     // Return output events
-    //     match self.store.data().get_register(REGISTER_OUTPUT) {
-    //         Some(bytes) => Ok(Some(Events::from_bytes(&bytes)?)),
-    //         None => Ok(None),
-    //     }
-    // }
 
     // --- NOTE: Maybe we should create a separate runtime for the HTTP handling ?
 
@@ -394,6 +309,8 @@ impl<S: Db> Runtime<S> {
     }
 
     // TODO: This will directly execute the action and return a list of events
+    //
+    // The question is, what should be returned via the web-api ?
     /// Uses a POST request to parse and generate a [`CallAction`] object.
     ///
     /// The return type is a nested result. The outer result type should convert to a server error,
@@ -412,6 +329,7 @@ impl<S: Db> Runtime<S> {
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
+        // TODO: Can't I just convert this into a call-action on-spot ??
         self.store
             .data_mut()
             .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());

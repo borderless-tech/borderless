@@ -1,5 +1,5 @@
 use borderless::__private::{registers::*, *};
-use borderless::agents::{Init, Schedule};
+use borderless::agents::{Init, Schedule, WsConfig};
 use borderless::events::MethodOrId;
 use borderless::http::{as_json, as_text, get, post_json, send_request, Json, Method, Request};
 use borderless::serialize::Value;
@@ -11,6 +11,17 @@ use serde::{Deserialize, Serialize};
 pub extern "C" fn process_action() {
     dev::tic();
     let result = exec_run();
+    let elapsed = dev::toc();
+    match result {
+        Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
+        Err(e) => error!("execution failed: {e:?}"),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn process_ws_msg() {
+    dev::tic();
+    let result = exec_ws();
     let elapsed = dev::toc();
     match result {
         Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
@@ -33,6 +44,7 @@ pub extern "C" fn on_init() {
 fn exec_init() -> Result<()> {
     let mut my_init = Init {
         schedules: Vec::new(),
+        ws_config: None,
     };
     my_init.schedules.push(Schedule {
         method: MethodOrId::ByName {
@@ -47,6 +59,13 @@ fn exec_init() -> Result<()> {
         },
         period: 10_000,
         delay: 0,
+    });
+    my_init.ws_config = Some(WsConfig {
+        url: "ws://localhost:5555".to_string(),
+        no_msg_timeout: 30,
+        reconnect: true,
+        ping_interval: 60,
+        binary: false,
     });
 
     let bytes = my_init.to_bytes()?;
@@ -73,6 +92,13 @@ struct PostRes {
     title: String,
     body: String,
     user_id: usize,
+}
+
+fn exec_ws() -> Result<()> {
+    let input = read_register(REGISTER_INPUT).context("missing input register")?;
+    let msg = String::from_utf8(input)?;
+    info!("received msg: {msg}");
+    Ok(())
 }
 
 fn exec_run() -> Result<()> {
