@@ -451,6 +451,7 @@ pub mod events {
 }
 
 pub mod time {
+    #[cfg(target_arch = "wasm32")]
     use borderless_abi as abi;
 
     use std::{
@@ -463,7 +464,18 @@ pub mod time {
     pub struct SystemTime(i64);
 
     pub fn timestamp() -> i64 {
-        unsafe { abi::timestamp() }
+        #[cfg(target_arch = "wasm32")]
+        unsafe {
+            abi::timestamp()
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("ts < unix-epoch")
+                .as_millis() as i64
+        }
     }
 
     impl SystemTime {
