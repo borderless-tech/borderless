@@ -131,7 +131,11 @@ fn calc_storage_key(base_key: u64, sub_key: u64) -> Vec<u8> {
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
-    use crate::__private::env::off_chain::{rand, read_register, storage_has_key, storage_read, storage_remove, storage_write, write_register};
+    use crate::__private::env::off_chain::{
+        rand, read_register, storage_cursor, storage_has_key, storage_read, storage_remove,
+        storage_write, write_register,
+    };
+    use crate::__private::registers::REGISTER_CURSOR;
 
     const BASE_KEY: u64 = 10;
     const SUB_KEY: u64 = 20;
@@ -171,6 +175,35 @@ mod tests {
         // Read value from register
         let value = read_register(REGISTER_ID);
         assert_eq!(value, Some(dummy), "Values do not match");
+        Ok(())
+    }
+
+    #[test]
+    fn cursor_test() -> anyhow::Result<()> {
+        let n = 10u64;
+        let mut vec: Vec<u64> = Vec::with_capacity(n as usize);
+        let mut oracle: Vec<u64> = Vec::with_capacity(n as usize);
+        let dummy = vec![1, 2, 3];
+
+        // Store n elements in storage
+        for i in 0..n {
+            let sub_key = SUB_KEY.saturating_add(i);
+            vec.push(sub_key);
+            storage_write(BASE_KEY, sub_key, dummy.clone());
+        }
+        // Check cursor size is n
+        assert_eq!(storage_cursor(BASE_KEY), n, "Keys length mismatch");
+        // Retrieve the keys from the reserved registers
+        for i in 0..n {
+            let bytes = read_register(REGISTER_CURSOR.saturating_add(i)).unwrap();
+            let bytes: [u8; 8] = bytes.try_into().unwrap();
+            let key = u64::from_le_bytes(bytes);
+            oracle.push(key);
+        }
+        // Sort vectors as keys come unordered
+        vec.sort_unstable();
+        oracle.sort_unstable();
+        assert_eq!(vec, oracle, "Keys do not match");
         Ok(())
     }
 }
