@@ -51,7 +51,7 @@ fn exec_init() -> Result<()> {
             method: "schedule-1".to_string(),
         },
         period: 5_000,
-        delay: 1_000,
+        delay: 2_000,
     });
     my_init.schedules.push(Schedule {
         method: MethodOrId::ByName {
@@ -194,6 +194,7 @@ fn exec_run() -> Result<()> {
         }
         "schedule-1" => {
             info!("This is schedule-1!");
+            send_ws_msg("This is my message from schedule-1")?;
         }
         "schedule-2" => {
             info!("This is schedule-2!");

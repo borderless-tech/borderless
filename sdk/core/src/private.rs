@@ -72,6 +72,18 @@ pub fn send_http_rq(
     }
 }
 
+/// Simple wrapper to send websocket messages via the abi
+///
+/// Requires that everything is setup for the websocket, otherwise this will always fail.
+pub fn send_ws_msg(msg: impl AsRef<[u8]>) -> anyhow::Result<()> {
+    unsafe {
+        match abi::send_ws_msg(msg.as_ref().as_ptr() as _, msg.as_ref().len() as _) {
+            0 => Ok(()),
+            _ => Err(anyhow::Error::msg("failed to send websocket message")),
+        }
+    }
+}
+
 /// Helper function that marks a register value as "required" - meaning that in case the value is not present,
 /// we abort the execution (this is an implementation error of the runtime, and not an error that the user should handle).
 ///

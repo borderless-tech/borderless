@@ -11,7 +11,7 @@ use borderless::{events::CallAction, AgentId, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
 use log::{error, warn};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
 
 use super::{
@@ -52,7 +52,7 @@ impl<S: Db> Runtime<S> {
     pub fn new(storage: &S, contract_store: CodeStore<S>) -> Result<Self> {
         let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
         let start = Instant::now();
-        let state = VmState::new(storage.clone(), db_ptr);
+        let state = VmState::new_async(storage.clone(), db_ptr);
 
         let mut config = Config::new();
         config.cranelift_opt_level(wasmtime::OptLevel::Speed);
@@ -143,6 +143,13 @@ impl<S: Db> Runtime<S> {
                 ))
             },
         )?;
+        linker.func_wrap_async(
+            "env",
+            "send_ws_msg",
+            |caller: Caller<'_, VmState<S>>, (msg_ptr, msg_len)| {
+                Box::new(vm::async_abi::send_ws_msg(caller, msg_ptr, msg_len))
+            },
+        )?;
 
         linker.func_wrap("env", "timestamp", vm::timestamp)?;
 
@@ -183,6 +190,13 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
+    /// Registers a new websocket client
+    pub fn register_ws(&mut self, aid: AgentId) -> Result<mpsc::Receiver<Vec<u8>>> {
+        let (tx, rx) = mpsc::channel(4);
+        self.store.data_mut().register_ws(aid, tx)?;
+        Ok(rx)
+    }
+
     pub async fn initialize(&mut self, aid: &AgentId) -> Result<Init> {
         let instance = self
             .contract_store
@@ -205,7 +219,11 @@ impl<S: Db> Runtime<S> {
             .data()
             .get_register(REGISTER_OUTPUT)
             .ok_or_else(|| ErrorKind::MissingRegisterValue("init-output"))?;
-        Ok(Init::from_bytes(&bytes)?)
+        let init = Init::from_bytes(&bytes)?;
+
+        // TODO: Maybe we register the websocket stuff in here ?
+
+        Ok(init)
     }
 
     pub async fn process_ws_msg(&mut self, aid: &AgentId, msg: Vec<u8>) -> Result<Option<Events>> {

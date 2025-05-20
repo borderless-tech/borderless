@@ -321,10 +321,8 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
 
             if let Some(ws_config) = init.ws_config {
                 // TODO: Dummy msg_rx - this has to be connected to the runtime somehow
-                let (_msg_tx, msg_rx) = tokio::sync::mpsc::channel(1);
-                let ws_handle = tokio::spawn(handle_ws_connection(rt, aid, ws_config, msg_rx, tx));
+                let ws_handle = tokio::spawn(handle_ws_connection(rt, aid, ws_config, tx));
                 ws_handle.await;
-                _msg_tx.send(Vec::new());
             }
 
             handle.await;

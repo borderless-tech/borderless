@@ -103,11 +103,13 @@ pub async fn handle_ws_connection<S>(
     rt: Arc<Mutex<Runtime<S>>>,
     aid: AgentId,
     ws_config: WsConfig,
-    mut msg_rx: mpsc::Receiver<Vec<u8>>,
     out_tx: mpsc::Sender<Events>,
 ) where
     S: Db + 'static,
 {
+    // Register the websocket at the runtime
+    let mut msg_rx = rt.lock().await.register_ws(aid).unwrap();
+
     // Open websocket connection to given url
     // TODO: Retry ? (add outer loop)
     info!("opening websocket connection to '{}'", ws_config.url);

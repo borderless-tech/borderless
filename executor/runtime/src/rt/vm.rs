@@ -15,6 +15,7 @@ use borderless::{
     log::LogLine,
     AgentId, ContractId,
 };
+use tokio::sync::mpsc;
 use wasmtime::{Caller, Extern, Memory};
 
 use borderless::__private::registers::*;
@@ -67,11 +68,7 @@ impl<S: Db> VmState<S> {
         }
     }
 
-    pub fn new_async(
-        db: S,
-        db_ptr: S::Handle,
-        ws_sender: std::sync::mpsc::Sender<(AgentId, String)>,
-    ) -> Self {
+    pub fn new_async(db: S, db_ptr: S::Handle) -> Self {
         VmState {
             registers: Default::default(),
             db,
@@ -79,7 +76,7 @@ impl<S: Db> VmState<S> {
             last_timer: None,
             log_buffer: Vec::new(),
             active: ActiveEntity::None,
-            _async: Some(AsyncState { _ws: ws_sender }),
+            _async: Some(AsyncState::default()),
         }
     }
 
@@ -355,12 +352,19 @@ impl<S: Db> VmState<S> {
     pub fn len_actions(&self, cid: &ContractId) -> Result<u64> {
         ActionLog::new(&self.db, *cid).len()
     }
+
+    /// Registers a websocket sender
+    pub fn register_ws(&mut self, aid: AgentId, ch: mpsc::Sender<Vec<u8>>) -> Result<()> {
+        let state = self._async.as_mut().ok_or_else(|| ErrorKind::NoAsync)?;
+        state.clients.insert(aid, ch);
+        Ok(())
+    }
 }
 
 /// Parts of `VmState` that are only relevant for async execution
+#[derive(Default)]
 struct AsyncState {
-    /// Websocket sender
-    _ws: std::sync::mpsc::Sender<(AgentId, String)>,
+    clients: ahash::HashMap<AgentId, mpsc::Sender<Vec<u8>>>,
 }
 
 /// Helper function to get the linear memory of the wasm module
@@ -704,13 +708,26 @@ pub mod async_abi {
             .ok_or_else(|| wasmtime::Error::msg("Memory access out of bounds"))?
             .to_vec();
 
-        let _msg = match String::from_utf8(data) {
-            Ok(s) => s,
-            Err(e) => {
-                warn!("send_ws_msg failed for agent {agent_id}: {e}");
-                return Ok(1);
+        let state = caller
+            .data()
+            ._async
+            .as_ref()
+            .ok_or_else(|| wasmtime::Error::msg("missing async-state in async runtime"))?;
+
+        match state.clients.get(&agent_id) {
+            Some(ch) => {
+                if let Err(_e) = ch.send(data).await {
+                    warn!(
+                        "failed to send websocket message for agent {agent_id} - receiver closed"
+                    );
+                    return Ok(1);
+                }
             }
-        };
+            None => {
+                warn!("failed to send websocket message for agent {agent_id} - websocket is not registered");
+                return Ok(2);
+            }
+        }
 
         Ok(0)
     }

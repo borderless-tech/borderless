@@ -108,6 +108,9 @@ pub(crate) enum ErrorKind {
     #[error("no active entity in VmState")]
     NoActiveEntity,
 
+    #[error("VmState is not initialized with async support")]
+    NoAsync,
+
     /// Generic error message - useful for communicating more complicated errors
     #[error("{0}")]
     Msg(String),
