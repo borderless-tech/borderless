@@ -53,13 +53,10 @@ pub struct Capabilities {
 }
 
 /// Websocket configuration
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WsConfig {
     /// Websocket URL
     pub url: String,
-
-    /// Time in seconds until we disconnect, if we haven't received any messages from the other side
-    pub no_msg_timeout: u64,
 
     /// Weather or not we will automatically reconnect if a connection was closed
     pub reconnect: bool,

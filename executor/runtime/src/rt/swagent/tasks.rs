@@ -17,6 +17,8 @@ use tokio::{
     time::{interval, sleep, MissedTickBehavior},
 };
 
+use crate::error::ErrorKind;
+
 use super::Runtime;
 
 // TODO: There is one inconsistency in our design:
@@ -104,18 +106,49 @@ pub async fn handle_ws_connection<S>(
     aid: AgentId,
     ws_config: WsConfig,
     out_tx: mpsc::Sender<Events>,
-) where
+) -> crate::Result<()>
+where
     S: Db + 'static,
 {
     // Register the websocket at the runtime
-    let mut msg_rx = rt.lock().await.register_ws(aid).unwrap();
+    let mut msg_rx = rt.lock().await.register_ws(aid)?;
 
-    // Open websocket connection to given url
-    // TODO: Retry ? (add outer loop)
+    let mut failure_cnt = 1;
+    while ws_config.reconnect {
+        match handle_ws_inner(
+            rt.clone(),
+            aid,
+            ws_config.clone(),
+            out_tx.clone(),
+            &mut msg_rx,
+        )
+        .await
+        {
+            Ok(()) => failure_cnt = 1,
+            Err(e) => {
+                warn!("agent-id={aid}, {e}");
+                failure_cnt = (failure_cnt * 2).min(60);
+                sleep(Duration::from_secs(failure_cnt)).await;
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn handle_ws_inner<S>(
+    rt: Arc<Mutex<Runtime<S>>>,
+    aid: AgentId,
+    ws_config: WsConfig,
+    out_tx: mpsc::Sender<Events>,
+    msg_rx: &mut mpsc::Receiver<Vec<u8>>,
+) -> Result<(), String>
+where
+    S: Db + 'static,
+{
     info!("opening websocket connection to '{}'", ws_config.url);
     let result = connect_async(ws_config.url)
         .await
-        .expect("failed to establish websocket connection");
+        .map_err(|e| format!("failed to open ws-connection - {e}"))?;
 
     let (stream, response) = result;
     info!("{response:#?}");
@@ -136,17 +169,10 @@ pub async fn handle_ws_connection<S>(
             // Check heartbeat timer
             _ = heartbeat_timer.tick() => {
                 let msg = Message::Ping(Vec::new().into());
-                if let Err(e) = tx.send(msg).await {
-                    warn!("Error while sending heartbeat: {e}");
-                    break;
-                }
+                tx.send(msg).await.map_err(|e| format!("failed to send heartbeat: {e}"))?;
             }
             result = msg_rx.recv() => {
-                if result.is_none() {
-                    warn!("Websocket message receiver closed.");
-                    break;
-                }
-                let payload = result.unwrap();
+                let payload = result.ok_or_else(|| "Websocket message receiver closed.")?;
                 let msg = if ws_config.binary {
                     Message::Binary(payload.into())
                 } else {
@@ -194,6 +220,7 @@ pub async fn handle_ws_connection<S>(
             }
         }
     }
+    Ok(())
 }
 
 async fn handle_events(result: crate::Result<Option<Events>>, out_tx: &mpsc::Sender<Events>) {

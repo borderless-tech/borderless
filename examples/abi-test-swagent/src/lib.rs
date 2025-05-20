@@ -80,7 +80,6 @@ fn exec_init() -> Result<()> {
     });
     my_init.ws_config = Some(WsConfig {
         url: "ws://localhost:5555".to_string(),
-        no_msg_timeout: 30,
         reconnect: true,
         ping_interval: 60,
         binary: false,
@@ -135,8 +134,8 @@ fn exec_run() -> Result<()> {
 
     // TODO:
     // - [x] Complete http api
-    // - [ ] add websocket api
-    // - [ ] add schedule api
+    // - [x] add websocket api
+    // - [x] add schedule api
 
     /*
      * Regarding the schedules; I think the easiest way would be to treat the schedules just like actions without parameters.
