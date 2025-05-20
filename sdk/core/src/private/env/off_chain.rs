@@ -1,10 +1,8 @@
 use crate::__private::REGISTER_CURSOR;
-use borderless_abi as abi;
+use borderless_abi::LogLevel;
 use core::cell::RefCell;
 use nohash_hasher::IntMap;
 use rand::Rng;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -24,27 +22,8 @@ thread_local! {
     pub static TIMER: RefCell<Instant> = RefCell::new(Instant::now());
 }
 
-pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
+pub fn print(level: LogLevel, msg: impl AsRef<str>) {
     println!("[{:?}] {}", level, msg.as_ref())
-}
-
-pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
-where
-    Value: DeserializeOwned,
-{
-    storage_read(base_key, sub_key).and_then(|bytes| {
-        postcard::from_bytes::<Value>(bytes.as_slice()).ok() // TODO Handle error?
-    })
-}
-
-pub fn write_field<Value>(base_key: u64, sub_key: u64, value: &Value)
-where
-    Value: Serialize,
-{
-    match postcard::to_allocvec::<Value>(value) {
-        Ok(bytes) => storage_write(base_key, sub_key, bytes),
-        Err(_) => panic!("Serialization error"),
-    }
 }
 
 pub fn storage_remove(base_key: u64, sub_key: u64) {
@@ -126,22 +105,6 @@ pub fn write_register(register_id: u64, data: impl AsRef<[u8]>) {
     });
 }
 
-pub fn register_len(register_id: u64) -> Option<u64> {
-    read_register(register_id).map(|register| register.len() as u64)
-}
-
-/// Calculates a storage key from base key, and sub key (ignoring the contract-id).
-pub fn calc_storage_key(base_key: u64, sub_key: u64) -> Vec<u8> {
-    let mut out = Vec::with_capacity(16);
-    out.extend_from_slice(&base_key.to_be_bytes());
-    out.extend_from_slice(&sub_key.to_be_bytes());
-    out
-}
-
-pub fn abort() -> ! {
-    std::process::abort()
-}
-
 pub fn tic() {
     TIMER.with(|timer| {
         *timer.borrow_mut() = Instant::now();
@@ -155,4 +118,92 @@ pub fn toc() -> Duration {
 pub fn rand(min: u64, max: u64) -> u64 {
     let mut range = rand::rng();
     range.random_range(min..max)
+}
+
+/// Calculates a storage key from base key, and sub key (ignoring the contract-id).
+fn calc_storage_key(base_key: u64, sub_key: u64) -> Vec<u8> {
+    let mut out = Vec::with_capacity(16);
+    out.extend_from_slice(&base_key.to_be_bytes());
+    out.extend_from_slice(&sub_key.to_be_bytes());
+    out
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod tests {
+    use crate::__private::env::off_chain::{
+        rand, read_register, storage_cursor, storage_has_key, storage_read, storage_remove,
+        storage_write, write_register,
+    };
+    use crate::__private::registers::REGISTER_CURSOR;
+
+    const BASE_KEY: u64 = 10;
+    const SUB_KEY: u64 = 20;
+    const REGISTER_ID: u64 = 30;
+
+    #[test]
+    fn rand_test() -> anyhow::Result<()> {
+        let v = rand(0, 10);
+        assert!((0..10).contains(&v), "The generated scalar is out of range");
+        Ok(())
+    }
+
+    #[test]
+    fn basic_crud_test() -> anyhow::Result<()> {
+        let dummy = vec![1, 2, 3];
+        // Create value
+        storage_write(BASE_KEY, SUB_KEY, dummy.clone());
+        // Check database contains key
+        assert!(storage_has_key(BASE_KEY, SUB_KEY));
+        // Read value
+        let value = storage_read(BASE_KEY, SUB_KEY);
+        assert_eq!(value, Some(dummy), "Values do not match");
+        // Delete value
+        storage_remove(BASE_KEY, SUB_KEY);
+        // Check database does NOT contain key
+        assert!(!storage_has_key(BASE_KEY, SUB_KEY));
+        Ok(())
+    }
+
+    #[test]
+    fn register_test() -> anyhow::Result<()> {
+        let dummy = vec![1, 2, 3];
+        // Register is empty
+        assert_eq!(read_register(REGISTER_ID), None);
+        // Write value to register
+        write_register(REGISTER_ID, dummy.clone());
+        // Read value from register
+        let value = read_register(REGISTER_ID);
+        assert_eq!(value, Some(dummy), "Values do not match");
+        Ok(())
+    }
+
+    #[test]
+    fn cursor_test() -> anyhow::Result<()> {
+        let n = 10u64;
+        let mut vec: Vec<u64> = Vec::with_capacity(n as usize);
+        let mut oracle: Vec<u64> = Vec::with_capacity(n as usize);
+        let dummy = vec![1, 2, 3];
+
+        // Store n elements in storage
+        for i in 0..n {
+            let sub_key = SUB_KEY.saturating_add(i);
+            vec.push(sub_key);
+            storage_write(BASE_KEY, sub_key, dummy.clone());
+        }
+        // Check cursor size is n
+        assert_eq!(storage_cursor(BASE_KEY), n, "Keys length mismatch");
+        // Retrieve the keys from the reserved registers
+        for i in 0..n {
+            let bytes = read_register(REGISTER_CURSOR.saturating_add(i)).unwrap();
+            let bytes: [u8; 8] = bytes.try_into().unwrap();
+            let key = u64::from_le_bytes(bytes);
+            oracle.push(key);
+        }
+        // Sort vectors as keys come unordered
+        vec.sort_unstable();
+        oracle.sort_unstable();
+        assert_eq!(vec, oracle, "Keys do not match");
+        Ok(())
+    }
 }

@@ -1,8 +1,6 @@
 use crate::__private::REGISTER_ATOMIC_OP;
 use crate::error;
 use borderless_abi as abi;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use std::time::Duration;
 
 // The on_chain environment.
@@ -15,34 +13,6 @@ pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
             level as u32,
         );
     }
-}
-pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
-where
-    Value: DeserializeOwned,
-{
-    let bytes = storage_read(base_key, sub_key)?;
-    let value = match postcard::from_bytes::<Value>(&bytes) {
-        Ok(value) => value,
-        Err(e) => {
-            error!("SYSTEM: read-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
-            abort()
-        }
-    };
-    Some(value)
-}
-
-pub fn write_field<Value>(base_key: u64, sub_key: u64, value: &Value)
-where
-    Value: Serialize,
-{
-    let value = match postcard::to_allocvec::<Value>(value) {
-        Ok(value) => value,
-        Err(e) => {
-            error!("SYSTEM: write-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
-            abort()
-        }
-    };
-    storage_write(base_key, sub_key, value);
 }
 
 pub fn storage_remove(base_key: u64, sub_key: u64) {

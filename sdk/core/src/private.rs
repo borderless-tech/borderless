@@ -8,7 +8,7 @@ pub mod storage_keys;
 #[path = "private/storage_traits.rs"]
 pub mod storage_traits;
 
-#[path = "private/env/mod.rs"]
+#[path = "private/env.rs"]
 mod env;
 
 use borderless_abi as abi;
@@ -16,10 +16,9 @@ use borderless_abi as abi;
 use registers::*;
 use serde::{de::DeserializeOwned, Serialize};
 
+use crate::{contracts::Introduction, error};
 pub use postcard::from_bytes as from_postcard_bytes;
 pub use postcard::to_allocvec as to_postcard_bytes;
-
-use crate::{contracts::Introduction, error};
 
 // --- PLAYGROUND FOR NEW ABI STUFF
 
@@ -98,18 +97,6 @@ pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         env::off_chain::print(level, msg)
-    }
-}
-
-fn register_len(register_id: u64) -> Option<u64> {
-    #[cfg(target_arch = "wasm32")]
-    {
-        env::on_chain::register_len(register_id)
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        env::off_chain::register_len(register_id)
     }
 }
 
@@ -226,29 +213,23 @@ pub fn read_field<Value>(base_key: u64, sub_key: u64) -> Option<Value>
 where
     Value: DeserializeOwned,
 {
-    #[cfg(target_arch = "wasm32")]
-    {
-        env::on_chain::read_field(base_key, sub_key)
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        env::off_chain::read_field(base_key, sub_key)
-    }
+    storage_read(base_key, sub_key).and_then(|bytes| {
+        postcard::from_bytes::<Value>(bytes.as_slice())
+            .inspect_err(|e| print(abi::LogLevel::Error, format!("Deserialization error: {e}")))
+            .ok()
+    })
 }
 
 pub fn write_field<Value>(base_key: u64, sub_key: u64, value: &Value)
 where
     Value: Serialize,
 {
-    #[cfg(target_arch = "wasm32")]
-    {
-        env::on_chain::write_field(base_key, sub_key, value)
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        env::off_chain::write_field(base_key, sub_key, value)
+    match postcard::to_allocvec::<Value>(value) {
+        Ok(bytes) => storage_write(base_key, sub_key, bytes),
+        Err(e) => {
+            error!("SYSTEM: write-field failed base-key={base_key:x} sub-key={sub_key:x}: {e}");
+            abort()
+        }
     }
 }
 
@@ -307,7 +288,7 @@ pub fn abort() -> ! {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        env::off_chain::abort()
+        panic!();
     }
 }
 
