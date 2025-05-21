@@ -63,7 +63,8 @@ where
                 interval.tick().await;
                 // Dispatch output events
                 let now = SystemTime::now();
-                match rt.lock().await.process_action(&aid, action.clone()).await {
+                let result = rt.lock().await.process_action(&aid, action.clone()).await;
+                match result {
                     Ok(Some(events)) => {
                         // NOTE: We panic here to shutdown the entire task in case the receiver is closed
                         out_tx
@@ -126,7 +127,7 @@ where
         {
             Ok(()) => failure_cnt = 1,
             Err(e) => {
-                warn!("agent-id={aid}, {e}");
+                warn!("cnt={failure_cnt}, agent-id={aid}, {e}");
                 failure_cnt = (failure_cnt * 2).min(60);
                 sleep(Duration::from_secs(failure_cnt)).await;
             }

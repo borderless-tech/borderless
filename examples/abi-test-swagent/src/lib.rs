@@ -122,11 +122,11 @@ fn exec_run() -> Result<()> {
     // --- This will be the first snippet
     // Read action
     let input = read_register(REGISTER_INPUT).context("missing input register")?;
-    info!("read {} bytes", input.len());
+    // info!("read {} bytes", input.len());
 
     let action = CallAction::from_bytes(&input)?;
-    let s = action.pretty_print()?;
-    info!("{s}");
+    // let s = action.pretty_print()?;
+    // info!("{s}");
 
     let method = action
         .method_name()

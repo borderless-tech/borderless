@@ -686,7 +686,7 @@ pub mod async_abi {
         header::{HeaderMap, HeaderName, HeaderValue},
         Client, Method as ReqwestMethod, Request, Response,
     };
-    use std::{result::Result, str::FromStr};
+    use std::{result::Result, str::FromStr, time::Duration};
 
     pub async fn send_ws_msg(
         mut caller: Caller<'_, VmState<impl Db>>,
@@ -716,20 +716,26 @@ pub mod async_abi {
 
         match state.clients.get(&agent_id) {
             Some(ch) => {
-                if let Err(_e) = ch.send(data).await {
-                    warn!(
+                // We add a timeout here to not create a deadlock in case the channel is full
+                match tokio::time::timeout(Duration::from_secs(10), ch.send(data)).await {
+                    Ok(Ok(())) => return Ok(0),
+                    Ok(Err(_)) => {
+                        warn!(
                         "failed to send websocket message for agent {agent_id} - receiver closed"
-                    );
-                    return Ok(1);
+                        );
+                        Ok(1)
+                    }
+                    Err(_) => {
+                        warn!("failed to send websocket message for agent {agent_id} - timeout");
+                        Ok(2)
+                    }
                 }
             }
             None => {
                 warn!("failed to send websocket message for agent {agent_id} - websocket is not registered");
-                return Ok(2);
+                Ok(3)
             }
         }
-
-        Ok(0)
     }
 
     pub async fn send_http_rq(
