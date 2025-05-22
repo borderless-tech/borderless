@@ -145,3 +145,59 @@ impl<T: Serialize + DeserializeOwned> ToPayload for Lazy<T> {
         value.to_payload(path)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+    struct Person {
+        name: String,
+        age: u16,
+    }
+
+    fn gen_klaus() -> Person {
+        Person {
+            name: "Klaus".to_string(),
+            age: 42,
+        }
+    }
+
+    fn make_lazy(p: Person, key: u64) -> Lazy<Person> {
+        Lazy {
+            value: UnsafeCell::new(Some(p)),
+            base_key: key,
+            changed: false,
+        }
+    }
+
+    #[test]
+    fn set_get() {
+        let p = gen_klaus();
+        let mut lazy = make_lazy(p.clone(), 0);
+        lazy.set(p.clone());
+        assert_eq!(*lazy.get(), p, "get must work");
+        assert_eq!(*lazy, p, "deref must work");
+    }
+
+    #[test]
+    fn deref() {
+        let p = gen_klaus();
+        let mut lazy = make_lazy(p.clone(), 0);
+        lazy.set(p.clone());
+        assert_eq!(*lazy, p, "deref must work");
+        lazy.age = 0; // deref_mut
+        assert_ne!(*lazy, p);
+    }
+
+    #[test]
+    fn commit_decode() {
+        let key = 123456;
+        let p = gen_klaus();
+        let mut lazy = make_lazy(p.clone(), key);
+        lazy.set(p.clone());
+        lazy.commit(key);
+        let decoded: Lazy<Person> = Lazy::decode(key);
+        assert_eq!(*decoded, p);
+    }
+}
