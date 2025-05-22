@@ -3,11 +3,7 @@
 //! This module contains the state of the virtual machine, that is shared across host function invocations,
 //! and the concrete implementation of the ABI host functions, that are linked to the webassembly module by the runtime.
 
-use std::{
-    cell::RefCell,
-    time::{Instant, SystemTime, UNIX_EPOCH},
-};
-
+use borderless::__private::registers::*;
 use borderless::{
     __private::storage_keys::StorageKey,
     contracts::{Introduction, Revocation, TxCtx},
@@ -15,14 +11,18 @@ use borderless::{
     log::LogLine,
     AgentId, ContractId,
 };
-use tokio::sync::mpsc;
-use wasmtime::{Caller, Extern, Memory};
-
-use borderless::__private::registers::*;
 use borderless_kv_store::*;
 use log::{debug, warn};
 use nohash::IntMap;
 use rand::Rng;
+use std::{
+    cell::RefCell,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
+use wasmtime::{Caller, Extern, Memory};
+
+#[cfg(feature = "agents")]
+use tokio::sync::mpsc;
 
 use crate::{
     db::action_log::{ActionLog, ActionRecord},
@@ -354,6 +354,7 @@ impl<S: Db> VmState<S> {
     }
 
     /// Registers a websocket sender
+    #[cfg(feature = "agents")]
     pub fn register_ws(&mut self, aid: AgentId, ch: mpsc::Sender<Vec<u8>>) -> Result<()> {
         let state = self._async.as_mut().ok_or_else(|| ErrorKind::NoAsync)?;
         state.clients.insert(aid, ch);
@@ -364,6 +365,7 @@ impl<S: Db> VmState<S> {
 /// Parts of `VmState` that are only relevant for async execution
 #[derive(Default)]
 struct AsyncState {
+    #[cfg(feature = "agents")]
     clients: ahash::HashMap<AgentId, mpsc::Sender<Vec<u8>>>,
 }
 
@@ -720,9 +722,7 @@ pub mod async_abi {
                 match tokio::time::timeout(Duration::from_secs(10), ch.send(data)).await {
                     Ok(Ok(())) => return Ok(0),
                     Ok(Err(_)) => {
-                        warn!(
-                        "failed to send websocket message for agent {agent_id} - receiver closed"
-                        );
+                        warn!("failed to send websocket message for agent {agent_id} - receiver closed");
                         Ok(1)
                     }
                     Err(_) => {

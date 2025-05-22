@@ -29,9 +29,8 @@ futures-util = "0.3.31"
 
 
 [features]
-default = [ "http", "agents", "contracts", "agent-tasks" ] # for now we enable all features by default
+default = [ "http", "contracts", "agents" ] # for now we enable all features by default
 contracts = ["code-store"]
-agents = ["code-store", "dep:reqwest" ]
-agent-tasks = ["dep:tokio"]
+agents = ["code-store", "dep:reqwest", "dep:tokio"]
 code-store = ["dep:lru", "dep:ahash"]
 http = ["dep:http", "dep:tower", "dep:mime"]
