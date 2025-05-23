@@ -312,6 +312,10 @@ impl BlockIdentifier {
         }
     }
 
+    pub fn genesis(chain_id: u32) -> Self {
+        Self::new(chain_id, 0, Hash256::empty())
+    }
+
     /// Decodes a `BlockIdentifier` from bytes
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, InvalidBlockIdentifier> {
         if bytes.len() != ENCODED_BLOCK_ID_LEN {

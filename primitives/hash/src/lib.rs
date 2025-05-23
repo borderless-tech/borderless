@@ -13,6 +13,17 @@ use std::{
     convert::{TryFrom, TryInto},
     fmt,
 };
+pub use traits::{Hashable, Hashed};
+
+#[cfg(feature = "rust-embed")]
+// Required to embed primitives .fbs into external repositories
+use rust_embed::RustEmbed;
+
+#[cfg(feature = "rust-embed")]
+#[derive(RustEmbed)]
+#[folder = "src/flatbuffer"]
+/// Embedded schema accessor used at build time to expose schema content to external repositories
+pub struct FbSchema;
 
 // NOTE: The code generation creates a lot of artifacts,
 // which result in a lot of warnings.
