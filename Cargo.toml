@@ -13,6 +13,7 @@ members = [
   "kv-store",
   "primitives/hash",
   "primitives/id-types",
+  "primitives/format"
 ]
 resolver = "2"
 
@@ -22,6 +23,7 @@ borderless = { path = "sdk/core" }
 borderless-abi = { path = "sdk/abi" }
 borderless-sdk-macros = { path = "sdk/macros" }
 borderless-id-types = { path = "primitives/id-types" }
+borderless-format = { path = "primitives/format" }
 borderless-hash = { path = "primitives/hash" }
 borderless-kv-store = { path = "kv-store" }
 borderless-runtime = { path = "executor/runtime" }

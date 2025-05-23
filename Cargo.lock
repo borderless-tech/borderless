@@ -293,6 +293,14 @@ name = "borderless-abi"
 version = "0.1.0"
 
 [[package]]
+name = "borderless-format"
+version = "0.1.0"
+dependencies = [
+ "borderless-hash",
+ "serde",
+]
+
+[[package]]
 name = "borderless-hash"
 version = "1.0.0"
 dependencies = [
