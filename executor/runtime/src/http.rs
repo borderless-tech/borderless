@@ -31,11 +31,11 @@ pub fn unsupported_media_type() -> Response {
     resp
 }
 
-// fn bad_request(err: String) -> Response {
-//     let mut resp = Response::new(err.into_bytes().into());
-//     *resp.status_mut() = StatusCode::BAD_REQUEST;
-//     resp
-// }
+fn bad_request(err: String) -> Response {
+    let mut resp = Response::new(err.into_bytes().into());
+    *resp.status_mut() = StatusCode::BAD_REQUEST;
+    resp
+}
 
 pub fn err_response(status: StatusCode, err_msg: String) -> Response {
     let mut resp = Response::new(err_msg.into_bytes().into());
@@ -298,15 +298,19 @@ pub mod contract {
             let mut pieces = path.split('/').skip(1);
 
             // Extract contract-id from first piece
-            let contract_id: ContractId = match pieces.next().and_then(|first| first.parse().ok()) {
-                Some(cid) => cid,
+            let cid_str = match pieces.next() {
+                Some(s) => s,
                 None => return Ok(method_not_allowed()),
+            };
+            let contract_id: ContractId = match cid_str.parse() {
+                Ok(cid) => cid,
+                Err(e) => return Ok(bad_request(format!("failed to parse contract-id - {e}"))),
             };
 
             // Get top-level route
             let route = match pieces.next() {
                 Some(r) => r,
-                None => return Ok(method_not_allowed()),
+                None => return Ok(reject_404()),
             };
 
             // Build truncated path
