@@ -7,6 +7,7 @@ use borderless::contracts::{BlockCtx, Introduction, Revocation, Symbols, TxCtx};
 use borderless::events::Events;
 use borderless::{events::CallAction, ContractId};
 use borderless::{BlockIdentifier, BorderlessId};
+use borderless_format::Bundle;
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
 use log::{error, warn};
@@ -20,6 +21,7 @@ use super::{
     CodeStore,
 };
 use crate::logger::print_log_line;
+use crate::registry::Registry;
 use crate::{
     error::{ErrorKind, Result},
     CONTRACT_SUB_DB,
@@ -43,7 +45,7 @@ where
     linker: Linker<VmState<S>>,
     store: Store<VmState<S>>,
     engine: Engine,
-    contract_store: CodeStore<S>,
+    contract_registry: Registry<S>,
 }
 
 impl<S: Db> Runtime<S> {
@@ -133,13 +135,16 @@ impl<S: Db> Runtime<S> {
 
         let store = Store::new(&engine, state);
 
+        // crate contract registry
+        let contract_registry = Registry::new(contract_store);
+
         log::info!("Initialized runtime in: {:?}", start.elapsed());
 
         Ok(Self {
             linker,
             store,
             engine,
-            contract_store,
+            contract_registry,
         })
     }
 
@@ -153,9 +158,12 @@ impl<S: Db> Runtime<S> {
         contract_id: ContractId,
         path: impl AsRef<Path>,
     ) -> Result<()> {
-        let module = Module::from_file(&self.engine, path)?;
-        check_module(&self.engine, &module)?;
-        self.contract_store.insert_contract(contract_id, module)?;
+        let bundle = Bundle::from_file(path)?;
+
+        // let module = Module::from_file(&self.engine, path)?;
+        // check_module(&self.engine, &module)?;
+        self.contract_registry
+            .insert_contract(contract_id, bundle)?;
         Ok(())
     }
 
@@ -250,7 +258,8 @@ impl<S: Db> Runtime<S> {
         commit: Commit,
     ) -> Result<Option<Events>> {
         let instance = self
-            .contract_store
+            .contract_registry
+            .as_mut()
             .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
             .ok_or_else(|| ErrorKind::MissingContract { cid })?;
 
@@ -306,7 +315,8 @@ impl<S: Db> Runtime<S> {
         let tx_ctx = TxCtx::dummy().to_bytes()?;
 
         let instance = self
-            .contract_store
+            .contract_registry
+            .as_mut()
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
             .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
 
@@ -335,7 +345,8 @@ impl<S: Db> Runtime<S> {
 
     pub fn http_get_state(&mut self, cid: &ContractId, path: String) -> Result<(u16, Vec<u8>)> {
         let instance = self
-            .contract_store
+            .contract_registry
+            .as_mut()
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
             .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
 
@@ -387,7 +398,8 @@ impl<S: Db> Runtime<S> {
         writer: &BorderlessId,
     ) -> Result<std::result::Result<CallAction, (u16, String)>> {
         let instance = self
-            .contract_store
+            .contract_registry
+            .as_mut()
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
             .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
 
@@ -447,7 +459,8 @@ impl<S: Db> Runtime<S> {
     /// Returns the symbols of the contract
     pub fn get_symbols(&mut self, cid: &ContractId) -> Result<Option<Symbols>> {
         let instance = self
-            .contract_store
+            .contract_registry
+            .as_mut()
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
             .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
 
@@ -479,7 +492,7 @@ impl<S: Db> Runtime<S> {
     }
 
     pub fn available_contracts(&self) -> Result<Vec<ContractId>> {
-        self.contract_store.available_contracts()
+        self.contract_registry.as_ref().available_contracts()
     }
 }
 

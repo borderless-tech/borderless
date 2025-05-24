@@ -298,6 +298,8 @@ version = "0.1.0"
 dependencies = [
  "borderless-hash",
  "serde",
+ "serde_json",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -343,6 +345,7 @@ version = "0.1.0"
 dependencies = [
  "ahash 0.8.11",
  "borderless",
+ "borderless-format",
  "borderless-kv-store",
  "bytes",
  "http",

@@ -11,6 +11,7 @@ use crate::{Result, WASM_CODE_SUB_DB};
 pub mod action_log;
 pub mod contract;
 pub mod logger;
+pub mod registry;
 pub mod swagent;
 mod vm;
 

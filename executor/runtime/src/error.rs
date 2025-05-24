@@ -45,6 +45,12 @@ impl From<wasmtime::Error> for Error {
     }
 }
 
+impl From<borderless_format::Error> for Error {
+    fn from(value: borderless_format::Error) -> Self {
+        ErrorKind::from(value).into()
+    }
+}
+
 #[derive(Debug, Error)]
 pub(crate) enum ErrorKind {
     // --- High-level errors
@@ -59,6 +65,10 @@ pub(crate) enum ErrorKind {
     /// Json-Encoding related errors
     #[error("encoding error (json) - {0}")]
     JsonEncoding(#[from] serde_json::Error),
+
+    /// Contract Bundle related error
+    #[error("parsing error (bundle) - {0}")]
+    Bundle(#[from] borderless_format::Error),
 
     /// Wasmtime related errors
     #[error("wasmtime error - {0}")]
