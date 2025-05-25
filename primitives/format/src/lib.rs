@@ -89,7 +89,7 @@ pub struct Bundle {
     pub contract: Contract,
 
     /// ident
-    pub ident: Ident,
+    pub ident: Option<Ident>,
 }
 
 impl Bundle {
@@ -101,7 +101,7 @@ impl Bundle {
     }
 
     /// split the bundle in its parts
-    pub fn parts(self) -> (Ident, Metadata, Source) {
+    pub fn parts(self) -> (Option<Ident>, Metadata, Source) {
         (self.ident, self.contract.meta, self.contract.src)
     }
 }
