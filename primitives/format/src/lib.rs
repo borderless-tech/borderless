@@ -26,16 +26,16 @@ pub enum Error {
 #[derive(Serialize, Deserialize)]
 pub struct Source {
     /// hash of wasm module
-    hash: Hash256,
+    pub hash: Hash256,
 
     /// sdk version
-    version: String,
+    pub version: String,
 
     /// compiler version
-    compiler: String,
+    pub compiler: String,
 
     /// wasm module
-    wasm: String,
+    pub wasm: String,
 }
 
 /// Contract metadata descibe common
@@ -43,19 +43,19 @@ pub struct Source {
 #[derive(Serialize, Deserialize)]
 pub struct Metadata {
     /// decentralized identifier
-    did: String,
+    pub did: String,
 
     /// contract name
-    name: String,
+    pub name: String,
 
     /// contract version
-    version: String,
+    pub version: String,
 
     /// authors
-    authors: Vec<String>,
+    pub authors: Vec<String>,
 
     /// contract description
-    description: String,
+    pub description: String,
 }
 
 /// Container conbining the Source and the
@@ -63,20 +63,20 @@ pub struct Metadata {
 #[derive(Serialize, Deserialize)]
 pub struct Contract {
     /// contract metadata
-    meta: Metadata,
+    pub meta: Metadata,
 
     /// contract source
-    src: Source,
+    pub src: Source,
 }
 
 /// Ident identify the author of this contract
 #[derive(Serialize, Deserialize)]
 pub struct Ident {
     /// contract signature
-    signature: String,
+    pub signature: String,
 
     /// author public key
-    public_key: String,
+    pub public_key: String,
 }
 
 /// Bundle represent the top level model
@@ -86,10 +86,10 @@ pub struct Ident {
 #[derive(Serialize, Deserialize)]
 pub struct Bundle {
     /// contract
-    contract: Contract,
+    pub contract: Contract,
 
     /// ident
-    ident: Ident,
+    pub ident: Ident,
 }
 
 impl Bundle {
