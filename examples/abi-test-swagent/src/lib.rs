@@ -70,14 +70,14 @@ fn exec_init() -> Result<()> {
         method: MethodOrId::ByName {
             method: "schedule-1".to_string(),
         },
-        period: 5_000,
+        interval: 5_000,
         delay: 2_000,
     });
     my_init.schedules.push(Schedule {
         method: MethodOrId::ByName {
             method: "schedule-2".to_string(),
         },
-        period: 10_000,
+        interval: 10_000,
         delay: 0,
     });
     my_init.ws_config = Some(WsConfig {

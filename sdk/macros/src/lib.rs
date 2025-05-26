@@ -5,6 +5,7 @@ use syn::{parse_macro_input, Item, ItemMod};
 mod action;
 mod agent;
 mod contract;
+mod schedule;
 mod sink;
 mod state;
 mod utils;

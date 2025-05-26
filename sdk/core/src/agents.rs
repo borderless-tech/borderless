@@ -5,10 +5,6 @@ use crate::{
     events::{ActionOutput, CallAction, MethodOrId},
 };
 
-// TODO: Are schedules completely static ?
-// Or do we want to enable temporary schedules,
-// that can be registered on runtime by other schedules ?
-// -> Static for now
 /// Schedules are functions that are executed periodically.
 ///
 /// This struct is the equivalent of [`CallAction`], just for schedules.
@@ -21,14 +17,22 @@ pub struct Schedule {
     /// Method that is called periodically
     #[serde(flatten)]
     pub method: MethodOrId,
-    /// Schedule period in milliseconds
-    pub period: u64,
+    /// Schedule interval in milliseconds
+    pub interval: u64,
     /// Delay in milliseconds for the first schedule execution. Defaults to `0`.
     #[serde(default)]
     pub delay: u64,
 }
 
 impl Schedule {
+    pub fn by_method_id(method_id: u32, interval: u64, delay: u64) -> Self {
+        Self {
+            method: MethodOrId::ById { method_id },
+            interval,
+            delay,
+        }
+    }
+
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)
     }

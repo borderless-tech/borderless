@@ -1,6 +1,6 @@
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
-use syn::{Error, Ident, Item, Result};
+use syn::{Ident, Item, Result};
 
 use crate::{
     action::{get_actions, impl_actions_enum, match_action, ActionFn},

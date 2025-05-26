@@ -1,9 +1,10 @@
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
-use syn::{Error, Ident, Item, Result};
+use syn::{Ident, Item, Result};
 
 use crate::{
     action::{get_actions, impl_actions_enum, match_action, ActionFn},
+    schedule::get_schedules,
     state::get_state,
 };
 
@@ -18,7 +19,16 @@ pub fn parse_module_content(
     };
 
     let state = get_state(mod_items, &mod_span)?;
-    let actions = get_actions(&state, mod_items)?;
+    let mut actions = get_actions(&state, mod_items)?;
+
+    let schedules = get_schedules(&state, mod_items)?;
+
+    // Since schedules are also treated as actions, just add them to the list of actions.
+    // TODO: Duplicate check !
+    actions.extend(schedules.iter().map(|s| s.to_action()));
+
+    let schedules = schedules.into_iter().map(|s| s.into_schedule_tokens());
+
     let action_types = actions.iter().map(ActionFn::gen_type_tokens);
 
     let call_action: Vec<_> = actions.iter().map(|a| a.gen_call_tokens(&state)).collect(); // <- TODO: This contains logic only for contracts !
@@ -120,7 +130,16 @@ pub fn parse_module_content(
         #[automatically_derived]
         pub(crate) fn exec_init() -> Result<()> {
             // TODO: Websocket
-            // TODO: Schedules
+            let mut my_init = ::borderless::agents::Init {
+                schedules: Vec::new(),
+                ws_config: None,
+            };
+            #(
+            my_init.schedules.push(#schedules);
+            )*
+            // Write output
+            let bytes = my_init.to_bytes()?;
+            write_register(REGISTER_OUTPUT, &bytes);
             Ok(())
         }
 

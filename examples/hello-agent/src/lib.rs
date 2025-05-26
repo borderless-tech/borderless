@@ -19,7 +19,7 @@ pub mod hello {
             info!("Hello!");
         }
 
-        #[schedule(delay = 10s, repeat = 5s)]
+        #[schedule(interval = "10s", delay = "5s")]
         pub fn send_hello(&mut self) -> Result<()> {
             self.cnt_schedule += 1;
             let msg = format!("Hello - this is message no. {}", self.cnt_schedule).into_bytes();

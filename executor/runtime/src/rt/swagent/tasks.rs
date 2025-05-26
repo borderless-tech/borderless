@@ -56,7 +56,7 @@ where
                 sleep(Duration::from_millis(sched.delay)).await;
             }
 
-            let mut interval = interval(Duration::from_millis(sched.period));
+            let mut interval = interval(Duration::from_millis(sched.interval));
             interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
             loop {
