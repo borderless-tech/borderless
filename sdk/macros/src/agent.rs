@@ -1,6 +1,9 @@
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
-use syn::{Ident, Item, Result};
+use syn::{
+    parse::{Parse, ParseStream},
+    Ident, Item, LitBool, Result, Token,
+};
 
 use crate::{
     action::{get_actions, impl_actions_enum, match_action, ActionFn},
@@ -12,7 +15,7 @@ use crate::{
 pub fn parse_module_content(
     mod_span: Span,
     mod_items: &[Item],
-    _mod_ident: &Ident,
+    use_websocket: bool,
 ) -> Result<TokenStream2> {
     let read_input = quote! {
         let input = read_register(REGISTER_INPUT).context("missing input register")?;
@@ -126,6 +129,15 @@ pub fn parse_module_content(
         }
     };
 
+    let init_ws = if use_websocket {
+        quote! {
+            // TODO: Websocket
+            my_init.ws_config = Some(get_ws_config()?);
+        }
+    } else {
+        quote! {}
+    };
+
     let exec_init_shutdown = quote! {
         #[automatically_derived]
         pub(crate) fn exec_init() -> Result<()> {
@@ -136,9 +148,7 @@ pub fn parse_module_content(
             #(
             my_init.schedules.push(#schedules);
             )*
-
-            // TODO: Websocket
-            my_init.ws_config = Some(get_ws_config()?);
+            #init_ws
 
             // Write output
             let bytes = my_init.to_bytes()?;
@@ -186,76 +196,80 @@ pub fn parse_module_content(
         <#state as ::borderless::agents::WebsocketHandler>
     };
 
-    let exec_ws = quote! {
-        #[automatically_derived]
-        pub(crate) fn get_ws_config() -> Result<::borderless::agents::WsConfig> {
-            // Load state
-            let state = #as_state::load()?;
-            let ws_config = #as_ws_handler::open_ws(&state);
-            Ok(ws_config)
-        }
-
-        #[automatically_derived]
-        pub(crate) fn on_ws_open() -> Result<()> {
-            // Load state
-            let mut state = #as_state::load()?;
-            let action_output = #as_ws_handler::on_open(&mut state).map_err(::borderless::Error::msg)?.unwrap_or_default();
-            let events = action_output.convert_out_events()?;
-            if !events.is_empty() {
-                let bytes = events.to_bytes()?;
-                write_register(REGISTER_OUTPUT, &bytes);
+    let exec_ws = if use_websocket {
+        quote! {
+            #[automatically_derived]
+            pub(crate) fn get_ws_config() -> Result<::borderless::agents::WsConfig> {
+                // Load state
+                let state = #as_state::load()?;
+                let ws_config = #as_ws_handler::open_ws(&state);
+                Ok(ws_config)
             }
-            // Commit state
-            #as_state::commit(state);
-            Ok(())
-        }
 
-        #[automatically_derived]
-        pub(crate) fn on_ws_msg() -> Result<()> {
-            #read_input
-
-            // Load state
-            let mut state = #as_state::load()?;
-            let action_output = #as_ws_handler::on_message(&mut state, input).map_err(::borderless::Error::msg)?.unwrap_or_default();
-            let events = action_output.convert_out_events()?;
-            if !events.is_empty() {
-                let bytes = events.to_bytes()?;
-                write_register(REGISTER_OUTPUT, &bytes);
+            #[automatically_derived]
+            pub(crate) fn on_ws_open() -> Result<()> {
+                // Load state
+                let mut state = #as_state::load()?;
+                let action_output = #as_ws_handler::on_open(&mut state).map_err(::borderless::Error::msg)?.unwrap_or_default();
+                let events = action_output.convert_out_events()?;
+                if !events.is_empty() {
+                    let bytes = events.to_bytes()?;
+                    write_register(REGISTER_OUTPUT, &bytes);
+                }
+                // Commit state
+                #as_state::commit(state);
+                Ok(())
             }
-            // Commit state
-            #as_state::commit(state);
-            Ok(())
-        }
 
-        #[automatically_derived]
-        pub(crate) fn on_ws_close() -> Result<()> {
-            // Load state
-            let mut state = #as_state::load()?;
-            let action_output = #as_ws_handler::on_close(&mut state).map_err(::borderless::Error::msg)?.unwrap_or_default();
-            let events = action_output.convert_out_events()?;
-            if !events.is_empty() {
-                let bytes = events.to_bytes()?;
-                write_register(REGISTER_OUTPUT, &bytes);
-            }
-            // Commit state
-            #as_state::commit(state);
-            Ok(())
-        }
+            #[automatically_derived]
+            pub(crate) fn on_ws_msg() -> Result<()> {
+                #read_input
 
-        #[automatically_derived]
-        pub(crate) fn on_ws_error() -> Result<()> {
-            // Load state
-            let mut state = #as_state::load()?;
-            let action_output = #as_ws_handler::on_error(&mut state).map_err(::borderless::Error::msg)?.unwrap_or_default();
-            let events = action_output.convert_out_events()?;
-            if !events.is_empty() {
-                let bytes = events.to_bytes()?;
-                write_register(REGISTER_OUTPUT, &bytes);
+                // Load state
+                let mut state = #as_state::load()?;
+                let action_output = #as_ws_handler::on_message(&mut state, input).map_err(::borderless::Error::msg)?.unwrap_or_default();
+                let events = action_output.convert_out_events()?;
+                if !events.is_empty() {
+                    let bytes = events.to_bytes()?;
+                    write_register(REGISTER_OUTPUT, &bytes);
+                }
+                // Commit state
+                #as_state::commit(state);
+                Ok(())
             }
-            // Commit state
-            #as_state::commit(state);
-            Ok(())
+
+            #[automatically_derived]
+            pub(crate) fn on_ws_close() -> Result<()> {
+                // Load state
+                let mut state = #as_state::load()?;
+                let action_output = #as_ws_handler::on_close(&mut state).map_err(::borderless::Error::msg)?.unwrap_or_default();
+                let events = action_output.convert_out_events()?;
+                if !events.is_empty() {
+                    let bytes = events.to_bytes()?;
+                    write_register(REGISTER_OUTPUT, &bytes);
+                }
+                // Commit state
+                #as_state::commit(state);
+                Ok(())
+            }
+
+            #[automatically_derived]
+            pub(crate) fn on_ws_error() -> Result<()> {
+                // Load state
+                let mut state = #as_state::load()?;
+                let action_output = #as_ws_handler::on_error(&mut state).map_err(::borderless::Error::msg)?.unwrap_or_default();
+                let events = action_output.convert_out_events()?;
+                if !events.is_empty() {
+                    let bytes = events.to_bytes()?;
+                    write_register(REGISTER_OUTPUT, &bytes);
+                }
+                // Commit state
+                #as_state::commit(state);
+                Ok(())
+            }
         }
+    } else {
+        quote! {}
     };
 
     // Combine everything in the __derived module:
@@ -409,5 +423,38 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
             ::borderless::error!("get-symbols failed: {e:?}");
         }
     }
+    }
+}
+#[derive(Debug)]
+pub struct AgentArgs {
+    pub websocket: Option<bool>, // None if not specified, Some(true) or Some(false) if specified
+}
+
+impl Default for AgentArgs {
+    fn default() -> Self {
+        Self { websocket: None } // Default to no argument specified
+    }
+}
+
+impl Parse for AgentArgs {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut args = AgentArgs::default();
+
+        while !input.is_empty() {
+            // If we find the 'websocket' argument
+            if input.peek(Ident) && input.peek2(Token![=]) {
+                let ident: Ident = input.parse()?; // Parse the 'websocket'
+                if ident != "websocket" {
+                    return Err(input.error("Expected 'websocket' argument"));
+                }
+                let _eq_token: Token![=] = input.parse()?; // Parse the '=' token
+                let value: LitBool = input.parse()?; // Parse the boolean value (true or false)
+                args.websocket = Some(value.value()); // Set the value for 'websocket'
+            } else {
+                break; // If we encounter anything else, stop parsing
+            }
+        }
+
+        Ok(args)
     }
 }

@@ -1,3 +1,4 @@
+use agent::AgentArgs;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Item, ItemMod};
@@ -72,8 +73,9 @@ pub fn contract(_attrs: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn agent(_attrs: TokenStream, input: TokenStream) -> TokenStream {
+pub fn agent(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let module = parse_macro_input!(input as ItemMod);
+    let parsed_attrs = syn::parse_macro_input!(attrs as AgentArgs);
 
     // Check if module has some content
     if module.content.is_none() {
@@ -86,8 +88,11 @@ pub fn agent(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     }
     let (brace, mut items) = module.content.unwrap();
 
+    // If the agent has access to the websocket or not depends on the attributes
+    let use_ws = parsed_attrs.websocket.unwrap_or_default();
+
     // Generate new tokens based on the module's content
-    let new_tokens = match agent::parse_module_content(brace.span.join(), &items, &module.ident) {
+    let new_tokens = match agent::parse_module_content(brace.span.join(), &items, use_ws) {
         Ok(tokens) => tokens,
         Err(e) => return e.to_compile_error().into(),
     };
@@ -107,8 +112,12 @@ pub fn agent(_attrs: TokenStream, input: TokenStream) -> TokenStream {
 
     let wasm_exports = agent::generate_wasm_exports(&module.ident);
 
-    // TODO: Generate websocket tokens, if the ws feature is active (parse attributes !)
-    let wasm_ws_exports = agent::generate_ws_wasm_exports(&module.ident);
+    // Generate websocket tokens, if websocket == true
+    let wasm_ws_exports = if use_ws {
+        agent::generate_ws_wasm_exports(&module.ident)
+    } else {
+        quote! {}
+    };
 
     // Generate a new module from the content of the original module
     let new_module = ItemMod {
