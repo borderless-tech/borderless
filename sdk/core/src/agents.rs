@@ -76,7 +76,7 @@ pub struct WsConfig {
 }
 
 pub trait WebsocketHandler {
-    type Err: std::fmt::Display + std::fmt::Debug;
+    type Err: std::fmt::Display + std::fmt::Debug + Send + Sync;
 
     /// Constructor function that is called before the connection is opened.
     ///

@@ -106,6 +106,9 @@ pub fn agent(_attrs: TokenStream, input: TokenStream) -> TokenStream {
 
     let wasm_exports = agent::generate_wasm_exports(&module.ident);
 
+    // TODO: Generate websocket tokens, if the ws feature is active (parse attributes !)
+    let wasm_ws_exports = agent::generate_ws_wasm_exports(&module.ident);
+
     // Generate a new module from the content of the original module
     let new_module = ItemMod {
         attrs: module.attrs,
@@ -121,6 +124,7 @@ pub fn agent(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     quote! {
         #new_module
         #wasm_exports
+        #wasm_ws_exports
     }
     .into()
 }

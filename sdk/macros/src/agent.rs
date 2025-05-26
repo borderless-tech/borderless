@@ -161,7 +161,7 @@ pub fn parse_module_content(
     };
 
     let as_ws_handler = quote! {
-        <#state as ::borderless::agents::WsHander>
+        <#state as ::borderless::agents::WebsocketHandler>
     };
 
     let exec_ws = quote! {
@@ -169,13 +169,15 @@ pub fn parse_module_content(
         pub(crate) fn on_ws_open() -> Result<()> {
             // Load state
             let mut state = #as_state::load()?;
-            let events = #as_ws_handler::on_open(&mut state)?.unwrap_or_default();
+            let action_output = #as_ws_handler::on_open(&mut state).map_err(::borderless::Error::msg)?.unwrap_or_default();
+            let events = action_output.convert_out_events()?;
             if !events.is_empty() {
                 let bytes = events.to_bytes()?;
                 write_register(REGISTER_OUTPUT, &bytes);
             }
             // Commit state
             #as_state::commit(state);
+            Ok(())
         }
 
         #[automatically_derived]
@@ -184,39 +186,45 @@ pub fn parse_module_content(
 
             // Load state
             let mut state = #as_state::load()?;
-            let events = #as_ws_handler::on_msg(&mut state, input)?.unwrap_or_default();
+            let action_output = #as_ws_handler::on_message(&mut state, input).map_err(::borderless::Error::msg)?.unwrap_or_default();
+            let events = action_output.convert_out_events()?;
             if !events.is_empty() {
                 let bytes = events.to_bytes()?;
                 write_register(REGISTER_OUTPUT, &bytes);
             }
             // Commit state
             #as_state::commit(state);
+            Ok(())
         }
 
         #[automatically_derived]
         pub(crate) fn on_ws_close() -> Result<()> {
             // Load state
             let mut state = #as_state::load()?;
-            let events = #as_ws_handler::on_close(&mut state)?.unwrap_or_default();
+            let action_output = #as_ws_handler::on_close(&mut state).map_err(::borderless::Error::msg)?.unwrap_or_default();
+            let events = action_output.convert_out_events()?;
             if !events.is_empty() {
                 let bytes = events.to_bytes()?;
                 write_register(REGISTER_OUTPUT, &bytes);
             }
             // Commit state
             #as_state::commit(state);
+            Ok(())
         }
 
         #[automatically_derived]
         pub(crate) fn on_ws_error() -> Result<()> {
             // Load state
             let mut state = #as_state::load()?;
-            let events = #as_ws_handler::on_error(&mut state)?.unwrap_or_default();
+            let action_output = #as_ws_handler::on_error(&mut state).map_err(::borderless::Error::msg)?.unwrap_or_default();
+            let events = action_output.convert_out_events()?;
             if !events.is_empty() {
                 let bytes = events.to_bytes()?;
                 write_register(REGISTER_OUTPUT, &bytes);
             }
             // Commit state
             #as_state::commit(state);
+            Ok(())
         }
     };
 
@@ -238,6 +246,7 @@ pub fn parse_module_content(
             #exec_basic_fns
             #exec_init_shutdown
             #exec_http
+            #exec_ws
         }
 
         pub(super) mod actions {
@@ -248,40 +257,47 @@ pub fn parse_module_content(
     Ok(derived)
 }
 
-// TODO: Generate websocket tokens, if the ws feature is active
-// pub fn generate_ws_wasm_exports(state: &Ident, mod_ident: &Ident) -> TokenStream2 {
-//     let derived = quote! { #mod_ident::__derived };
+pub fn generate_ws_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
+    let derived = quote! { #mod_ident::__derived };
 
-//     let as_state = quote! {
-//         <#state as ::borderless::__private::storage_traits::State>
-//     };
+    quote! {
+    #[no_mangle]
+    pub extern "C" fn on_ws_open() {
+        let result = #derived::on_ws_open();
+        match result {
+            Ok(()) => ::borderless::info!("on_ws_open: success."),
+            Err(e) => ::borderless::error!("on_ws_open execution failed: {e:?}"),
+        }
+    }
 
-//     quote! {
-//     #[no_mangle]
-//     pub extern "C" fn on_ws_open() {
-//         info!("-- on-ws-open");
-//     }
+    #[no_mangle]
+    pub extern "C" fn on_ws_msg() {
+        let result = #derived::on_ws_msg();
+        match result {
+            Ok(()) => ::borderless::info!("on_ws_msg: success."),
+            Err(e) => ::borderless::error!("on_ws_msg execution failed: {e:?}"),
+        }
+    }
 
-//     #[no_mangle]
-//     pub extern "C" fn on_ws_msg() {
-//         let result = exec_ws();
-//         match result {
-//             Ok(()) => info!("execution successful"),
-//             Err(e) => error!("execution failed: {e:?}"),
-//         }
-//     }
+    #[no_mangle]
+    pub extern "C" fn on_ws_error() {
+        let result = #derived::on_ws_error();
+        match result {
+            Ok(()) => ::borderless::info!("on_ws_error: success."),
+            Err(e) => ::borderless::error!("on_ws_error execution failed: {e:?}"),
+        }
+    }
 
-//     #[no_mangle]
-//     pub extern "C" fn on_ws_error() {
-//         error!("-- on-ws-error");
-//     }
-
-//     #[no_mangle]
-//     pub extern "C" fn on_ws_close() {
-//         error!("-- on-ws-close");
-//     }
-//     }
-// }
+    #[no_mangle]
+    pub extern "C" fn on_ws_close() {
+        let result = #derived::on_ws_close();
+        match result {
+            Ok(()) => ::borderless::info!("on_ws_close: success."),
+            Err(e) => ::borderless::error!("on_ws_close execution failed: {e:?}"),
+        }
+    }
+    }
+}
 
 pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     let derived = quote! { #mod_ident::__derived };
