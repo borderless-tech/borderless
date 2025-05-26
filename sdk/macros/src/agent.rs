@@ -129,7 +129,6 @@ pub fn parse_module_content(
     let exec_init_shutdown = quote! {
         #[automatically_derived]
         pub(crate) fn exec_init() -> Result<()> {
-            // TODO: Websocket
             let mut my_init = ::borderless::agents::Init {
                 schedules: Vec::new(),
                 ws_config: None,
@@ -137,6 +136,10 @@ pub fn parse_module_content(
             #(
             my_init.schedules.push(#schedules);
             )*
+
+            // TODO: Websocket
+            my_init.ws_config = Some(get_ws_config()?);
+
             // Write output
             let bytes = my_init.to_bytes()?;
             write_register(REGISTER_OUTPUT, &bytes);
@@ -184,6 +187,14 @@ pub fn parse_module_content(
     };
 
     let exec_ws = quote! {
+        #[automatically_derived]
+        pub(crate) fn get_ws_config() -> Result<::borderless::agents::WsConfig> {
+            // Load state
+            let state = #as_state::load()?;
+            let ws_config = #as_ws_handler::open_ws(&state);
+            Ok(ws_config)
+        }
+
         #[automatically_derived]
         pub(crate) fn on_ws_open() -> Result<()> {
             // Load state

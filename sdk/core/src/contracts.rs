@@ -52,6 +52,7 @@ pub struct Role {
 pub struct Description {
     pub display_name: String,
     pub summary: String,
+    #[serde(default)]
     pub legal: Option<String>,
 }
 
@@ -235,6 +236,7 @@ pub struct Introduction {
     pub id: Id,
 
     /// List of participants
+    #[serde(default)]
     pub participants: Vec<BorderlessId>,
 
     /// Bytes of the initial state.
@@ -243,9 +245,11 @@ pub struct Introduction {
     pub initial_state: Value,
 
     /// Mapping between users and roles.
+    #[serde(default)]
     pub roles: Vec<Role>,
 
     /// List of available sinks
+    #[serde(default)]
     pub sinks: Vec<Sink>,
 
     /// High-Level description of the contract

@@ -293,7 +293,19 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
 
     // Parse command
     match command.action {
-        AgentAction::Introduce { introduction } => todo!(),
+        AgentAction::Introduce { introduction } => {
+            // Parse introduction
+            let data = read_to_string(introduction)?;
+            let introduction = Introduction::from_str(&data)?;
+
+            let aid = introduction.id.as_aid().unwrap();
+
+            info!("Introduce agent {aid}");
+            let start = Instant::now();
+            let _events = rt.process_introduction(introduction).await?;
+            let elapsed = start.elapsed();
+            info!("Outer time elapsed: {elapsed:?}");
+        }
         AgentAction::Process { action } => {
             // Parse action
             let data = read_to_string(action)?;

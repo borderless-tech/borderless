@@ -21,6 +21,7 @@ pub mod hello {
 
         #[schedule(interval = "10s", delay = "5s")]
         pub fn send_hello(&mut self) -> Result<()> {
+            info!("Sending hello via websocket...");
             self.cnt_schedule += 1;
             let msg = format!("Hello - this is message no. {}", self.cnt_schedule).into_bytes();
             self.send_ws_msg(msg)?;
