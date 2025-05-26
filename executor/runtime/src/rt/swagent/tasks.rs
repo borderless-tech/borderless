@@ -158,7 +158,7 @@ where
     handle_events(rt.lock().await.on_ws_open(&aid).await, &out_tx).await;
 
     // Set heartbeat timer
-    let mut heartbeat_timer = interval(Duration::from_secs(ws_config.ping_interval));
+    let mut heartbeat_timer = interval(Duration::from_secs(ws_config.ping_interval.max(10)));
 
     // Now start receiving messages from the websocket
     let (mut tx, mut rx) = stream.split();

@@ -119,6 +119,8 @@ pub fn parse_module_content(
     let exec_init_shutdown = quote! {
         #[automatically_derived]
         pub(crate) fn exec_init() -> Result<()> {
+            // TODO: Websocket
+            // TODO: Schedules
             Ok(())
         }
 
@@ -158,6 +160,66 @@ pub fn parse_module_content(
         }
     };
 
+    let as_ws_handler = quote! {
+        <#state as ::borderless::agents::WsHander>
+    };
+
+    let exec_ws = quote! {
+        #[automatically_derived]
+        pub(crate) fn on_ws_open() -> Result<()> {
+            // Load state
+            let mut state = #as_state::load()?;
+            let events = #as_ws_handler::on_open(&mut state)?.unwrap_or_default();
+            if !events.is_empty() {
+                let bytes = events.to_bytes()?;
+                write_register(REGISTER_OUTPUT, &bytes);
+            }
+            // Commit state
+            #as_state::commit(state);
+        }
+
+        #[automatically_derived]
+        pub(crate) fn on_ws_msg() -> Result<()> {
+            #read_input
+
+            // Load state
+            let mut state = #as_state::load()?;
+            let events = #as_ws_handler::on_msg(&mut state, input)?.unwrap_or_default();
+            if !events.is_empty() {
+                let bytes = events.to_bytes()?;
+                write_register(REGISTER_OUTPUT, &bytes);
+            }
+            // Commit state
+            #as_state::commit(state);
+        }
+
+        #[automatically_derived]
+        pub(crate) fn on_ws_close() -> Result<()> {
+            // Load state
+            let mut state = #as_state::load()?;
+            let events = #as_ws_handler::on_close(&mut state)?.unwrap_or_default();
+            if !events.is_empty() {
+                let bytes = events.to_bytes()?;
+                write_register(REGISTER_OUTPUT, &bytes);
+            }
+            // Commit state
+            #as_state::commit(state);
+        }
+
+        #[automatically_derived]
+        pub(crate) fn on_ws_error() -> Result<()> {
+            // Load state
+            let mut state = #as_state::load()?;
+            let events = #as_ws_handler::on_error(&mut state)?.unwrap_or_default();
+            if !events.is_empty() {
+                let bytes = events.to_bytes()?;
+                write_register(REGISTER_OUTPUT, &bytes);
+            }
+            // Commit state
+            #as_state::commit(state);
+        }
+    };
+
     // Combine everything in the __derived module:
     let derived = quote! {
         #[doc(hidden)]
@@ -187,14 +249,17 @@ pub fn parse_module_content(
 }
 
 // TODO: Generate websocket tokens, if the ws feature is active
-// pub fn generate_ws_wasm_exports(state_ident: &Ident, mod_ident: &Ident) -> TokenStream2 {
+// pub fn generate_ws_wasm_exports(state: &Ident, mod_ident: &Ident) -> TokenStream2 {
 //     let derived = quote! { #mod_ident::__derived };
+
+//     let as_state = quote! {
+//         <#state as ::borderless::__private::storage_traits::State>
+//     };
 
 //     quote! {
 //     #[no_mangle]
 //     pub extern "C" fn on_ws_open() {
 //         info!("-- on-ws-open");
-//         send_ws_msg("called on-open from wasm").unwrap();
 //     }
 
 //     #[no_mangle]

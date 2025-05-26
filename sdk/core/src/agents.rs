@@ -8,6 +8,7 @@ use crate::{
 // TODO: Are schedules completely static ?
 // Or do we want to enable temporary schedules,
 // that can be registered on runtime by other schedules ?
+// -> Static for now
 /// Schedules are functions that are executed periodically.
 ///
 /// This struct is the equivalent of [`CallAction`], just for schedules.
@@ -64,14 +65,15 @@ pub struct WsConfig {
     /// Time interval in seconds for the `Ping` messages
     ///
     /// Can be configured to handle different proxy timeout configurations.
+    /// Usually `30s` or `60s` are reasonably good defaults, to prevent reverse-proxy timeouts.
+    ///
+    /// Can not be set below `10` seconds.
     pub ping_interval: u64,
 
     /// Weather or not the messages over this channel are binary or text
     #[serde(default)]
     pub binary: bool,
 }
-// NOTE: We could maybe wrap the WsConfig in an AdvancedConfig object,
-// which contains also the addresses of the WebsocketHandler functions ?
 
 pub trait WebsocketHandler {
     type Err: std::fmt::Display + std::fmt::Debug;
@@ -79,22 +81,29 @@ pub trait WebsocketHandler {
     /// Constructor function that is called before the connection is opened.
     ///
     /// This function returns all required information to establish the websocket connection.
-    fn open_ws() -> WsConfig;
-
-    /// Called when a new connection is established (before any messages are exchanged).
-    fn on_open(&mut self) -> Result<Option<ActionOutput>, Self::Err>;
+    fn open_ws(&self) -> WsConfig;
 
     /// Called whenever a message is received from the client.
     fn on_message(&mut self, msg: Vec<u8>) -> Result<Option<ActionOutput>, Self::Err>;
 
+    /// Called when a new connection is established (before any messages are exchanged).
+    fn on_open(&mut self) -> Result<Option<ActionOutput>, Self::Err> {
+        Ok(None)
+    }
+
     /// Called when an error occurs on the connection.
-    fn on_error(&mut self) -> Result<Option<ActionOutput>, Self::Err>;
+    fn on_error(&mut self) -> Result<Option<ActionOutput>, Self::Err> {
+        crate::error!("Websocket error - connection closed.");
+        self.on_close()
+    }
 
     /// Called when the connection is cleanly closed (e.g., by the client).
-    fn on_close(&mut self, code: u16, reason: &str) -> Result<Option<ActionOutput>, Self::Err>;
+    fn on_close(&mut self) -> Result<Option<ActionOutput>, Self::Err> {
+        Ok(None)
+    }
 
     /// Send a message to the other side
-    fn send_msg(&self, msg: Vec<u8>) -> Result<(), anyhow::Error> {
+    fn send_ws_msg(&self, msg: Vec<u8>) -> Result<(), anyhow::Error> {
         send_ws_msg(msg)
     }
 }

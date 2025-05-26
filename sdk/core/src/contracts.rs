@@ -194,7 +194,6 @@ pub struct Introduction {
     /// Mapping between users and roles.
     pub roles: Vec<Role>,
 
-    // TODO: Re-Think Concept of sinks
     /// List of available sinks
     pub sinks: Vec<Sink>,
 
