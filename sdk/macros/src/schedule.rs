@@ -24,8 +24,6 @@ pub struct ScheduleFn {
     mut_self: bool,
     /// Return type of the function
     output: ReturnType,
-    /// Arguments of the function
-    args: Vec<(Ident, Box<Type>)>,
     _span: Span,
 }
 
@@ -42,7 +40,7 @@ impl ScheduleFn {
             roles: vec![],
             mut_self: self.mut_self,
             output: self.output.clone(),
-            args: self.args.clone(),
+            args: vec![],
             _span: self._span,
         }
     }
@@ -123,7 +121,6 @@ fn get_schedules_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result
         // At this point, the function is an action
         let mut has_self = false;
         let mut mut_self = false;
-        let mut args: Vec<(Ident, Box<Type>)> = Vec::new();
         for input in impl_fn.sig.inputs.iter() {
             match input {
                 FnArg::Receiver(s) => {
@@ -139,7 +136,10 @@ fn get_schedules_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result
                 FnArg::Typed(t) => {
                     // Extract the name from the pattern
                     if let Pat::Ident(PatIdent { ident, .. }) = &*t.pat {
-                        args.push((ident.clone(), t.ty.clone()));
+                        return Err(Error::new_spanned(
+                            &ident,
+                            "Schedules must not take any input parameters except 'self'",
+                        ));
                     } else {
                         return Err(Error::new_spanned(
                             &t.pat,
@@ -179,7 +179,6 @@ fn get_schedules_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result
             interval_millis: schedule_args.interval.as_millis(),
             mut_self,
             output: impl_fn.sig.output.clone(),
-            args,
             _span: impl_fn.span(),
         });
     }
