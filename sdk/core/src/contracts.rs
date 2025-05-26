@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Display, str::FromStr};
 
 use borderless_hash::Hash256;
-use borderless_id_types::{BlockIdentifier, TxIdentifier, Uuid};
+use borderless_id_types::{AgentId, BlockIdentifier, TxIdentifier, Uuid};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -177,11 +177,62 @@ pub struct Info {
     pub sinks: Vec<Sink>,
 }
 
-/// Contract-Introduction.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum Id {
+    Contract { contract_id: ContractId },
+    Agent { agent_id: AgentId },
+}
+
+impl Id {
+    pub fn as_cid(&self) -> Option<ContractId> {
+        match self {
+            Id::Contract { contract_id } => Some(*contract_id),
+            Id::Agent { .. } => None,
+        }
+    }
+
+    pub fn as_aid(&self) -> Option<AgentId> {
+        match self {
+            Id::Contract { .. } => None,
+            Id::Agent { agent_id } => Some(*agent_id),
+        }
+    }
+}
+
+impl AsRef<[u8; 16]> for Id {
+    fn as_ref(&self) -> &[u8; 16] {
+        match self {
+            Id::Contract { contract_id } => contract_id.as_ref(),
+            Id::Agent { agent_id } => agent_id.as_ref(),
+        }
+    }
+}
+
+impl PartialEq<ContractId> for Id {
+    fn eq(&self, other: &ContractId) -> bool {
+        match self {
+            Id::Contract { contract_id } => contract_id == other,
+            Id::Agent { .. } => false,
+        }
+    }
+}
+
+impl PartialEq<AgentId> for Id {
+    fn eq(&self, other: &AgentId) -> bool {
+        match self {
+            Id::Agent { agent_id } => agent_id == other,
+            Id::Contract { .. } => false,
+        }
+    }
+}
+
+/// Introduction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Introduction {
-    /// Contract-ID
-    pub contract_id: ContractId,
+    /// Contract- or Agent-ID
+    #[serde(flatten)]
+    pub id: Id,
 
     /// List of participants
     pub participants: Vec<BorderlessId>,
@@ -422,5 +473,73 @@ mod tests {
             }
         );
         assert_eq!(v1, "0.1.0".parse().unwrap());
+    }
+
+    #[test]
+    fn general_id() {
+        let cid = r#"{ "contract_id": "cbcd81bb-b90c-8806-8341-fe95b8ede45a" }"#;
+        let aid = r#"{ "agent_id": "abcd81bb-b90c-8806-8341-fe95b8ede45a" }"#;
+        let parsed: Result<Id, _> = serde_json::from_str(&cid);
+        assert!(parsed.is_ok(), "{}", parsed.unwrap_err());
+        match parsed.unwrap() {
+            Id::Contract { contract_id } => assert_eq!(
+                contract_id.to_string(),
+                "cbcd81bb-b90c-8806-8341-fe95b8ede45a"
+            ),
+            Id::Agent { .. } => panic!("result was not an agent-id"),
+        }
+
+        let parsed: Result<Id, _> = serde_json::from_str(&aid);
+        assert!(parsed.is_ok(), "{}", parsed.unwrap_err());
+        match parsed.unwrap() {
+            Id::Agent { agent_id } => {
+                assert_eq!(agent_id.to_string(), "abcd81bb-b90c-8806-8341-fe95b8ede45a")
+            }
+            Id::Contract { .. } => panic!("result was not a contract-id"),
+        }
+    }
+
+    #[test]
+    fn parse_introduction() {
+        let json = r#"
+{
+  "contract_id": "cc8ca79c-3bbb-89d2-bb28-29636c170387",
+  "participants": [],
+  "initial_state": {
+    "switch": true,
+    "counter": 0,
+    "history": []
+  },
+  "roles": [],
+  "sinks": [],
+  "desc": {
+    "display_name": "flipper",
+    "summary": "a flipper contract for testing the abi",
+    "legal": null
+  },
+  "meta": {
+    "application": "flipper",
+    "app_module": "test",
+    "version": "0.1.0"
+  }
+}
+"#;
+        let result: Result<Introduction, _> = serde_json::from_str(&json);
+        assert!(result.is_ok(), "{}", result.unwrap_err());
+        assert_eq!(
+            result.unwrap().id,
+            Id::Contract {
+                contract_id: "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse().unwrap()
+            }
+        );
+        let json = json.replace(r#""contract_id": "c"#, r#""agent_id": "a"#);
+        let result: Result<Introduction, _> = serde_json::from_str(&json);
+        assert!(result.is_ok(), "{}", result.unwrap_err());
+        assert_eq!(
+            result.unwrap().id,
+            Id::Agent {
+                agent_id: "ac8ca79c-3bbb-89d2-bb28-29636c170387".parse().unwrap()
+            }
+        );
     }
 }

@@ -180,7 +180,7 @@ impl<S: Db> VmState<S> {
                 mut introduction,
                 tx_ctx,
             } => {
-                assert_eq!(introduction.contract_id, cid);
+                assert_eq!(introduction.id, cid);
                 introduction.meta.active_since = timestamp;
                 introduction.meta.tx_ctx_introduction = Some(tx_ctx);
                 write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;

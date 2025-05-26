@@ -208,8 +208,12 @@ impl<S: Db> Runtime<S> {
         tx_ctx: TxCtx,
     ) -> Result<()> {
         let input = introduction.to_bytes()?;
+        let cid = match introduction.id {
+            borderless::prelude::Id::Contract { contract_id } => contract_id,
+            borderless::prelude::Id::Agent { .. } => return Err(ErrorKind::InvalidIdType.into()),
+        };
         self.process_chain_tx(
-            introduction.contract_id,
+            cid,
             input,
             *writer,
             tx_ctx.to_bytes()?,

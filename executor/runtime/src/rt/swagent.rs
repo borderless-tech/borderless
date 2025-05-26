@@ -227,19 +227,36 @@ impl<S: Db> Runtime<S> {
     }
 
     pub async fn process_ws_msg(&mut self, aid: &AgentId, msg: Vec<u8>) -> Result<Option<Events>> {
-        self.call_mut(aid, msg, "on_ws_msg").await
+        self.call_mut(aid, msg, "on_ws_msg", Events::from_bytes)
+            .await
     }
 
     pub async fn on_ws_open(&mut self, aid: &AgentId) -> Result<Option<Events>> {
-        self.call_mut(aid, Vec::new(), "on_ws_open").await
+        self.call_mut(aid, Vec::new(), "on_ws_open", Events::from_bytes)
+            .await
     }
 
     pub async fn on_ws_error(&mut self, aid: &AgentId) -> Result<Option<Events>> {
-        self.call_mut(aid, Vec::new(), "on_ws_error").await
+        self.call_mut(aid, Vec::new(), "on_ws_error", Events::from_bytes)
+            .await
     }
 
     pub async fn on_ws_close(&mut self, aid: &AgentId) -> Result<Option<Events>> {
-        self.call_mut(aid, Vec::new(), "on_ws_close").await
+        self.call_mut(aid, Vec::new(), "on_ws_close", Events::from_bytes)
+            .await
+    }
+
+    pub async fn process_introduction(&mut self, introduction: Introduction) -> Result<Init> {
+        // Parse action
+        let input = introduction.to_bytes()?;
+        let aid = match introduction.id {
+            borderless::prelude::Id::Contract { .. } => return Err(ErrorKind::InvalidIdType.into()),
+            borderless::prelude::Id::Agent { agent_id } => agent_id,
+        };
+        let init = self
+            .call_mut(&aid, input, "process_introduction", Init::from_bytes)
+            .await?;
+        Ok(init.unwrap_or_default())
     }
 
     // OK; Just to get some stuff going; I want to just simply call an action, and execute an http-request with it.
@@ -252,16 +269,22 @@ impl<S: Db> Runtime<S> {
     ) -> Result<Option<Events>> {
         // Parse action
         let input = action.to_bytes()?;
-        self.call_mut(aid, input, "process_action").await
+        self.call_mut(aid, input, "process_action", Events::from_bytes)
+            .await
     }
 
     /// Helper function for mutable calls
-    async fn call_mut(
+    async fn call_mut<T, F, E>(
         &mut self,
         aid: &AgentId,
         input: Vec<u8>,
         method: &'static str,
-    ) -> Result<Option<Events>> {
+        transformer: F,
+    ) -> Result<Option<T>>
+    where
+        F: Fn(&[u8]) -> std::result::Result<T, E>,
+        crate::error::Error: From<E>,
+    {
         let instance = self
             .contract_store
             .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
@@ -287,7 +310,7 @@ impl<S: Db> Runtime<S> {
 
         // Return output events
         match self.store.data().get_register(REGISTER_OUTPUT) {
-            Some(bytes) => Ok(Some(Events::from_bytes(&bytes)?)),
+            Some(bytes) => Ok(Some(transformer(&bytes)?)),
             None => Ok(None),
         }
     }

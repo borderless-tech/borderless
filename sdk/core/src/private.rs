@@ -268,7 +268,7 @@ pub fn write_metadata_client(introduction: &Introduction) {
     write_field(
         BASE_KEY_METADATA,
         META_SUB_KEY_CONTRACT_ID,
-        &introduction.contract_id,
+        &introduction.id,
     );
 
     // Write participant list

@@ -89,6 +89,9 @@ pub(crate) enum ErrorKind {
     #[error("contract is revoked and cannot process transactions cid={cid}")]
     RevokedContract { cid: ContractId },
 
+    #[error("introduction id is not for the correct type of entity - agent vs contract mismatch")]
+    InvalidIdType,
+
     /// Missing required value in register
     // --- Register errors
     #[error("missing required value '{0}' in register")]

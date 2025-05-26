@@ -197,7 +197,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let data = read_to_string(introduction)?;
             let introduction = Introduction::from_str(&data)?;
 
-            let cid = introduction.contract_id;
+            let cid = introduction.id.as_cid().unwrap();
             let tx_ctx = generate_tx_ctx(&mut rt, &cid)?;
             info!("Introduce contract {cid}");
             let start = Instant::now();

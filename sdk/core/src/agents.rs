@@ -113,7 +113,7 @@ pub trait WebsocketHandler {
 }
 
 /// Return value of the init function
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Init {
     pub schedules: Vec<Schedule>,
     pub ws_config: Option<WsConfig>,
