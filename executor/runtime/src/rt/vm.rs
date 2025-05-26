@@ -116,7 +116,7 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
-    pub fn finish_mutable_exec(&mut self, commit: Commit) -> Result<()> {
+    pub fn finish_mutable_exec(&mut self, commit: ContractCommit) -> Result<()> {
         let result = self.finish_mut_exec_inner(commit);
 
         // Reset everything
@@ -128,7 +128,7 @@ impl<S: Db> VmState<S> {
     }
 
     // Inner wrapper, so we can return the result, but also perform the cleanup afterwards in case of an error
-    fn finish_mut_exec_inner(&mut self, commit: Commit) -> Result<()> {
+    fn finish_mut_exec_inner(&mut self, commit: ContractCommit) -> Result<()> {
         let active = std::mem::replace(&mut self.active, ActiveEntity::None);
         let (cid, buf) = match active {
             ActiveEntity::Contract { cid, db_txns } => {
@@ -172,11 +172,11 @@ impl<S: Db> VmState<S> {
 
         // Commit external item (introduction, action or revocation)
         match commit {
-            Commit::Action { action, tx_ctx } => {
+            ContractCommit::Action { action, tx_ctx } => {
                 let action_log = ActionLog::new(&self.db, cid);
                 action_log.commit(&self.db_ptr, &mut txn, &action, tx_ctx)?;
             }
-            Commit::Introduction {
+            ContractCommit::Introduction {
                 mut introduction,
                 tx_ctx,
             } => {
@@ -185,7 +185,7 @@ impl<S: Db> VmState<S> {
                 introduction.meta.tx_ctx_introduction = Some(tx_ctx);
                 write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
             }
-            Commit::Revocation { revocation, tx_ctx } => {
+            ContractCommit::Revocation { revocation, tx_ctx } => {
                 assert_eq!(revocation.contract_id, cid);
                 write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, tx_ctx, timestamp)?;
             }
@@ -270,7 +270,7 @@ impl<S: Db> VmState<S> {
         Ok(())
     }
 
-    pub fn finish_agent_exec(&mut self, commit_state: bool) -> Result<Vec<LogLine>> {
+    pub fn finish_agent_exec(&mut self, commit_state: Option<AgentCommit>) -> Result<Vec<LogLine>> {
         let active = std::mem::replace(&mut self.active, ActiveEntity::None);
         let (aid, buf) = match active {
             ActiveEntity::Contract { .. } => {
@@ -279,7 +279,7 @@ impl<S: Db> VmState<S> {
                 ))
             }
             ActiveEntity::Agent { aid, db_txns } => {
-                if db_txns.is_none() && commit_state {
+                if db_txns.is_none() && commit_state.is_some() {
                     return Err(Error::msg("Agent execution was marked as immutable"));
                 }
                 (aid, db_txns)
@@ -288,7 +288,7 @@ impl<S: Db> VmState<S> {
                 return Err(Error::msg("No active sw-agent"));
             }
         };
-        if commit_state {
+        if commit_state.is_some() {
             let mut txn = self.db.begin_rw_txn()?;
             // Apply storage operations
             for op in buf.unwrap().into_iter() {
@@ -300,6 +300,34 @@ impl<S: Db> VmState<S> {
                 match op {
                     StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
                     StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
+                }
+            }
+
+            // Current timestamp ( milliseconds since epoch )
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("timestamp < 1970")
+                .as_millis()
+                .try_into()
+                .expect("u64 should fit for 584942417 years");
+
+            // Commit external item (introduction, action or revocation)
+            match commit_state.unwrap() {
+                AgentCommit::Other => {
+                    // TODO: I think the best way would be to create a ring-buffer for the actions of an agent ?
+                    // let action_log = ActionLog::new(&self.db, aid);
+                    // action_log.commit(&self.db_ptr, &mut txn, &action, tx_ctx)?;
+                }
+                AgentCommit::Introduction { mut introduction } => {
+                    assert_eq!(introduction.id, aid);
+                    introduction.meta.active_since = timestamp;
+                    introduction.meta.tx_ctx_introduction = None;
+                    write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
+                }
+                AgentCommit::Revocation { revocation: _ } => {
+                    // assert_eq!(revocation.contract_id, aid); // TODO
+                    // write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, tx_ctx, timestamp)?;
+                    todo!()
                 }
             }
 
@@ -990,7 +1018,7 @@ pub mod async_abi {
 }
 
 /// External data that must be commited in the contract
-pub enum Commit {
+pub enum ContractCommit {
     Action {
         action: CallAction,
         tx_ctx: TxCtx,
@@ -1003,6 +1031,13 @@ pub enum Commit {
         revocation: Revocation,
         tx_ctx: TxCtx,
     },
+}
+
+/// External data that must be commited in the agent
+pub enum AgentCommit {
+    Other,
+    Introduction { introduction: Introduction },
+    Revocation { revocation: Revocation },
 }
 
 /// Represents an executable entity in the VmState.

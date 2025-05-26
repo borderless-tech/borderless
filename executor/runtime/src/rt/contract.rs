@@ -15,7 +15,7 @@ use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Sto
 
 use super::{
     code_store::CodeStore,
-    vm::{self, Commit, VmState},
+    vm::{self, ContractCommit, VmState},
 };
 use crate::db::{
     action_log::ActionRecord,
@@ -196,7 +196,7 @@ impl<S: Db> Runtime<S> {
             input,
             *writer,
             tx_ctx.to_bytes()?,
-            Commit::Action { action, tx_ctx },
+            ContractCommit::Action { action, tx_ctx },
         )?;
         Ok(events)
     }
@@ -217,7 +217,7 @@ impl<S: Db> Runtime<S> {
             input,
             *writer,
             tx_ctx.to_bytes()?,
-            Commit::Introduction {
+            ContractCommit::Introduction {
                 introduction,
                 tx_ctx,
             },
@@ -237,7 +237,7 @@ impl<S: Db> Runtime<S> {
             input,
             *writer,
             tx_ctx.to_bytes()?,
-            Commit::Revocation { revocation, tx_ctx },
+            ContractCommit::Revocation { revocation, tx_ctx },
         )?;
         Ok(())
     }
@@ -252,7 +252,7 @@ impl<S: Db> Runtime<S> {
         input: Vec<u8>,
         writer: BorderlessId,
         tx_ctx_bytes: Vec<u8>,
-        commit: Commit,
+        commit: ContractCommit,
     ) -> Result<Option<Events>> {
         let instance = self
             .contract_store
@@ -260,9 +260,9 @@ impl<S: Db> Runtime<S> {
             .ok_or_else(|| ErrorKind::MissingContract { cid })?;
 
         let contract_method = match &commit {
-            Commit::Action { .. } => "process_transaction",
-            Commit::Introduction { .. } => "process_introduction",
-            Commit::Revocation { .. } => "process_revocation",
+            ContractCommit::Action { .. } => "process_transaction",
+            ContractCommit::Introduction { .. } => "process_introduction",
+            ContractCommit::Revocation { .. } => "process_revocation",
         };
 
         // Prepare registers

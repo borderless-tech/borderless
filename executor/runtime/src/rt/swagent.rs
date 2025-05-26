@@ -14,9 +14,10 @@ use log::{error, warn};
 use tokio::sync::{mpsc, Mutex};
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
 
+use super::vm::AgentCommit;
 use super::{
     code_store::CodeStore,
-    vm::{self, Commit, VmState},
+    vm::{self, ContractCommit, VmState},
 };
 use crate::db::logger::print_log_line;
 use crate::{
@@ -211,7 +212,7 @@ impl<S: Db> Runtime<S> {
         if let Err(e) = func.call_async(&mut self.store, ()).await {
             warn!("initialize failed with error: {e}");
         }
-        self.store.data_mut().finish_agent_exec(false)?;
+        self.store.data_mut().finish_agent_exec(None)?;
 
         // Return output events
         let bytes = self
@@ -221,42 +222,46 @@ impl<S: Db> Runtime<S> {
             .ok_or_else(|| ErrorKind::MissingRegisterValue("init-output"))?;
         let init = Init::from_bytes(&bytes)?;
 
-        // TODO: Maybe we register the websocket stuff in here ?
-
         Ok(init)
     }
 
     pub async fn process_ws_msg(&mut self, aid: &AgentId, msg: Vec<u8>) -> Result<Option<Events>> {
-        self.call_mut(aid, msg, "on_ws_msg", Events::from_bytes)
+        self.call_mut(aid, msg, "on_ws_msg", AgentCommit::Other)
             .await
     }
 
     pub async fn on_ws_open(&mut self, aid: &AgentId) -> Result<Option<Events>> {
-        self.call_mut(aid, Vec::new(), "on_ws_open", Events::from_bytes)
+        self.call_mut(aid, Vec::new(), "on_ws_open", AgentCommit::Other)
             .await
     }
 
     pub async fn on_ws_error(&mut self, aid: &AgentId) -> Result<Option<Events>> {
-        self.call_mut(aid, Vec::new(), "on_ws_error", Events::from_bytes)
+        self.call_mut(aid, Vec::new(), "on_ws_error", AgentCommit::Other)
             .await
     }
 
     pub async fn on_ws_close(&mut self, aid: &AgentId) -> Result<Option<Events>> {
-        self.call_mut(aid, Vec::new(), "on_ws_close", Events::from_bytes)
+        self.call_mut(aid, Vec::new(), "on_ws_close", AgentCommit::Other)
             .await
     }
 
-    pub async fn process_introduction(&mut self, introduction: Introduction) -> Result<Init> {
+    pub async fn process_introduction(
+        &mut self,
+        introduction: Introduction,
+    ) -> Result<Option<Events>> {
         // Parse action
         let input = introduction.to_bytes()?;
         let aid = match introduction.id {
             borderless::prelude::Id::Contract { .. } => return Err(ErrorKind::InvalidIdType.into()),
             borderless::prelude::Id::Agent { agent_id } => agent_id,
         };
-        let init = self
-            .call_mut(&aid, input, "process_introduction", Init::from_bytes)
-            .await?;
-        Ok(init.unwrap_or_default())
+        self.call_mut(
+            &aid,
+            input,
+            "process_introduction",
+            AgentCommit::Introduction { introduction },
+        )
+        .await
     }
 
     // OK; Just to get some stuff going; I want to just simply call an action, and execute an http-request with it.
@@ -269,22 +274,18 @@ impl<S: Db> Runtime<S> {
     ) -> Result<Option<Events>> {
         // Parse action
         let input = action.to_bytes()?;
-        self.call_mut(aid, input, "process_action", Events::from_bytes)
+        self.call_mut(aid, input, "process_action", AgentCommit::Other)
             .await
     }
 
     /// Helper function for mutable calls
-    async fn call_mut<T, F, E>(
+    async fn call_mut(
         &mut self,
         aid: &AgentId,
         input: Vec<u8>,
         method: &'static str,
-        transformer: F,
-    ) -> Result<Option<T>>
-    where
-        F: Fn(&[u8]) -> std::result::Result<T, E>,
-        crate::error::Error: From<E>,
-    {
+        commit: AgentCommit,
+    ) -> Result<Option<Events>> {
         let instance = self
             .contract_store
             .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
@@ -299,10 +300,10 @@ impl<S: Db> Runtime<S> {
         self.store.data_mut().begin_agent_exec(*aid, true)?;
 
         let logs = match func.call_async(&mut self.store, ()).await {
-            Ok(()) => self.store.data_mut().finish_agent_exec(true)?,
+            Ok(()) => self.store.data_mut().finish_agent_exec(Some(commit))?,
             Err(e) => {
                 warn!("{method} failed with error: {e}");
-                self.store.data_mut().finish_agent_exec(false)?
+                self.store.data_mut().finish_agent_exec(None)?
             }
         };
         // Just print the logs here
@@ -310,7 +311,7 @@ impl<S: Db> Runtime<S> {
 
         // Return output events
         match self.store.data().get_register(REGISTER_OUTPUT) {
-            Some(bytes) => Ok(Some(transformer(&bytes)?)),
+            Some(bytes) => Ok(Some(Events::from_bytes(&bytes)?)),
             None => Ok(None),
         }
     }
@@ -339,7 +340,7 @@ impl<S: Db> Runtime<S> {
             warn!("http_get_state failed with error: {e}");
         }
         // Finish the execution
-        let log = self.store.data_mut().finish_agent_exec(false)?;
+        let log = self.store.data_mut().finish_agent_exec(None)?;
 
         let status = self
             .store
@@ -405,7 +406,7 @@ impl<S: Db> Runtime<S> {
             warn!("http_get_state failed with error: {e}");
         }
         // Finish the execution
-        let log = self.store.data_mut().finish_agent_exec(false)?;
+        let log = self.store.data_mut().finish_agent_exec(None)?;
 
         let status = self
             .store
@@ -454,7 +455,7 @@ impl<S: Db> Runtime<S> {
             warn!("http_get_state failed with error: {e}");
         }
         // Finish the execution
-        self.store.data_mut().finish_agent_exec(false)?;
+        self.store.data_mut().finish_agent_exec(None)?;
 
         let bytes = match self.store.data().get_register(REGISTER_OUTPUT) {
             Some(b) => b,
