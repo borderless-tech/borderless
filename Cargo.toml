@@ -4,6 +4,7 @@ members = [
   "examples/abi-test-swagent",
   "examples/collections",
   "examples/flipper",
+  "examples/hello-agent",
   "executor/runner",
   "executor/runtime",
   "json-proof",

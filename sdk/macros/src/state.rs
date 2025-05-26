@@ -1,7 +1,24 @@
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
-use syn::{Data, DataStruct, DeriveInput, Error, Field, Fields, Ident, Result, Type};
+use syn::{Data, DataStruct, DeriveInput, Error, Field, Fields, Ident, Item, Result, Type};
 use xxhash_rust::const_xxh3::xxh3_64;
+
+use crate::utils::check_if_state;
+
+/// Checks, if a module contains a 'State'
+pub fn get_state(items: &[Item], mod_span: &Span) -> Result<Ident> {
+    for item in items {
+        if let Item::Struct(item_struct) = item {
+            if check_if_state(item_struct) {
+                return Ok(item_struct.ident.clone());
+            }
+        }
+    }
+    Err(Error::new(
+        *mod_span,
+        "Each module requires a 'State' - use #[derive(State)]",
+    ))
+}
 
 // TODO: Add option to hide fields from API access
 
@@ -206,7 +223,3 @@ fn storage_key(field: &Field, ident: &Ident) -> u64 {
     // TODO: Write a test, that always checks that the macro keys are in user space !
     storage_key | (1 << 63)
 }
-
-/*
- *
- */

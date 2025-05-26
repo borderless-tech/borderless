@@ -192,6 +192,7 @@ where
                 }
                 let msg = result.unwrap();
                 if msg.is_err() {
+                    // TODO: Forward error message to wasm ?
                     warn!("Websocket-msg failure: {}", msg.unwrap_err());
                     // Call "on-error"
                     handle_events(rt.lock().await.on_ws_error(&aid).await, &out_tx).await;
@@ -205,6 +206,7 @@ where
                     Message::Binary(b) => b.into(),
                     Message::Pong(_) => continue,
                     Message::Close(frame) => {
+                        // TODO: Forward closing frame to wasm ?
                         info!("Received closing frame: {frame:#?}");
                         // Call "on-close"
                         handle_events(rt.lock().await.on_ws_close(&aid).await, &out_tx).await;

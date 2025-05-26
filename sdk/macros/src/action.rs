@@ -199,6 +199,36 @@ pub fn get_actions(state_ident: &Ident, mod_items: &[Item]) -> Result<Vec<Action
     ))
 }
 
+/// Creates the doubly nested match block required to match actions either by method-name or method-id.
+///
+/// The result of `call_fns` will be captured as an outer variable `_match_result`.
+pub fn match_action(
+    action_names: &[String],
+    action_ids: &[u32],
+    call_fns: &[TokenStream2],
+) -> TokenStream2 {
+    quote! {
+    let _match_result = match &action.method {
+        MethodOrId::ByName { method } => match method.as_str() {
+            #(
+            #action_names => {
+                #call_fns
+            }
+            )*
+            other => { return Err(new_error!("Unknown method: {other}")) }
+        }
+        MethodOrId::ById { method_id } => match method_id {
+            #(
+            #action_ids => {
+                #call_fns
+            }
+            )*
+            other => { return Err(new_error!("Unknown method-id: 0x{other:04x}")) }
+        }
+    };
+    }
+}
+
 fn get_actions_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result<Vec<ActionFn>> {
     let mut actions = Vec::new();
     for item in impl_block.items.iter() {

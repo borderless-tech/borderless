@@ -16,7 +16,7 @@ pub mod serialize {
 
 // Directly export macros, so that the user can write:
 // #[borderless::contract], #[borderless::agent] and #[borderless::action]
-pub use borderless_sdk_macros::{action, contract, NamedSink, State};
+pub use borderless_sdk_macros::{action, agent, contract, schedule, NamedSink, State};
 
 /// This module is **not** part of the public API.
 /// It exists, because the procedural macros and some internal implementations (like the contract runtime) rely on it.

@@ -7,8 +7,7 @@ use crate::{
     state::get_state,
 };
 
-// TODO: Check, if module contains all required elements for a contract
-
+// TODO: Add attributes
 pub fn parse_module_content(
     mod_span: Span,
     mod_items: &[Item],
@@ -21,7 +20,8 @@ pub fn parse_module_content(
     let state = get_state(mod_items, &mod_span)?;
     let actions = get_actions(&state, mod_items)?;
     let action_types = actions.iter().map(ActionFn::gen_type_tokens);
-    let call_action: Vec<_> = actions.iter().map(|a| a.gen_call_tokens(&state)).collect();
+
+    let call_action: Vec<_> = actions.iter().map(|a| a.gen_call_tokens(&state)).collect(); // <- TODO: This contains logic only for contracts !
     let action_names: Vec<_> = actions.iter().map(ActionFn::method_name).collect();
     let action_ids: Vec<_> = actions.iter().map(ActionFn::method_id).collect();
 
@@ -36,7 +36,7 @@ pub fn parse_module_content(
         .collect();
 
     // let _args: __ArgsType = ::borderless::serialize::from_slice(&payload)?;
-    let check_payload: Vec<_> = actions
+    let _check_payload: Vec<_> = actions
         .iter()
         .map(|a| a.gen_check_tokens(quote! { ::borderless::serialize::from_slice(&payload)? }))
         .collect();
@@ -56,34 +56,12 @@ pub fn parse_module_content(
     // Generate the nested match block for matching the action method by name or id
     // match &action.method { ... => match method_name => { ... => FUNC } }
     let match_and_call_action = match_action(&action_names, &action_ids, &call_action);
-    let match_and_check_action = match_action(&action_names, &action_ids, &check_action);
+    let _match_and_check_action = match_action(&action_names, &action_ids, &check_action);
 
     let exec_post = quote! {
         #[automatically_derived]
         fn post_action_response(path: String, payload: Vec<u8>) -> Result<CallAction> {
-            let path = path.replace("-", "_"); // Convert from kebab-case to snake_case
-            let path = path.strip_prefix('/').unwrap_or(&path); // stip leading "/"
-
-            let content = String::from_utf8(payload.clone()).unwrap_or_default();
-            info!("{content}");
-
-            #[allow(unreachable_code)]
-            match path {
-                "" => {
-                    let action = CallAction::from_bytes(&payload).context("failed to parse action")?;
-                    #match_and_check_action
-                    // At this point, the action is validated and can be returned
-                    Ok(action)
-                }
-                #(
-                #action_names => {
-                    #check_payload
-                    let value = ::borderless::serialize::to_value(&_args)?;
-                    Ok(CallAction::by_method(#action_names, value))
-                }
-                )*
-                other => Err(new_error!("unknown method: {other}")),
-            }
+            todo!("implement calling actions on agents")
         }
     };
 
@@ -100,9 +78,9 @@ pub fn parse_module_content(
         }
     };
 
-    let exec_txn = quote! {
+    let exec_basic_fns = quote! {
         #[automatically_derived]
-        pub(crate) fn exec_txn() -> Result<()> {
+        pub(crate) fn exec_action() -> Result<()> {
             #read_input
 
             let action = CallAction::from_bytes(&input)?;
@@ -121,6 +99,7 @@ pub fn parse_module_content(
         #[automatically_derived]
         pub(crate) fn exec_introduction() -> Result<()> {
             #read_input
+            // TODO: Use different introduction type for agents
             let introduction = Introduction::from_bytes(&input)?;
             let s = introduction.pretty_print()?;
             info!("{s}");
@@ -132,7 +111,19 @@ pub fn parse_module_content(
         pub(crate) fn exec_revocation() -> Result<()> {
             #read_input
             let r = Revocation::from_bytes(&input)?;
-            info!("Revoked contract. Reason: {}", r.reason);
+            info!("Revoked agent. Reason: {}", r.reason);
+            Ok(())
+        }
+    };
+
+    let exec_init_shutdown = quote! {
+        #[automatically_derived]
+        pub(crate) fn exec_init() -> Result<()> {
+            Ok(())
+        }
+
+        #[automatically_derived]
+        pub(crate) fn exec_shutdown() -> Result<()> {
             Ok(())
         }
     };
@@ -150,6 +141,7 @@ pub fn parse_module_content(
         }
         #[automatically_derived]
         pub(crate) fn exec_post_action() -> Result<()> {
+            // TODO: Should we really do a separate handling here, or should we use the normal "exec_action" way ?
             let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
             let payload = read_register(REGISTER_INPUT_HTTP_PAYLOAD).context("missing http-payload")?;
             match post_action_response(path, payload) {
@@ -181,7 +173,8 @@ pub fn parse_module_content(
             #(#action_types)*
             #exec_post
             #get_symbols
-            #exec_txn
+            #exec_basic_fns
+            #exec_init_shutdown
             #exec_http
         }
 
@@ -193,14 +186,66 @@ pub fn parse_module_content(
     Ok(derived)
 }
 
+// TODO: Generate websocket tokens, if the ws feature is active
+// pub fn generate_ws_wasm_exports(state_ident: &Ident, mod_ident: &Ident) -> TokenStream2 {
+//     let derived = quote! { #mod_ident::__derived };
+
+//     quote! {
+//     #[no_mangle]
+//     pub extern "C" fn on_ws_open() {
+//         info!("-- on-ws-open");
+//         send_ws_msg("called on-open from wasm").unwrap();
+//     }
+
+//     #[no_mangle]
+//     pub extern "C" fn on_ws_msg() {
+//         let result = exec_ws();
+//         match result {
+//             Ok(()) => info!("execution successful"),
+//             Err(e) => error!("execution failed: {e:?}"),
+//         }
+//     }
+
+//     #[no_mangle]
+//     pub extern "C" fn on_ws_error() {
+//         error!("-- on-ws-error");
+//     }
+
+//     #[no_mangle]
+//     pub extern "C" fn on_ws_close() {
+//         error!("-- on-ws-close");
+//     }
+//     }
+// }
+
 pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     let derived = quote! { #mod_ident::__derived };
 
     quote! {
     #[no_mangle]
     #[automatically_derived]
-    pub extern "C" fn process_transaction() {
-        let result = #derived::exec_txn();
+    pub extern "C" fn on_init() {
+        let result = #derived::exec_init();
+        match result {
+            Ok(()) => ::borderless::info!("initialization successful"),
+            Err(e) => ::borderless::error!("initialization failed: {e:?}"),
+        }
+    }
+
+    #[no_mangle]
+    #[automatically_derived]
+    pub extern "C" fn on_shutdown() {
+        let result = #derived::exec_shutdown();
+        match result {
+            Ok(()) => ::borderless::info!("shutdown successful"),
+            Err(e) => ::borderless::error!("shutdown failed: {e:?}"),
+        }
+    }
+
+    #[no_mangle]
+    #[automatically_derived]
+    pub extern "C" fn process_action() {
+        let result = #derived::exec_action();
         match result {
             Ok(()) => ::borderless::info!("execution successful"),
             Err(e) => ::borderless::error!("execution failed: {e:?}"),

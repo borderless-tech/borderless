@@ -19,6 +19,8 @@ pub extern "C" fn process_action() {
 }
 
 /// Function that is called by the host when the agent is initialized
+///
+/// -> NOTE: This will be derived
 #[no_mangle]
 pub extern "C" fn on_init() {
     dev::tic();
