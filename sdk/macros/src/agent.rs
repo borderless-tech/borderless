@@ -49,7 +49,7 @@ pub fn parse_module_content(
         .collect();
 
     // let _args: __ArgsType = ::borderless::serialize::from_slice(&payload)?;
-    let _check_payload: Vec<_> = actions
+    let check_payload: Vec<_> = actions
         .iter()
         .map(|a| a.gen_check_tokens(quote! { ::borderless::serialize::from_slice(&payload)? }))
         .collect();
@@ -69,12 +69,34 @@ pub fn parse_module_content(
     // Generate the nested match block for matching the action method by name or id
     // match &action.method { ... => match method_name => { ... => FUNC } }
     let match_and_call_action = match_action(&action_names, &action_ids, &call_action);
-    let _match_and_check_action = match_action(&action_names, &action_ids, &check_action);
+    let match_and_check_action = match_action(&action_names, &action_ids, &check_action);
 
     let exec_post = quote! {
         #[automatically_derived]
         fn post_action_response(path: String, payload: Vec<u8>) -> Result<CallAction> {
-            todo!("implement calling actions on agents")
+            let path = path.replace("-", "_"); // Convert from kebab-case to snake_case
+            let path = path.strip_prefix('/').unwrap_or(&path); // stip leading "/"
+
+            let content = String::from_utf8(payload.clone()).unwrap_or_default();
+            info!("{content}");
+
+            #[allow(unreachable_code)]
+            match path {
+                "" => {
+                    let action = CallAction::from_bytes(&payload).context("failed to parse action")?;
+                    #match_and_check_action
+                    // At this point, the action is validated and can be returned
+                    Ok(action)
+                }
+                #(
+                #action_names => {
+                    #check_payload
+                    let value = ::borderless::serialize::to_value(&_args)?;
+                    Ok(CallAction::by_method(#action_names, value))
+                }
+                )*
+                other => Err(new_error!("unknown method: {other}")),
+            }
         }
     };
 
@@ -175,11 +197,25 @@ pub fn parse_module_content(
         }
         #[automatically_derived]
         pub(crate) fn exec_post_action() -> Result<()> {
-            // TODO: Should we really do a separate handling here, or should we use the normal "exec_action" way ?
             let path = read_string_from_register(REGISTER_INPUT_HTTP_PATH).context("missing http-path")?;
             let payload = read_register(REGISTER_INPUT_HTTP_PAYLOAD).context("missing http-payload")?;
+            // TODO: This can be optimized, as we now parse the action two times, if we use the general route
+            // -> Also, we could generate the code for process_action a little bit different, to make this function
+            //    reusable here. This would reduce the size of the generated code, as we basically just copy-and-paste
+            //    the same function body here.
+            // -> Also, we return the action we executed in the http output, and the events in the normal output.
+            // I am not super sure, if this is a good design; but I also don't know, what *should* be returned.
+            // So for now, we roll with it.
             match post_action_response(path, payload) {
                 Ok(action) => {
+                    let mut state = #as_state::load()?;
+                    #match_and_call_action
+                    let events = _match_result?;
+                    if !events.is_empty() {
+                        let bytes = events.to_bytes()?;
+                        write_register(REGISTER_OUTPUT, &bytes);
+                    }
+                    #as_state::commit(state);
                     write_register(REGISTER_OUTPUT_HTTP_STATUS, 200u16.to_be_bytes());
                     write_register(REGISTER_OUTPUT_HTTP_RESULT, action.to_bytes()?);
                 }

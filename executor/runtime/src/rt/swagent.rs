@@ -376,14 +376,16 @@ impl<S: Db> Runtime<S> {
         path: String,
         payload: Vec<u8>,
         writer: &BorderlessId,
-    ) -> Result<std::result::Result<CallAction, (u16, String)>> {
+    ) -> Result<std::result::Result<(Events, CallAction), (u16, String)>> {
         let instance = self
             .contract_store
             .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
-        // TODO: Can't I just convert this into a call-action on-spot ??
+        // NOTE: We cannot convert the payload into a call-action on-spot, as we might call a nested route.
+        // To be precise - we *could* do it here, but I think it is cleaner to leave this logic up to the wasm module,
+        // as otherwise we may have to duplicate the logic here (and if it changes in the macro, we have to sync this with the code of the runtime etc.).
         self.store
             .data_mut()
             .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());
@@ -399,14 +401,16 @@ impl<S: Db> Runtime<S> {
         // Get function
         let func = instance.get_typed_func::<(), ()>(&mut self.store, "http_post_action")?;
 
-        // TODO: This function can modify the state
         // Call the function
-        self.store.data_mut().begin_agent_exec(*aid, false)?;
+        self.store.data_mut().begin_agent_exec(*aid, true)?;
         if let Err(e) = func.call_async(&mut self.store, ()).await {
             warn!("http_get_state failed with error: {e}");
         }
         // Finish the execution
-        let log = self.store.data_mut().finish_agent_exec(None)?;
+        let log = self
+            .store
+            .data_mut()
+            .finish_agent_exec(Some(AgentCommit::Other))?;
 
         let status = self
             .store
@@ -427,8 +431,12 @@ impl<S: Db> Runtime<S> {
         }
 
         if status == 200 {
+            let events = match self.store.data().get_register(REGISTER_OUTPUT) {
+                Some(b) => Events::from_bytes(&b)?,
+                None => Events::default(),
+            };
             let action = CallAction::from_bytes(&result)?;
-            Ok(Ok(action))
+            Ok(Ok((events, action)))
         } else {
             let error = String::from_utf8(result).map_err(|_| ErrorKind::InvalidRegisterValue {
                 register: "http-result",

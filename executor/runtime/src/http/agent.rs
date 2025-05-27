@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+use borderless::events::CallAction;
+use borderless::events::Events;
 use borderless::http::queries::Pagination;
 use borderless::AgentId;
 use borderless::BorderlessId;
@@ -17,6 +19,12 @@ use tokio::sync::Mutex;
 
 pub use super::*;
 use crate::{db::controller::Controller, rt::swagent::Runtime};
+
+#[derive(Serialize)]
+pub struct ActionResp {
+    pub events: Events,
+    pub action: CallAction,
+}
 
 /// Simple service around the runtime
 #[derive(Clone)]
@@ -112,7 +120,6 @@ where
                     Ok(reject_404())
                 }
             }
-            // TODO
             "logs" => {
                 // Extract pagination
                 let pagination = Pagination::from_query(query).unwrap_or_default();
@@ -210,44 +217,28 @@ where
                 if !check_json_content(&parts) {
                     return Ok(unsupported_media_type());
                 }
-                todo!()
-                //     let action = {
-                //         let mut rt = self.rt.lock();
-                //         match rt.http_post_action(&agent_id, trunc, payload.into(), &self.writer)? {
-                //             Ok(action) => {
-                //                 // Perform dry-run of action ( and return action resp in case of error )
-                //                 if let Err(e) = rt.perform_dry_run(&agent_id, &action, &self.writer)
-                //                 {
-                //                     let resp = ActionResp {
-                //                         success: false,
-                //                         action,
-                //                         error: Some(e.to_string()),
-                //                         tx_hash: None,
-                //                     };
-                //                     return Ok(json_response(&resp));
-                //                 }
+                let (events, action) = {
+                    let mut rt = self.rt.lock().await;
+                    match rt
+                        .http_post_action(&agent_id, trunc, payload.into(), &self.writer)
+                        .await?
+                    {
+                        Ok(out) => out,
+                        Err((status, err)) => {
+                            return Ok(err_response(status.try_into().unwrap(), err))
+                        }
+                    }
+                };
+                // TODO: Forward the events
+                // let tx_hash = self
+                //     .action_writer
+                //     .write_action(agent_id, action.clone())
+                //     .await
+                //     .map_err(|e| crate::Error::msg(format!("failed to write action: {e}")))?;
 
-                //                 action
-                //             }
-                //             Err((status, err)) => {
-                //                 return Ok(err_response(status.try_into().unwrap(), err))
-                //             }
-                //         }
-                //     };
-                //     let tx_hash = self
-                //         .action_writer
-                //         .write_action(agent_id, action.clone())
-                //         .await
-                //         .map_err(|e| crate::Error::msg(format!("failed to write action: {e}")))?;
-
-                //     // Build action response
-                //     let resp = ActionResp {
-                //         success: true,
-                //         error: None,
-                //         action,
-                //         tx_hash: Some(tx_hash),
-                //     };
-                //     Ok(json_response(&resp))
+                // Build action response
+                let resp = ActionResp { events, action };
+                Ok(json_response(&resp))
             }
             "" => Ok(method_not_allowed()),
             _ => Ok(reject_404()),

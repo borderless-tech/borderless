@@ -11,10 +11,12 @@ use borderless::{events::CallAction, hash::Hash256, BorderlessId, ContractId};
 use borderless_kv_store::Db;
 use borderless_runtime::{
     http::{
+        agent::SwAgentService,
         contract::{ActionWriter, ContractService},
         Service,
     },
-    CodeStore, Runtime, SharedRuntime,
+    swagent::Runtime as AgentRuntime,
+    CodeStore, Runtime as ContractRuntime, SharedRuntime,
 };
 use log::info;
 
@@ -23,6 +25,21 @@ use crate::generate_tx_ctx;
 /// Wraps the contract service
 async fn contract_handler(
     State(mut srv): State<ContractService<impl ActionWriter, impl Db + 'static>>,
+    req: Request<Body>,
+) -> Response<Body> {
+    let (parts, body) = req.into_parts();
+
+    // 10MB upper limit
+    let bytes = to_bytes(body, 10_000_000).await.unwrap_or_default();
+
+    let req = Request::from_parts(parts, bytes);
+    let res = srv.call(req).await.expect("infallible");
+    res.map(|bytes| bytes.into())
+}
+
+/// Wraps the agent service
+async fn agent_handler(
+    State(mut srv): State<SwAgentService<impl Db + 'static>>,
     req: Request<Body>,
 ) -> Response<Body> {
     let (parts, body) = req.into_parts();
@@ -68,7 +85,7 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
 pub async fn start_contract_server(db: impl Db + 'static) -> Result<()> {
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
     let code_store = CodeStore::new(&db)?;
-    let rt = Runtime::new(&db, code_store)?.into_shared();
+    let rt = ContractRuntime::new(&db, code_store)?.into_shared();
     rt.lock().set_executor(writer)?;
     let action_writer = ActionApplier {
         rt: rt.clone(),
@@ -80,6 +97,25 @@ pub async fn start_contract_server(db: impl Db + 'static) -> Result<()> {
     let contract = Router::new().fallback(contract_handler).with_state(srv);
 
     let app = Router::new().nest("/v0/contract", contract);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
+    info!("Listening on {}", listener.local_addr()?);
+
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
+pub async fn start_agent_server(db: impl Db + 'static) -> Result<()> {
+    let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
+    let code_store = CodeStore::new(&db)?;
+    let rt = AgentRuntime::new(&db, code_store)?.into_shared();
+    rt.lock().await.set_executor(writer)?;
+    let srv = SwAgentService::with_shared(db, rt, writer);
+
+    // Create a router and attach the custom service to a route
+    let contract = Router::new().fallback(agent_handler).with_state(srv);
+
+    let app = Router::new().nest("/v0/agent", contract);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
     info!("Listening on {}", listener.local_addr()?);

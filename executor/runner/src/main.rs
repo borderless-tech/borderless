@@ -28,7 +28,7 @@ use borderless_runtime::{
 use clap::{Parser, Subcommand};
 
 use log::info;
-use server::start_contract_server;
+use server::{start_agent_server, start_contract_server};
 
 mod server;
 
@@ -332,18 +332,20 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
             ));
 
             if let Some(ws_config) = init.ws_config {
-                // TODO: Dummy msg_rx - this has to be connected to the runtime somehow
-                let ws_handle = tokio::spawn(handle_ws_connection(rt, aid, ws_config, tx));
-                ws_handle.await;
+                let _ws_handle = tokio::spawn(handle_ws_connection(rt, aid, ws_config, tx));
+                // ws_handle.await;
             }
 
+            start_agent_server(db).await?;
             handle.await;
         }
         AgentAction::Logs => {
             let log = Logger::new(&db, aid).get_full_log()?;
             log.into_iter().for_each(print_log_line);
         }
-        AgentAction::Api => todo!(),
+        AgentAction::Api => {
+            start_agent_server(db).await?;
+        }
     }
     Ok(())
 }
