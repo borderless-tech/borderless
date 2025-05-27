@@ -18,5 +18,8 @@ pub use rt::*;
 /// Sub-Database for all contract related data
 pub const CONTRACT_SUB_DB: &str = "contract-db";
 
+/// Sub-Database for all agent related data
+pub const AGENT_SUB_DB: &str = "agent-db";
+
 /// Sub-Database, where the wasm code is stored
 pub const WASM_CODE_SUB_DB: &str = "wasm-code-db";

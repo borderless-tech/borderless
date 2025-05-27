@@ -23,7 +23,7 @@ use crate::db::logger::print_log_line;
 use crate::{
     db::logger,
     error::{ErrorKind, Result},
-    CONTRACT_SUB_DB,
+    AGENT_SUB_DB,
 };
 
 pub mod tasks;
@@ -51,7 +51,7 @@ where
 
 impl<S: Db> Runtime<S> {
     pub fn new(storage: &S, contract_store: CodeStore<S>) -> Result<Self> {
-        let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
+        let db_ptr = storage.create_sub_db(AGENT_SUB_DB)?;
         let start = Instant::now();
         let state = VmState::new_async(storage.clone(), db_ptr);
 
