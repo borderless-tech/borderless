@@ -78,43 +78,6 @@ pub fn into_server_error<E: ToString>(error: E) -> Response {
     *resp.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
     resp
 }
-
-pub trait ActionWriter: Clone + Send + Sync {
-    type Error: std::error::Error + Send + Sync;
-
-    fn write_action(
-        &self,
-        cid: ContractId,
-        action: CallAction,
-    ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send;
-}
-
-/// A dummy implementation of an action-writer, that does nothing with the action.
-#[derive(Clone)]
-pub struct NoActionWriter;
-
-impl ActionWriter for NoActionWriter {
-    type Error = Infallible;
-
-    async fn write_action(
-        &self,
-        _cid: ContractId,
-        _action: CallAction,
-    ) -> Result<Hash256, Self::Error> {
-        Ok(Hash256::zero())
-    }
-}
-
-#[derive(Serialize)]
-pub struct ActionResp {
-    pub success: bool,
-    pub action: CallAction,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tx_hash: Option<Hash256>,
-}
-
 #[cfg(feature = "contracts")]
 pub mod contract {
     pub use super::*;
@@ -131,6 +94,42 @@ pub mod contract {
         task::{Context, Poll},
         time::Instant,
     };
+
+    pub trait ActionWriter: Clone + Send + Sync {
+        type Error: std::error::Error + Send + Sync;
+
+        fn write_action(
+            &self,
+            cid: ContractId,
+            action: CallAction,
+        ) -> impl Future<Output = Result<Hash256, Self::Error>> + Send;
+    }
+
+    /// A dummy implementation of an action-writer, that does nothing with the action.
+    #[derive(Clone)]
+    pub struct NoActionWriter;
+
+    impl ActionWriter for NoActionWriter {
+        type Error = Infallible;
+
+        async fn write_action(
+            &self,
+            _cid: ContractId,
+            _action: CallAction,
+        ) -> Result<Hash256, Self::Error> {
+            Ok(Hash256::zero())
+        }
+    }
+
+    #[derive(Serialize)]
+    pub struct ActionResp {
+        pub success: bool,
+        pub action: CallAction,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub tx_hash: Option<Hash256>,
+    }
 
     /// Simple service around the runtime
     #[derive(Clone)]
