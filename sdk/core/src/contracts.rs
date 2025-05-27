@@ -199,6 +199,14 @@ impl Id {
             Id::Agent { agent_id } => Some(*agent_id),
         }
     }
+
+    pub fn contract(contract_id: ContractId) -> Self {
+        Id::Contract { contract_id }
+    }
+
+    pub fn agent(agent_id: AgentId) -> Self {
+        Id::Agent { agent_id }
+    }
 }
 
 impl AsRef<[u8; 16]> for Id {
@@ -225,6 +233,18 @@ impl PartialEq<AgentId> for Id {
             Id::Agent { agent_id } => agent_id == other,
             Id::Contract { .. } => false,
         }
+    }
+}
+
+impl From<ContractId> for Id {
+    fn from(contract_id: ContractId) -> Self {
+        Id::Contract { contract_id }
+    }
+}
+
+impl From<AgentId> for Id {
+    fn from(agent_id: AgentId) -> Self {
+        Id::Agent { agent_id }
     }
 }
 

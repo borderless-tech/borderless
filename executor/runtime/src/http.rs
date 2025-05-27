@@ -8,6 +8,9 @@ pub use tower::Service;
 #[cfg(feature = "contracts")]
 pub mod contract;
 
+#[cfg(feature = "agents")]
+pub mod agent;
+
 pub type Request<T = Bytes> = http::Request<T>;
 pub type Response<T = Bytes> = http::Response<T>;
 
