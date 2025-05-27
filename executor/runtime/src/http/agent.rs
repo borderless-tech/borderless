@@ -113,15 +113,15 @@ where
                 }
             }
             // TODO
-            // "logs" => {
-            //     // Extract pagination
-            //     let pagination = Pagination::from_query(query).unwrap_or_default();
+            "logs" => {
+                // Extract pagination
+                let pagination = Pagination::from_query(query).unwrap_or_default();
 
-            //     // Get logs
-            //     let log = controller.logs(agent_id).get_logs_paginated(pagination)?;
+                // Get logs
+                let log = controller.logs(agent_id).get_logs_paginated(pagination)?;
 
-            //     Ok(json_response(&log))
-            // }
+                Ok(json_response(&log))
+            }
             // "txs" => {
             //     // Extract pagination
             //     let pagination = Pagination::from_query(query).unwrap_or_default();
