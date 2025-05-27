@@ -785,6 +785,7 @@ pub fn timestamp() -> wasmtime::Result<i64> {
     Ok(timestamp)
 }
 
+/// Async (agent) ABI implementation
 #[cfg(feature = "agents")]
 pub mod async_abi {
     use borderless::Context;
@@ -797,6 +798,14 @@ pub mod async_abi {
     };
     use std::{result::Result, str::FromStr, time::Duration};
 
+    /// Host function to send a websocket message
+    ///
+    /// The state of the websocket connection is not managed by the `VmState` itself.
+    /// Instead, the `VmState` can communicate the request to send a new message over the open connection,
+    /// via a channel (see [`tokio::mpsc::Sender`]). To avoid blocking - this function fails if the message
+    /// was not picked up within a finite amount of time by the task with the ws-connection.
+    ///
+    /// This is the host implementation of `borderless_abi::send_ws_msg` and must be linked by the runtime.
     pub async fn send_ws_msg(
         mut caller: Caller<'_, VmState<impl Db>>,
         msg_ptr: u64,
@@ -845,6 +854,9 @@ pub mod async_abi {
         }
     }
 
+    /// Host function to send a http-request
+    ///
+    /// This is the host implementation of `borderless_abi::send_http_rq` and must be linked by the runtime.
     pub async fn send_http_rq(
         mut caller: Caller<'_, VmState<impl Db>>,
         register_rq_head: u64,
@@ -910,6 +922,10 @@ pub mod async_abi {
         Ok(0)
     }
 
+    /// Helper function, that parses a [`reqwest::Request`] from raw parts
+    ///
+    /// As we designed the ABI, we communicate the header and the body seperately via registers.
+    /// To actually have a typesafe interface, this function parses the header and body into a typed request.
     fn parse_reqwest_request_from_parts(
         client: &Client,
         head: &str,
@@ -965,6 +981,9 @@ pub mod async_abi {
         Ok(rq)
     }
 
+    /// Helper function to serialize the response header
+    ///
+    /// See [`serialize_response_for_ffi`].
     fn serialize_response_head(resp: &Response) -> Result<String, String> {
         // Get status code and version
         let status = resp.status();
@@ -998,6 +1017,9 @@ pub mod async_abi {
         Ok(head)
     }
 
+    /// Helper function to serialize the response back to wasm
+    ///
+    /// Basically the inverse of [`parse_reqwest_request_from_parts`].
     async fn serialize_response_for_ffi(resp: Response) -> Result<(String, Vec<u8>), String> {
         let head = serialize_response_head(&resp)?;
         // Get body as bytes
