@@ -32,13 +32,20 @@ use crate::{
     Error, Result,
 };
 
-// NOTE: I think this generalizes for both contracts and sw-agents;
-//
-// We have to fine-tune some things, but in general this works.
-//
-// TODO: Since it does not generalize completely; we could maybe define a trait for this ?
-// -> Or not. Let's first add the functionality for the SW-Agents (websocket etc.)
-
+/// Virtual-Machine State
+///
+/// Represents the semi-persistent state of the wasm virtual machine.
+/// This definition is identical for smart-contracts and software-agents,
+/// with some additions for the async capabilities of the software-agents.
+///
+/// The main concepts behind this are the `registers`, which are used to share arbitrary data
+/// between the host and wasm guest side. You can think of them as a shared hashmap, with functions on both sides for reading and writing
+/// (e.g. [`read_register`] is called from guest code in wasm and [`VmState::get_register`] can be used from the host functions).
+///
+/// The `VmState` also tracks the currently active entity (contract or agent) and calculates the storage-keys based on its ID.
+/// Every operation on the storage is buffered (see [`StorageOp`]) and commited to the database, if the execution was successful.
+///
+/// The `VmState` is also polymorph over the storage implementation.
 pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
     db: S,
@@ -439,10 +446,17 @@ fn copy_wasm_memory(
 }
 
 // --- Begin to implement abi
+
+/// Host function that starts a new timer.
+///
+/// This is the host implementation of `borderless_abi::tic` and must be linked by the runtime.
 pub fn tic(mut caller: Caller<'_, VmState<impl Db>>) {
     caller.data_mut().last_timer = Some(Instant::now());
 }
 
+/// Host function that stops a new timer.
+///
+/// This is the host implementation of `borderless_abi::toc` and must be linked by the runtime.
 pub fn toc(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
     let timer = caller
         .data()
@@ -456,6 +470,9 @@ pub fn toc(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
 }
 
 // TODO: Change this to "log"
+/// Host function that logs a string with a log-level.
+///
+/// This is the host implementation of `borderless_abi::print` and must be linked by the runtime.
 pub fn print(
     mut caller: Caller<'_, VmState<impl Db>>,
     ptr: u64,
@@ -487,6 +504,14 @@ pub fn print(
     Ok(())
 }
 
+/// Host function that reads bytes from some register.
+///
+/// Used to feed data from the host to the guest.
+///
+/// The guest (wasm side) must use [`register_len`] before reading,
+/// to allocate enough space in the buffer behind the pointer `ptr`.
+///
+/// This is the host implementation of `borderless_abi::read_register` and must be linked by the runtime.
 pub fn read_register(
     mut caller: Caller<'_, VmState<impl Db>>,
     register_id: u64,
@@ -525,6 +550,12 @@ pub fn read_register(
     Ok(())
 }
 
+/// Host function that returns the number of bytes (length) that are stored in some register.
+///
+/// The guest (wasm side) must use [`register_len`] before calling [`read_register`],
+/// to know, how much space must be allocated for reading.
+///
+/// This is the host implementation of `borderless_abi::register_len` and must be linked by the runtime.
 pub fn register_len(caller: Caller<'_, VmState<impl Db>>, register_id: u64) -> u64 {
     match caller.data().registers.get(&register_id) {
         Some(data) => data.borrow().len() as u64,
@@ -532,6 +563,11 @@ pub fn register_len(caller: Caller<'_, VmState<impl Db>>, register_id: u64) -> u
     }
 }
 
+/// Host function that writes a value to some register.
+///
+/// Used to feed data from the guest to the host.
+///
+/// This is the host implementation of `borderless_abi::write_register` and must be linked by the runtime.
 pub fn write_register(
     mut caller: Caller<'_, VmState<impl Db>>,
     register_id: u64,
@@ -551,6 +587,12 @@ pub fn write_register(
 
 // --- Storage api
 
+/// Host function to write a value to the given storage location.
+///
+/// The storage location is defined by the `base_key` and `sub_key`, which are converted to a [`StorageKey`] by the `VmState` (see [`VmState::get_storage_key`]).
+/// The write operation will be commited to the storage, after the execution of the contract or agent.
+///
+/// This is the host implementation of `borderless_abi::storage_write` and must be linked by the runtime.
 pub fn storage_write(
     mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u64,
@@ -578,6 +620,11 @@ pub fn storage_write(
     Ok(())
 }
 
+/// Host function to read a value from the given storage location.
+///
+/// The storage location is defined by the `base_key` and `sub_key`, which are converted to a [`StorageKey`] by the `VmState` (see [`VmState::get_storage_key`]).
+///
+/// This is the host implementation of `borderless_abi::storage_read` and must be linked by the runtime.
 pub fn storage_read(
     mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u64,
@@ -605,6 +652,11 @@ pub fn storage_read(
     Ok(())
 }
 
+/// Host function to remove a value from the given storage location.
+///
+/// The storage location is defined by the `base_key` and `sub_key`, which are converted to a [`StorageKey`] by the `VmState` (see [`VmState::get_storage_key`]).
+///
+/// This is the host implementation of `borderless_abi::storage_remove` and must be linked by the runtime.
 pub fn storage_remove(
     mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u64,
@@ -625,6 +677,15 @@ pub fn storage_remove(
     Ok(())
 }
 
+/// Host function to create a storage cursor from the given base-key.
+///
+/// The storage locations are defined by a `base_key` and `sub_key`. The latter one is used for collections.
+/// This function is used to query all available sub-keys for some base-key. The mechanism for that is a storage-cursor,
+/// that starts iterating from (base-key, 0) until it hits the next base-key.
+/// All sub-keys are then stored in the registers, so that the wasm-side can query them, while this function
+/// returns the number of sub-keys found.
+///
+/// This is the host implementation of `borderless_abi::storage_cursor` and must be linked by the runtime.
 pub fn storage_cursor(
     mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u64,
@@ -667,6 +728,11 @@ pub fn storage_cursor(
     Ok(keys.len() as u64)
 }
 
+/// Host function to check, if a value exists at the given storage location.
+///
+/// The storage location is defined by the `base_key` and `sub_key`, which are converted to a [`StorageKey`] by the `VmState` (see [`VmState::get_storage_key`]).
+///
+/// This is the host implementation of `borderless_abi::storage_has_key` and must be linked by the runtime.
 pub fn storage_has_key(
     mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u64,
@@ -684,18 +750,31 @@ pub fn storage_has_key(
     Ok(result as u64)
 }
 
+/// Host function to generate a new random sub-key.
+///
+/// This is a very naive implementation, that relies on chance to not create a collision. Since our key-space is so stupidly large,
+/// the chances are near zero to create the same storage key for the same base-key in the contract.
+///
+/// This is the host implementation of `borderless_abi::storage_gen_sub_key` and must be linked by the runtime.
 pub fn storage_gen_sub_key() -> wasmtime::Result<u64> {
     let mut rng = rand::rng();
     Ok(rng.random())
 }
 
+/// Host function to generate a random number between `min` and `max`
+///
+/// Should only be used in tests or for software-agents, as randomness would introduce side-effects in the contracts.
+///
+/// This is the host implementation of `borderless_abi::rand` and must be linked by the runtime.
 pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
     let mut rng = rand::rng();
     let value: u64 = rng.random_range(min..max);
     Ok(value)
 }
 
-/// Returns the current timestamp as milliseconds since epoch
+/// Host function to returns the milliseconds since unix-epoch.
+///
+/// This is the host implementation of `borderless_abi::timestamp` and must be linked by the runtime.
 #[cfg(feature = "agents")]
 pub fn timestamp() -> wasmtime::Result<i64> {
     let timestamp = SystemTime::now()
