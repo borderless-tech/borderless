@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use borderless::events::AgentCall;
 use borderless::events::CallAction;
 use borderless::events::Events;
 use borderless::http::queries::Pagination;
@@ -7,6 +8,7 @@ use borderless::BorderlessId;
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use http::method::Method;
 use log::info;
+use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::future::Future;
 use std::{
@@ -24,6 +26,56 @@ use crate::{db::controller::Controller, rt::swagent::Runtime};
 pub struct ActionResp {
     pub events: Events,
     pub action: CallAction,
+}
+
+pub trait EventHandler: Clone + Send + Sync {
+    type Error: std::error::Error + Send + Sync;
+
+    fn handle_events(&self, events: Events)
+        -> impl Future<Output = Result<(), Self::Error>> + Send;
+}
+
+/// A dummy implementation of an event-handler, that does nothing with the events.
+///
+/// Useful for testing.
+#[derive(Clone)]
+pub struct NoEventHandler;
+
+impl EventHandler for NoEventHandler {
+    type Error = Infallible;
+
+    async fn handle_events(&self, _events: Events) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+/// A dummy implementation of an event-handler, that immediately applies all agent events
+///
+/// Discards all contract events in the process.
+///
+/// Useful for testing.
+#[derive(Clone)]
+pub struct RecursiveEventHandler {
+    pub rt: Arc<Mutex<Runtime>>,
+}
+
+impl EventHandler for RecursiveEventHandler {
+    type Error = crate::Error;
+
+    async fn handle_events(&self, events: Events) -> Result<(), Self::Error> {
+        let mut rt = self.rt.lock().await;
+        let mut agent_events = VecDeque::with_capacity(events.local.len());
+        agent_events.extend(events.local);
+
+        // Handle events one by one
+        while let Some(AgentCall { agent_id, action }) = agent_events.pop_front() {
+            // Queue all process events and apply them again
+            if let Some(events) = rt.process_action(&agent_id, action).await? {
+                agent_events.extend(events.local);
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Simple service around the runtime

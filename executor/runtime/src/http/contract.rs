@@ -30,6 +30,8 @@ pub trait ActionWriter: Clone + Send + Sync {
 }
 
 /// A dummy implementation of an action-writer, that does nothing with the action.
+///
+/// Useful for testing.
 #[derive(Clone)]
 pub struct NoActionWriter;
 
