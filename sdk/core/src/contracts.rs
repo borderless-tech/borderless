@@ -248,6 +248,37 @@ impl From<AgentId> for Id {
     }
 }
 
+/// Specifies the source for some wasm module
+///
+/// Can be either "remote", when the code can be fetched from our remote repository,
+/// or "local" - in this case the compiled module is just serialized as bytes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WasmSource {
+    Remote { repository: String },
+    Local { code: Vec<u8> },
+}
+
+// TODO: WIP - just to save some ideas
+// (the name should also be different)
+// -> maybe this should be part of the contract-package crate ?
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WasmModule {
+    /// Name of the application (group) that the contract is part of
+    pub application: String,
+
+    /// Name of the module inside the application
+    pub app_module: String,
+
+    // NOTE: This ensures compatibility with old versions
+    #[serde(default)]
+    #[serde(with = "crate::contracts::semver_as_string")]
+    /// SemVer compatible version string
+    pub version: SemVer,
+
+    /// Location, where the compiled module can be obtained
+    pub source: WasmSource,
+}
+
 /// Introduction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Introduction {
