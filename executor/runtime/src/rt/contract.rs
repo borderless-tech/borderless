@@ -495,6 +495,7 @@ fn check_module(engine: &Engine, module: &Module) -> Result<()> {
         "process_revocation",
         "http_get_state",
         "http_post_action",
+        "get_symbols",
     ];
     for func in functions {
         let exp = module
@@ -526,6 +527,7 @@ mod tests {
   (export "process_revocation" (func $placeholder))
   (export "http_get_state" (func $placeholder))
   (export "http_post_action" (func $placeholder))
+  (export "get_symbols" (func $placeholder))
 )
 "#;
     fn remove_line_with_pattern(original: &str, pattern: &str) -> String {
@@ -558,6 +560,7 @@ mod tests {
             "process_revocation",
             "http_get_state",
             "http_post_action",
+            "get_symbols",
         ];
         for func in functions {
             let wat_missing = remove_line_with_pattern(ALL_EXPORTS, func);

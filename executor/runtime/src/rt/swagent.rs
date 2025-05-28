@@ -478,89 +478,100 @@ impl<S: Db> Runtime<S> {
     }
 }
 
-// TODO: Agents have to export different functions
-fn check_module(_engine: &Engine, _module: &Module) -> Result<()> {
-    // let functions = [
-    //     "process_transaction",
-    //     "process_introduction",
-    //     "process_revocation",
-    //     "http_get_state",
-    //     "http_post_action",
-    // ];
-    // for func in functions {
-    //     let exp = module
-    //         .get_export(func)
-    //         .ok_or_else(|| ErrorKind::MissingExport { func })?;
-    //     if let ExternType::Func(func_type) = exp {
-    //         if !func_type.matches(&FuncType::new(engine, [], [])) {
-    //             return Err(ErrorKind::InvalidFuncType { func }.into());
-    //         }
-    //     } else {
-    //         return Err(ErrorKind::InvalidExport { func }.into());
-    //     }
-    // }
+// NOTE: We could also check, if the websocket functions are exported,
+// and do a consistency check, if the module uses a websocket.
+// But maybe that's overkill.
+fn check_module(engine: &Engine, module: &Module) -> Result<()> {
+    let functions = [
+        "on_init",
+        "on_shutdown",
+        "process_action",
+        "process_introduction",
+        "process_revocation",
+        "http_get_state",
+        "http_post_action",
+        "get_symbols",
+    ];
+    for func in functions {
+        let exp = module
+            .get_export(func)
+            .ok_or_else(|| ErrorKind::MissingExport { func })?;
+        if let ExternType::Func(func_type) = exp {
+            if !func_type.matches(&FuncType::new(engine, [], [])) {
+                return Err(ErrorKind::InvalidFuncType { func }.into());
+            }
+        } else {
+            return Err(ErrorKind::InvalidExport { func }.into());
+        }
+    }
     Ok(())
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//     const ALL_EXPORTS: &str = r#"
-// (module
-//   ;; Declare the function `placeholder`
-//   (func $placeholder)
+    const ALL_EXPORTS: &str = r#"
+(module
+  ;; Declare the function `placeholder`
+  (func $placeholder)
 
-//   ;; Export the functions so they can be called from outside the module
-//   (export "process_transaction" (func $placeholder))
-//   (export "process_introduction" (func $placeholder))
-//   (export "process_revocation" (func $placeholder))
-//   (export "http_get_state" (func $placeholder))
-//   (export "http_post_action" (func $placeholder))
-// )
-// "#;
-//     fn remove_line_with_pattern(original: &str, pattern: &str) -> String {
-//         // Create a new Vec to hold the processed lines
-//         let mut new_lines = Vec::new();
+  ;; Export the functions so they can be called from outside the module
+  (export "on_init" (func $placeholder))
+  (export "on_shutdown" (func $placeholder))
+  (export "process_action" (func $placeholder))
+  (export "process_introduction" (func $placeholder))
+  (export "process_revocation" (func $placeholder))
+  (export "http_get_state" (func $placeholder))
+  (export "http_post_action" (func $placeholder))
+  (export "get_symbols" (func $placeholder))
+)
+"#;
+    fn remove_line_with_pattern(original: &str, pattern: &str) -> String {
+        // Create a new Vec to hold the processed lines
+        let mut new_lines = Vec::new();
 
-//         for line in original.lines() {
-//             // Check if the line contains the pattern
-//             if !line.contains(pattern) {
-//                 // Otherwise, push the original line
-//                 new_lines.push(line);
-//             }
-//         }
+        for line in original.lines() {
+            // Check if the line contains the pattern
+            if !line.contains(pattern) {
+                // Otherwise, push the original line
+                new_lines.push(line);
+            }
+        }
 
-//         // Collect the lines back into a single string
-//         new_lines.join("\n")
-//     }
+        // Collect the lines back into a single string
+        new_lines.join("\n")
+    }
 
-//     #[test]
-//     fn missing_exports() {
-//         let mut config = Config::new();
-//         config.cranelift_opt_level(wasmtime::OptLevel::Speed);
-//         config.async_support(false);
-//         let engine = Engine::new(&config).unwrap();
+    #[test]
+    fn missing_exports() {
+        let mut config = Config::new();
+        config.cranelift_opt_level(wasmtime::OptLevel::Speed);
+        config.async_support(false);
+        let engine = Engine::new(&config).unwrap();
 
-//         // These are the functions, that must not be missing
-//         let functions = [
-//             "process_transaction",
-//             "process_introduction",
-//             "process_revocation",
-//             "http_get_state",
-//             "http_post_action",
-//         ];
-//         for func in functions {
-//             let wat_missing = remove_line_with_pattern(ALL_EXPORTS, func);
-//             let module = Module::new(&engine, &wat_missing);
-//             assert!(module.is_ok());
-//             let err = check_module(&engine, &module.unwrap());
-//             assert!(err.is_err());
-//         }
-//         let module = Module::new(&engine, &ALL_EXPORTS);
-//         assert!(module.is_ok());
+        // These are the functions, that must not be missing
+        let functions = [
+            "on_init",
+            "on_shutdown",
+            "process_action",
+            "process_introduction",
+            "process_revocation",
+            "http_get_state",
+            "http_post_action",
+            "get_symbols",
+        ];
+        for func in functions {
+            let wat_missing = remove_line_with_pattern(ALL_EXPORTS, func);
+            let module = Module::new(&engine, &wat_missing);
+            assert!(module.is_ok());
+            let err = check_module(&engine, &module.unwrap());
+            assert!(err.is_err());
+        }
+        let module = Module::new(&engine, &ALL_EXPORTS);
+        assert!(module.is_ok());
 
-//         let err = check_module(&engine, &module.unwrap());
-//         assert!(err.is_ok());
-//     }
-// }
+        let err = check_module(&engine, &module.unwrap());
+        assert!(err.is_ok());
+    }
+}
