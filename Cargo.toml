@@ -39,3 +39,10 @@ thiserror = "2.0"
 uuid = "1.16"
 nohash-hasher = "0.2"
 xxhash-rust = { version = "0.8", features = ["const_xxh3", "xxh32", "xxh64"] }
+
+# Use these for wasm binaries:
+#[profile.release]
+#opt-level = "z"
+#codegen-units = 1
+#lto = true
+#strip = "symbols"
