@@ -15,15 +15,16 @@ use borderless::{
 };
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_runtime::{
+    contract::{MutLock as ContractLock, Runtime as ContractRuntime},
     db::{
         controller::Controller,
         logger::{print_log_line, Logger},
     },
     swagent::{
         tasks::{handle_schedules, handle_ws_connection},
-        Runtime as AgentRuntime,
+        MutLock as AgentLock, Runtime as AgentRuntime,
     },
-    CodeStore, Runtime,
+    CodeStore,
 };
 use clap::{Parser, Subcommand};
 
@@ -151,7 +152,7 @@ async fn main() -> Result<()> {
 
 /// Generates a new dummy tx-ctx
 pub fn generate_tx_ctx(
-    mut rt: impl DerefMut<Target = Runtime<impl Db>>,
+    mut rt: impl DerefMut<Target = ContractRuntime<impl Db>>,
     cid: &ContractId,
 ) -> Result<TxCtx> {
     // We now have to provide additional context when executing the contract
@@ -175,7 +176,9 @@ pub fn generate_tx_ctx(
 async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
     // Create runtime
     let code_store = CodeStore::new(&db)?;
-    let mut rt = Runtime::new(&db, code_store)?;
+
+    let lock = ContractLock::default();
+    let mut rt = ContractRuntime::new(&db, code_store, lock)?;
 
     let cid: ContractId = if let Some(cid) = command.contract_id {
         cid
@@ -251,22 +254,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             log.into_iter().for_each(print_log_line);
         }
         ContractAction::Api => {
-            start_contract_server(db).await?;
-            // let mut buf = String::new();
-            // std::io::stdin().read_line(&mut buf)?;
-            // let input = buf.trim().to_lowercase();
-            // if input.is_empty() {
-            //     break;
-            // }
-            // if input.starts_with('/') {
-            //     let now = Instant::now();
-            //     // TODO: Query
-            //     let rs = rt.http_get_state(&cid, input)?;
-            //     let elapsed = now.elapsed();
-            //     let value = String::from_utf8(rs.payload)?;
-            //     info!("{}: {}, time elapsed: {elapsed:?}", rs.status, value);
-            //     continue;
-            // }
+            start_contract_server(db, rt.into_shared()).await?;
         }
     }
     Ok(())
@@ -276,7 +264,8 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
 async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
     // Create runtime
     let code_store = CodeStore::new(&db)?;
-    let mut rt = AgentRuntime::new(&db, code_store)?;
+    let lock = AgentLock::default();
+    let mut rt = AgentRuntime::new(&db, code_store, lock)?;
 
     let aid: AgentId = if let Some(aid) = command.agent_id {
         aid
@@ -332,11 +321,11 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
             ));
 
             if let Some(ws_config) = init.ws_config {
-                let _ws_handle = tokio::spawn(handle_ws_connection(rt, aid, ws_config, tx));
+                let _ws_handle = tokio::spawn(handle_ws_connection(rt.clone(), aid, ws_config, tx));
                 // ws_handle.await;
             }
 
-            start_agent_server(db).await?;
+            start_agent_server(db, rt).await?;
             handle.await;
         }
         AgentAction::Logs => {
@@ -344,7 +333,7 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
             log.into_iter().for_each(print_log_line);
         }
         AgentAction::Api => {
-            start_agent_server(db).await?;
+            start_agent_server(db, rt.into_shared()).await?;
         }
     }
     Ok(())

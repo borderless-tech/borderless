@@ -15,8 +15,8 @@ use borderless_runtime::{
         contract::{ActionWriter, ContractService},
         Service,
     },
-    swagent::Runtime as AgentRuntime,
-    CodeStore, Runtime as ContractRuntime, SharedRuntime,
+    swagent::SharedRuntime as SharedAgentRuntime,
+    SharedRuntime as SharedContractRuntime,
 };
 use log::info;
 
@@ -55,7 +55,7 @@ async fn agent_handler(
 /// A dummy action-writer, that instantly applies the actions to the runtime
 #[derive(Clone)]
 struct ActionApplier<S: Db> {
-    rt: SharedRuntime<S>,
+    rt: SharedContractRuntime<S>,
     writer: BorderlessId,
 }
 
@@ -82,10 +82,11 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
     }
 }
 
-pub async fn start_contract_server(db: impl Db + 'static) -> Result<()> {
+pub async fn start_contract_server<DB: Db + 'static>(
+    db: DB,
+    rt: SharedContractRuntime<DB>,
+) -> Result<()> {
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
-    let code_store = CodeStore::new(&db)?;
-    let rt = ContractRuntime::new(&db, code_store)?.into_shared();
     rt.lock().set_executor(writer)?;
     let action_writer = ActionApplier {
         rt: rt.clone(),
@@ -105,10 +106,11 @@ pub async fn start_contract_server(db: impl Db + 'static) -> Result<()> {
     Ok(())
 }
 
-pub async fn start_agent_server(db: impl Db + 'static) -> Result<()> {
+pub async fn start_agent_server<DB: Db + 'static>(
+    db: DB,
+    rt: SharedAgentRuntime<DB>,
+) -> Result<()> {
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
-    let code_store = CodeStore::new(&db)?;
-    let rt = AgentRuntime::new(&db, code_store)?.into_shared();
     rt.lock().await.set_executor(writer)?;
     let srv = SwAgentService::with_shared(db, rt, writer);
 

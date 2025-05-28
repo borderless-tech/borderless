@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
+use ahash::HashMap;
 use borderless::__private::registers::*;
 use borderless::contracts::{BlockCtx, Introduction, Revocation, Symbols, TxCtx};
 use borderless::events::Events;
@@ -45,10 +46,11 @@ where
     store: Store<VmState<S>>,
     engine: Engine,
     contract_store: CodeStore<S>,
+    mutability_lock: MutLock,
 }
 
 impl<S: Db> Runtime<S> {
-    pub fn new(storage: &S, contract_store: CodeStore<S>) -> Result<Self> {
+    pub fn new(storage: &S, contract_store: CodeStore<S>, lock: MutLock) -> Result<Self> {
         let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
         let start = Instant::now();
         let state = VmState::new(storage.clone(), db_ptr);
@@ -141,6 +143,7 @@ impl<S: Db> Runtime<S> {
             store,
             engine,
             contract_store,
+            mutability_lock: lock,
         })
     }
 
@@ -258,6 +261,9 @@ impl<S: Db> Runtime<S> {
             .contract_store
             .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
             .ok_or_else(|| ErrorKind::MissingContract { cid })?;
+
+        let mtx = self.mutability_lock.get_lock(&cid);
+        let _guard = mtx.lock();
 
         let contract_method = match &commit {
             ContractCommit::Action { .. } => "process_transaction",
@@ -485,6 +491,38 @@ impl<S: Db> Runtime<S> {
 
     pub fn available_contracts(&self) -> Result<Vec<ContractId>> {
         self.contract_store.available_contracts()
+    }
+}
+
+type Lock = Arc<Mutex<()>>;
+
+/// Global mutability lock for all contracts
+///
+/// Since we can only allow one mutable contract execution at a given time, we need a mechanism to ensure that.
+/// The `MutLock` ensures this on a per-contract basis. It holds `RwLock`s for all agents and provides threadsafe access.
+///
+/// The logic is similar but not identical to rusts ownership rules. While there can be only one read-write (mutable) execution,
+/// there can be multiple read-only (immutable) executions even if there is an ongoing read-write execution !
+/// The reason behind this is basically that read-only executions do not produce storage operations that would change the state in the database.
+/// In the `VmState`, all write operations are buffered until the execution is finished. If there would be two executions in parallel,
+/// we might end up commiting changes to a state, that has already changed under the hood - which is not what we want.
+/// However, if there is a writer thread, the readers do not care, and also the writer does not care about the readers.
+/// The readers will use the old state, until the new one is commited by the runtime.
+///
+/// Note: In contrast to [`borderless_runtime::rt::swagent::MutLock`], this version uses only synchronous lock primitives.
+#[derive(Clone, Default)]
+pub struct MutLock {
+    map: Arc<Mutex<HashMap<ContractId, Lock>>>,
+}
+
+impl MutLock {
+    /// Returns the `RwLock` for the given contract.
+    ///
+    /// If the contract-id is unknown, a new lock is created.
+    pub fn get_lock(&self, cid: &ContractId) -> Lock {
+        let mut map = self.map.lock();
+        let lock = map.entry(*cid).or_default();
+        lock.clone()
     }
 }
 

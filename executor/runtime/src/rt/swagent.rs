@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
+use ahash::HashMap;
 use borderless::__private::registers::*;
 use borderless::agents::Init;
 use borderless::contracts::{Introduction, Revocation, Symbols};
@@ -11,7 +12,8 @@ use borderless::{events::CallAction, AgentId, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
 use log::{error, warn};
-use tokio::sync::{mpsc, Mutex};
+use parking_lot::Mutex as SyncMutex;
+use tokio::sync::{mpsc, Mutex, RwLock};
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
 
 use super::vm::AgentCommit;
@@ -46,11 +48,12 @@ where
     linker: Linker<VmState<S>>,
     store: Store<VmState<S>>,
     engine: Engine,
-    contract_store: CodeStore<S>,
+    agent_store: CodeStore<S>,
+    mutability_lock: MutLock,
 }
 
 impl<S: Db> Runtime<S> {
-    pub fn new(storage: &S, contract_store: CodeStore<S>) -> Result<Self> {
+    pub fn new(storage: &S, agent_store: CodeStore<S>, lock: MutLock) -> Result<Self> {
         let db_ptr = storage.create_sub_db(AGENT_SUB_DB)?;
         let start = Instant::now();
         let state = VmState::new_async(storage.clone(), db_ptr);
@@ -162,7 +165,8 @@ impl<S: Db> Runtime<S> {
             linker,
             store,
             engine,
-            contract_store,
+            agent_store,
+            mutability_lock: lock,
         })
     }
 
@@ -178,7 +182,7 @@ impl<S: Db> Runtime<S> {
     ) -> Result<()> {
         let module = Module::from_file(&self.engine, path)?;
         check_module(&self.engine, &module)?;
-        self.contract_store.insert_swagent(contract_id, module)?;
+        self.agent_store.insert_swagent(contract_id, module)?;
         Ok(())
     }
 
@@ -200,7 +204,7 @@ impl<S: Db> Runtime<S> {
 
     pub async fn initialize(&mut self, aid: &AgentId) -> Result<Init> {
         let instance = self
-            .contract_store
+            .agent_store
             .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
@@ -287,10 +291,13 @@ impl<S: Db> Runtime<S> {
         commit: AgentCommit,
     ) -> Result<Option<Events>> {
         let instance = self
-            .contract_store
+            .agent_store
             .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
+
+        let lock = self.mutability_lock.get_lock(aid);
+        let _guard = lock.lock().await;
 
         // Prepare registers
         self.store.data_mut().set_register(REGISTER_INPUT, input);
@@ -321,7 +328,7 @@ impl<S: Db> Runtime<S> {
     pub async fn http_get_state(&mut self, aid: &AgentId, path: String) -> Result<(u16, Vec<u8>)> {
         // Get instance
         let instance = self
-            .contract_store
+            .agent_store
             .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
@@ -378,10 +385,13 @@ impl<S: Db> Runtime<S> {
         writer: &BorderlessId,
     ) -> Result<std::result::Result<(Events, CallAction), (u16, String)>> {
         let instance = self
-            .contract_store
+            .agent_store
             .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
+
+        let lock = self.mutability_lock.get_lock(aid);
+        let _guard = lock.lock().await;
 
         // NOTE: We cannot convert the payload into a call-action on-spot, as we might call a nested route.
         // To be precise - we *could* do it here, but I think it is cleaner to leave this logic up to the wasm module,
@@ -449,7 +459,7 @@ impl<S: Db> Runtime<S> {
     /// Returns the symbols of the contract
     pub async fn get_symbols(&mut self, aid: &AgentId) -> Result<Option<Symbols>> {
         let instance = self
-            .contract_store
+            .agent_store
             .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
@@ -474,7 +484,40 @@ impl<S: Db> Runtime<S> {
     }
 
     pub fn available_agents(&self) -> Result<Vec<AgentId>> {
-        self.contract_store.available_swagents()
+        self.agent_store.available_swagents()
+    }
+}
+
+type Lock = Arc<Mutex<()>>;
+
+/// Global mutability lock for all SW-Agents
+///
+/// Since we can only allow one mutable agent execution at a given time, we need a mechanism to ensure that.
+/// The `MutLock` ensures this on a per-agent basis. It holds `RwLock`s for all agents and provides threadsafe access.
+///
+/// The logic is similar but not identical to rusts ownership rules. While there can be only one read-write (mutable) execution,
+/// there can be multiple read-only (immutable) executions even if there is an ongoing read-write execution !
+/// The reason behind this is basically that read-only executions do not produce storage operations that would change the state in the database.
+/// In the `VmState`, all write operations are buffered until the execution is finished. If there would be two executions in parallel,
+/// we might end up commiting changes to a state, that has already changed under the hood - which is not what we want.
+/// However, if there is a writer thread, the readers do not care, and also the writer does not care about the readers.
+/// The readers will use the old state, until the new one is commited by the runtime.
+///
+/// Note: In contrast to [`borderless_runtime::rt::contract::MutLock`],
+/// this version uses asynchronous locks for the agents, and a synchronous lock only for the access of the hashmap.
+#[derive(Clone, Default)]
+pub struct MutLock {
+    map: Arc<SyncMutex<HashMap<AgentId, Lock>>>,
+}
+
+impl MutLock {
+    /// Returns the `RwLock` for the given agent.
+    ///
+    /// If the agent-id is unknown, a new lock is created.
+    pub fn get_lock(&self, aid: &AgentId) -> Lock {
+        let mut map = self.map.lock();
+        let lock = map.entry(*aid).or_default();
+        lock.clone()
     }
 }
 
