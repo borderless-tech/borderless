@@ -149,7 +149,7 @@ pub mod events {
     }
 
     #[derive(Debug, Serialize, Deserialize)]
-    pub struct ProcessCall {
+    pub struct AgentCall {
         pub agent_id: AgentId,
         pub action: CallAction,
     }
@@ -158,7 +158,7 @@ pub mod events {
     #[derive(Debug, Default, Serialize, Deserialize)]
     pub struct Events {
         pub contracts: Vec<ContractCall>,
-        pub local: Vec<ProcessCall>,
+        pub local: Vec<AgentCall>,
     }
 
     impl Events {
@@ -347,7 +347,7 @@ pub mod events {
                                         action,
                                     })
                                 }
-                                Sink::Agent { agent_id, .. } => local.push(ProcessCall {
+                                Sink::Agent { agent_id, .. } => local.push(AgentCall {
                                     agent_id: *agent_id,
                                     action,
                                 }),
@@ -357,7 +357,7 @@ pub mod events {
                             return Err(anyhow!("Failed to find sink '{alias}', which is referenced in the action output"));
                         }
                     }
-                    SinkType::Agent(agent_id) => local.push(ProcessCall { agent_id, action }),
+                    SinkType::Agent(agent_id) => local.push(AgentCall { agent_id, action }),
                     // TODO: The edge-case also applies here I guess ??
                     SinkType::Contract(contract_id) => contracts.push(ContractCall {
                         contract_id,
