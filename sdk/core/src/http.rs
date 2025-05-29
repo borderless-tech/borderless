@@ -2,7 +2,7 @@
 
 use std::str::FromStr;
 
-use borderless_id_types::TxIdentifier;
+use borderless_id_types::{AgentId, TxIdentifier};
 use http::header::CONTENT_TYPE;
 use queries::Pagination;
 use serde::de::DeserializeOwned;
@@ -10,7 +10,7 @@ use serde::Serialize;
 
 use crate::__private::send_http_rq;
 use crate::contracts::{Description, Info, Metadata};
-use crate::events::CallAction;
+use crate::events::{CallAction, Sink};
 use crate::warn;
 
 pub use http::{HeaderName, HeaderValue, Method, Request, Response, StatusCode, Version};
@@ -270,6 +270,17 @@ pub struct TxAction {
 #[derive(Debug, Clone, Serialize)]
 pub struct ContractInfo {
     pub info: Option<Info>,
+    pub desc: Option<Description>,
+    pub meta: Option<Metadata>,
+}
+
+/// Json description of an agent
+///
+/// Groups the most relevant information around a contract in a single datastructure.
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentInfo {
+    pub agent_id: AgentId,
+    pub sinks: Vec<Sink>,
     pub desc: Option<Description>,
     pub meta: Option<Metadata>,
 }

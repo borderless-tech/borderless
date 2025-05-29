@@ -1,11 +1,10 @@
-use std::{cell::RefMut, collections::HashMap, marker::PhantomData};
-
 use crate::error::Result;
 use crate::rt::CodeStore;
 use borderless::ContractId;
-use borderless_format::{Bundle, Ident, Metadata};
+use borderless_format::{Bundle, Ident, Metadata as Meta};
 use borderless_kv_store::Db;
 use serde::{de::DeserializeOwned, Serialize};
+use std::{collections::HashMap, marker::PhantomData};
 
 pub struct Registry<D: Db, F: Serialize + DeserializeOwned = Bundle> {
     code_store: CodeStore<D>,
@@ -33,7 +32,7 @@ where
         // validate the bundle
 
         // store metadata
-        self.meta.insert(contract_id, (meta, ident));
+        // self.meta.insert(contract_id, (meta, ident));
 
         todo!()
     }

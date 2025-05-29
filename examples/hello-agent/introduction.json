@@ -1,0 +1,18 @@
+{
+  "agent_id": "a265e6fd-7f7a-85b5-aa24-a79305daf2a5",
+  "initial_state": {
+    "ws_url": "ws://localhost:5555",
+    "cnt_schedule": 0,
+    "cnt_ws": 0
+  },
+  "sinks": [],
+  "desc": {
+    "display_name": "hello-agent",
+    "summary": "A simple agent that says hello"
+  },
+  "meta": {
+    "application": "hello_agent",
+    "app_module": "test",
+    "version": "0.1.0"
+  }
+}

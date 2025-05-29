@@ -6,6 +6,7 @@
 //! It is generally assumed, that the guest "knows" how to handle the bytes of the register.
 
 /// Register used for atomic operations
+#[allow(dead_code)]
 pub(crate) const REGISTER_ATOMIC_OP: u64 = u64::MAX - 1;
 
 /// Register used to feed input into the contract

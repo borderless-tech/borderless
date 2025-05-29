@@ -15,15 +15,21 @@ use borderless::{
 };
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_runtime::{
-    controller::Controller,
-    logger::{print_log_line, Logger},
-    swagent::Runtime as AgentRuntime,
-    CodeStore, Runtime,
+    contract::{MutLock as ContractLock, Runtime as ContractRuntime},
+    db::{
+        controller::Controller,
+        logger::{print_log_line, Logger},
+    },
+    swagent::{
+        tasks::{handle_schedules, handle_ws_connection},
+        MutLock as AgentLock, Runtime as AgentRuntime,
+    },
+    CodeStore,
 };
 use clap::{Parser, Subcommand};
 
 use log::info;
-use server::start_contract_server;
+use server::{start_agent_server, start_contract_server};
 
 mod server;
 
@@ -106,7 +112,7 @@ enum AgentAction {
         /// Input file containing introduction data
         introduction: PathBuf,
     },
-    /// Execute the given action on the contract
+    /// Execute the given action on the agent
     Process {
         /// Input file containing action data
         action: PathBuf,
@@ -117,11 +123,14 @@ enum AgentAction {
         revocation: PathBuf,
     },
 
+    /// Executes the agent in the background while also providing api access
+    Run,
+
     /// Prints out all logs for this agent
     Logs,
 
     // TODO: Make this also a top-level command maybe ?
-    /// Start a webserver which exposes the agent-api
+    /// Only provides API access but does not spin up the agent
     Api,
 }
 
@@ -143,7 +152,7 @@ async fn main() -> Result<()> {
 
 /// Generates a new dummy tx-ctx
 pub fn generate_tx_ctx(
-    mut rt: impl DerefMut<Target = Runtime<impl Db>>,
+    mut rt: impl DerefMut<Target = ContractRuntime<impl Db>>,
     cid: &ContractId,
 ) -> Result<TxCtx> {
     // We now have to provide additional context when executing the contract
@@ -167,7 +176,9 @@ pub fn generate_tx_ctx(
 async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
     // Create runtime
     let code_store = CodeStore::new(&db)?;
-    let mut rt = Runtime::new(&db, code_store)?;
+
+    let lock = ContractLock::default();
+    let mut rt = ContractRuntime::new(&db, code_store, lock)?;
 
     let cid: ContractId = if let Some(cid) = command.contract_id {
         cid
@@ -189,7 +200,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let data = read_to_string(introduction)?;
             let introduction = Introduction::from_str(&data)?;
 
-            let cid = introduction.contract_id;
+            let cid = introduction.id.as_cid().unwrap();
             let tx_ctx = generate_tx_ctx(&mut rt, &cid)?;
             info!("Introduce contract {cid}");
             let start = Instant::now();
@@ -243,22 +254,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             log.into_iter().for_each(print_log_line);
         }
         ContractAction::Api => {
-            start_contract_server(db).await?;
-            // let mut buf = String::new();
-            // std::io::stdin().read_line(&mut buf)?;
-            // let input = buf.trim().to_lowercase();
-            // if input.is_empty() {
-            //     break;
-            // }
-            // if input.starts_with('/') {
-            //     let now = Instant::now();
-            //     // TODO: Query
-            //     let rs = rt.http_get_state(&cid, input)?;
-            //     let elapsed = now.elapsed();
-            //     let value = String::from_utf8(rs.payload)?;
-            //     info!("{}: {}, time elapsed: {elapsed:?}", rs.status, value);
-            //     continue;
-            // }
+            start_contract_server(db, rt.into_shared()).await?;
         }
     }
     Ok(())
@@ -268,7 +264,8 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
 async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
     // Create runtime
     let code_store = CodeStore::new(&db)?;
-    let mut rt = AgentRuntime::new(&db, code_store)?;
+    let lock = AgentLock::default();
+    let mut rt = AgentRuntime::new(&db, code_store, lock)?;
 
     let aid: AgentId = if let Some(aid) = command.agent_id {
         aid
@@ -285,7 +282,19 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
 
     // Parse command
     match command.action {
-        AgentAction::Introduce { introduction } => todo!(),
+        AgentAction::Introduce { introduction } => {
+            // Parse introduction
+            let data = read_to_string(introduction)?;
+            let introduction = Introduction::from_str(&data)?;
+
+            let aid = introduction.id.as_aid().unwrap();
+
+            info!("Introduce agent {aid}");
+            let start = Instant::now();
+            let _events = rt.process_introduction(introduction).await?;
+            let elapsed = start.elapsed();
+            info!("Outer time elapsed: {elapsed:?}");
+        }
         AgentAction::Process { action } => {
             // Parse action
             let data = read_to_string(action)?;
@@ -297,8 +306,35 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
             log.into_iter().for_each(print_log_line);
         }
         AgentAction::Revoke { revocation } => todo!(),
-        AgentAction::Logs => todo!(),
-        AgentAction::Api => todo!(),
+        AgentAction::Run => {
+            let init = rt.initialize(&aid).await?;
+            dbg!(&init);
+            let rt = rt.into_shared();
+
+            // Spin up a dedicated task to handle the schedules
+            let (tx, _rx) = tokio::sync::mpsc::channel(1);
+            let handle = tokio::spawn(handle_schedules(
+                rt.clone(),
+                aid,
+                init.schedules,
+                tx.clone(),
+            ));
+
+            if let Some(ws_config) = init.ws_config {
+                let _ws_handle = tokio::spawn(handle_ws_connection(rt.clone(), aid, ws_config, tx));
+                // ws_handle.await;
+            }
+
+            start_agent_server(db, rt).await?;
+            handle.await;
+        }
+        AgentAction::Logs => {
+            let log = Logger::new(&db, aid).get_full_log()?;
+            log.into_iter().for_each(print_log_line);
+        }
+        AgentAction::Api => {
+            start_agent_server(db, rt.into_shared()).await?;
+        }
     }
     Ok(())
 }

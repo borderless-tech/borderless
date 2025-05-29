@@ -1,5 +1,3 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use borderless::http::queries::Pagination;
 use borderless::http::{PaginatedElements, TxAction};
 use borderless::ContractId;
@@ -7,11 +5,13 @@ use borderless_kv_store::{Db, RawRead, Tx};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use borderless::{contracts::TxCtx, events::CallAction};
+use borderless::contracts::TxCtx;
 
 use borderless::__private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG};
 
-use crate::controller::{read_system_value, write_system_value};
+#[cfg(any(feature = "contracts", feature = "agents"))]
+use borderless::events::CallAction;
+
 use crate::{Result, CONTRACT_SUB_DB};
 
 /// Sub-Key where the length of the action-log is stored
@@ -84,6 +84,7 @@ impl<'a, S: Db> ActionLog<'a, S> {
         Self { db, cid }
     }
 
+    #[cfg(any(feature = "contracts", feature = "agents"))]
     pub(crate) fn commit(
         self,
         db_ptr: &S::Handle,
@@ -91,6 +92,9 @@ impl<'a, S: Db> ActionLog<'a, S> {
         action: &CallAction,
         tx_ctx: TxCtx,
     ) -> Result<()> {
+        use super::controller::{read_system_value, write_system_value};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("timestamp < 1970")
@@ -110,8 +114,15 @@ impl<'a, S: Db> ActionLog<'a, S> {
             value: action.to_bytes()?,
             commited: timestamp,
         };
-        write_system_value::<S, _>(db_ptr, txn, &self.cid, BASE_KEY_ACTION_LOG, sub_key, &value)?;
-        write_system_value::<S, _>(
+        write_system_value::<S, _, _>(
+            db_ptr,
+            txn,
+            &self.cid,
+            BASE_KEY_ACTION_LOG,
+            sub_key,
+            &value,
+        )?;
+        write_system_value::<S, _, _>(
             db_ptr,
             txn,
             &self.cid,

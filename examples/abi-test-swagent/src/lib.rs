@@ -1,4 +1,6 @@
 use borderless::__private::{registers::*, *};
+use borderless::agents::{Init, Schedule, WsConfig};
+use borderless::events::MethodOrId;
 use borderless::http::{as_json, as_text, get, post_json, send_request, Json, Method, Request};
 use borderless::serialize::Value;
 use borderless::time::SystemTime;
@@ -16,6 +18,86 @@ pub extern "C" fn process_action() {
     }
 }
 
+/// Function that is called by the host when the agent is initialized
+///
+/// -> NOTE: This will be derived
+#[no_mangle]
+pub extern "C" fn on_init() {
+    dev::tic();
+    let result = exec_init();
+    let elapsed = dev::toc();
+    match result {
+        Ok(()) => info!("initialization successful. Time elapsed: {elapsed:?}"),
+        Err(e) => error!("initialization failed: {e:?}"),
+    }
+}
+
+/// Function that is called by the host when the ws-connection is opened
+#[no_mangle]
+pub extern "C" fn on_ws_open() {
+    info!("-- on-ws-open");
+    send_ws_msg("called on-open from wasm").unwrap();
+}
+
+/// Function that is called on receiving a new websocket message
+#[no_mangle]
+pub extern "C" fn on_ws_msg() {
+    dev::tic();
+    let result = exec_ws();
+    let elapsed = dev::toc();
+    match result {
+        Ok(()) => info!("execution successful. Time elapsed: {elapsed:?}"),
+        Err(e) => error!("execution failed: {e:?}"),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn on_ws_error() {
+    error!("-- on-ws-error");
+}
+
+#[no_mangle]
+pub extern "C" fn on_ws_close() {
+    error!("-- on-ws-close");
+}
+
+fn exec_init() -> Result<()> {
+    let mut my_init = Init {
+        schedules: Vec::new(),
+        ws_config: None,
+    };
+    my_init.schedules.push(Schedule {
+        method: MethodOrId::ByName {
+            method: "schedule-1".to_string(),
+        },
+        interval: 5_000,
+        delay: 2_000,
+    });
+    my_init.schedules.push(Schedule {
+        method: MethodOrId::ByName {
+            method: "schedule-2".to_string(),
+        },
+        interval: 10_000,
+        delay: 0,
+    });
+    my_init.ws_config = Some(WsConfig {
+        url: "ws://localhost:5555".to_string(),
+        reconnect: true,
+        ping_interval: 60,
+        binary: false,
+    });
+
+    let bytes = my_init.to_bytes()?;
+    write_register(REGISTER_OUTPUT, &bytes);
+    Ok(())
+}
+
+/// Function that is called by the host when the agent is shut down
+#[no_mangle]
+pub extern "C" fn on_shutdown() {
+    todo!()
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Post {
     title: String,
@@ -31,15 +113,22 @@ struct PostRes {
     user_id: usize,
 }
 
+fn exec_ws() -> Result<()> {
+    let input = read_register(REGISTER_INPUT).context("missing input register")?;
+    let msg = String::from_utf8(input)?;
+    info!("received msg: {msg}");
+    Ok(())
+}
+
 fn exec_run() -> Result<()> {
     // --- This will be the first snippet
     // Read action
     let input = read_register(REGISTER_INPUT).context("missing input register")?;
-    info!("read {} bytes", input.len());
+    // info!("read {} bytes", input.len());
 
     let action = CallAction::from_bytes(&input)?;
-    let s = action.pretty_print()?;
-    info!("{s}");
+    // let s = action.pretty_print()?;
+    // info!("{s}");
 
     let method = action
         .method_name()
@@ -47,8 +136,8 @@ fn exec_run() -> Result<()> {
 
     // TODO:
     // - [x] Complete http api
-    // - [ ] add websocket api
-    // - [ ] add schedule api
+    // - [x] add websocket api
+    // - [x] add schedule api
 
     /*
      * Regarding the schedules; I think the easiest way would be to treat the schedules just like actions without parameters.
@@ -121,6 +210,13 @@ fn exec_run() -> Result<()> {
             let updated: PostRes =
                 post_json(post, "https://jsonplaceholder.typicode.com/posts").and_then(as_json)?;
             info!("{updated:?}");
+        }
+        "schedule-1" => {
+            info!("This is schedule-1!");
+            send_ws_msg("This is my message from schedule-1")?;
+        }
+        "schedule-2" => {
+            info!("This is schedule-2!");
         }
         other => return Err(new_error!("unknown method: {other}")),
     }

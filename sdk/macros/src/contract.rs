@@ -1,10 +1,10 @@
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
-use syn::{Error, Ident, Item, Result};
+use syn::{Ident, Item, Result};
 
 use crate::{
-    action::{get_actions, impl_actions_enum, ActionFn},
-    utils::check_if_state,
+    action::{get_actions, impl_actions_enum, match_action, ActionFn},
+    state::get_state,
 };
 
 // TODO: Check, if module contains all required elements for a contract
@@ -253,49 +253,5 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
             ::borderless::error!("get-symbols failed: {e:?}");
         }
     }
-    }
-}
-
-fn get_state(items: &[Item], mod_span: &Span) -> Result<Ident> {
-    for item in items {
-        if let Item::Struct(item_struct) = item {
-            if check_if_state(item_struct) {
-                return Ok(item_struct.ident.clone());
-            }
-        }
-    }
-    Err(Error::new(
-        *mod_span,
-        "Each module requires a 'State' - use #[derive(State)]",
-    ))
-}
-
-/// Creates the doubly nested match block required to match actions either by method-name or method-id.
-///
-/// The result of `call_fns` will be captured as an outer variable `_match_result`.
-fn match_action(
-    action_names: &[String],
-    action_ids: &[u32],
-    call_fns: &[TokenStream2],
-) -> TokenStream2 {
-    quote! {
-    let _match_result = match &action.method {
-        MethodOrId::ByName { method } => match method.as_str() {
-            #(
-            #action_names => {
-                #call_fns
-            }
-            )*
-            other => { return Err(new_error!("Unknown method: {other}")) }
-        }
-        MethodOrId::ById { method_id } => match method_id {
-            #(
-            #action_ids => {
-                #call_fns
-            }
-            )*
-            other => { return Err(new_error!("Unknown method-id: 0x{other:04x}")) }
-        }
-    };
     }
 }
