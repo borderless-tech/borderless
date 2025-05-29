@@ -10,9 +10,9 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{rt::action_log::ActionLog, rt::logger::Logger, Result, CONTRACT_SUB_DB};
 
-// TODO: Add agent related functions aswell
+// TODO: Add agent related functions as well
 
-/// Model-controller to retrive information about a contract from the key-value storage.
+/// Model-controller to retrieve information about a contract from the key-value storage.
 pub struct Controller<'a, S: Db> {
     db: &'a S,
 }
@@ -136,7 +136,7 @@ pub(crate) fn write_system_value<S: Db, D: Serialize>(
     Ok(())
 }
 
-// Helper function to write fields with system-keys
+// Helper function to read fields from system-keys
 pub(crate) fn read_system_value<S: Db, D: DeserializeOwned>(
     db_ptr: &S::Handle,
     txn: &<S as Db>::RwTx<'_>,
