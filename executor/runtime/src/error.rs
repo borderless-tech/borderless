@@ -51,6 +51,24 @@ impl From<borderless_format::Error> for Error {
     }
 }
 
+impl From<hex::FromHexError> for Error {
+    fn from(value: hex::FromHexError) -> Self {
+        ErrorKind::from(value).into()
+    }
+}
+
+impl From<ed25519_dalek::ed25519::Error> for Error {
+    fn from(value: ed25519_dalek::ed25519::Error) -> Self {
+        ErrorKind::from(value).into()
+    }
+}
+
+impl From<base64::DecodeError> for Error {
+    fn from(value: base64::DecodeError) -> Self {
+        ErrorKind::from(value).into()
+    }
+}
+
 #[derive(Debug, Error)]
 #[allow(dead_code)]
 pub(crate) enum ErrorKind {
@@ -74,6 +92,18 @@ pub(crate) enum ErrorKind {
     /// Wasmtime related errors
     #[error("wasmtime error - {0}")]
     Wasm(#[from] wasmtime::Error),
+
+    // Hex conversion related errors
+    #[error("hex error - {0}")]
+    Hex(#[from] hex::FromHexError),
+
+    // edwards curve related errors
+    #[error("ed22519 error - {0}")]
+    Ed25519(#[from] ed25519_dalek::ed25519::Error),
+
+    // base64 reltaed errors
+    #[error("base64 decode error - {0}")]
+    Base64(#[from] base64::DecodeError),
 
     // --- Module related errors
     /// Module function has an incorrect type

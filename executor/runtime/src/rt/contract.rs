@@ -167,7 +167,7 @@ impl<S: Db> Runtime<S> {
         // let module = Module::from_file(&self.engine, path)?;
         // check_module(&self.engine, &module)?;
         self.contract_registry
-            .insert_contract(contract_id, bundle)?;
+            .insert_contract(&self.engine, contract_id, bundle)?;
         Ok(())
     }
 

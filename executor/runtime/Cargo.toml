@@ -27,7 +27,9 @@ thiserror.workspace = true
 tokio = { version = "1", features = ["macros"], optional = true }
 tokio-tungstenite = { version = "0.26.2", features = ["rustls"] }
 futures-util = "0.3.31"
-
+ed25519-dalek = "2.1"
+hex = "0.4"
+base64 = "0.22"
 
 [features]
 default = [ "http", "contracts", "agents" ] # for now we enable all features by default
