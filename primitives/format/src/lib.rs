@@ -10,6 +10,10 @@ use std::path::Path;
 use std::{fs, io};
 use thiserror::Error;
 
+mod semver;
+
+pub use semver::SemVer;
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Error while loading from disk - {0}")]
@@ -19,44 +23,57 @@ pub enum Error {
     Serde(#[from] serde_json::Error),
 }
 
-/// Source contains information about
-/// wasm module as base64 and metadata
-/// like sdk and compiler version and the
-/// hash of the wasm
-#[derive(Serialize, Deserialize)]
-pub struct Source {
+/// Specifies the source for some wasm module
+///
+/// Can be either "remote", when the code can be fetched from our remote repository,
+/// or "local" - in this case the compiled module is just serialized as bytes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WasmSource {
+    Remote { repository: String },
+    Local { code: Vec<u8> },
+}
+
+// TODO: WIP - just to save some ideas
+// (the name should also be different)
+// -> maybe this should be part of the contract-package crate ?
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WasmModule {
     /// hash of wasm module
     pub hash: Hash256,
 
-    /// sdk version
-    pub version: String,
+    // NOTE: This ensures compatibility with old versions
+    #[serde(default)]
+    #[serde(with = "crate::semver::semver_as_string")]
+    /// SemVer compatible version string
+    pub version: SemVer,
 
-    /// compiler version
-    pub compiler: String,
-
-    /// wasm module
-    pub wasm: String,
+    /// Location, where the compiled module can be obtained
+    pub source: WasmSource,
 }
 
 /// Contract metadata descibe common
 /// fields of the contract itsel
 #[derive(Serialize, Deserialize)]
 pub struct Metadata {
-    /// decentralized identifier
-    pub did: String,
-
     /// contract name
     pub name: String,
-
-    /// contract version
-    pub version: String,
 
     /// authors
     pub authors: Vec<String>,
 
     /// contract description
     pub description: String,
+
+    /// Name of the application (group) that the contract is part of
+    #[serde(default)]
+    pub application: Option<String>,
+
+    /// Name of the module inside the application
+    #[serde(default)]
+    pub app_module: Option<String>,
 }
+
+// TODO: Refine this !
 
 /// Container conbining the Source and the
 /// Metadata to provide a struct to sign
@@ -66,7 +83,7 @@ pub struct Contract {
     pub meta: Metadata,
 
     /// contract source
-    pub src: Source,
+    pub src: WasmModule,
 }
 
 /// Ident identify the author of this contract
