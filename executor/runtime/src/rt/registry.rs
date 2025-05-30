@@ -2,7 +2,7 @@ use crate::error::ErrorKind;
 use crate::rt::CodeStore;
 use crate::{error::Result, Error};
 use base64::{engine::general_purpose, Engine as _};
-use borderless::ContractId;
+use borderless::{AgentId, ContractId};
 use borderless_format::{Bundle, Ident, Metadata as Meta, Source};
 use borderless_kv_store::Db;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -57,7 +57,8 @@ where
         data: Bundle,
     ) -> Result<()> {
         // split the bundle in parts();
-        let (ident, meta, src) = data.parts();
+        // TODO DO NOT CLONE THE WHOLE BUNDLE
+        let (ident, meta, src) = data.clone().parts();
 
         // verify the bundle
         let verification_level = Self::verify_bundle(&data)?;
@@ -78,6 +79,15 @@ where
         );
 
         Ok(())
+    }
+
+    pub fn insert_sw_agent(
+        &mut self,
+        engine: &Engine,
+        agent_id: AgentId,
+        data: Bundle,
+    ) -> Result<()> {
+        todo!()
     }
 
     fn init_wasm_module(engine: &Engine, src: &Source) -> Result<Module> {
