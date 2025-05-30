@@ -53,7 +53,7 @@ pub struct WasmModule {
 
 /// Contract metadata descibe common
 /// fields of the contract itsel
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Metadata {
     /// contract name
     pub name: String,
@@ -77,7 +77,7 @@ pub struct Metadata {
 
 /// Container conbining the Source and the
 /// Metadata to provide a struct to sign
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Contract {
     /// contract metadata
     pub meta: Metadata,
@@ -87,7 +87,7 @@ pub struct Contract {
 }
 
 /// Ident identify the author of this contract
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Ident {
     /// contract signature
     pub signature: String,
@@ -100,7 +100,7 @@ pub struct Ident {
 /// for the smart contract file format
 /// It contains the contract and the ident
 /// information
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Bundle {
     /// contract
     pub contract: Contract,
