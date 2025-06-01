@@ -1,7 +1,6 @@
 #[cfg(feature = "contracts")]
 pub mod contract;
 pub mod logger;
-pub mod registry;
 
 #[cfg(feature = "agents")]
 pub mod swagent;

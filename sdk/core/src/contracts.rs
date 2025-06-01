@@ -286,6 +286,9 @@ pub struct Introduction {
     #[serde(flatten)]
     pub id: Id,
 
+    /// The source of the related webassembly binary
+    pub wasm: WasmSource,
+
     /// List of participants
     #[serde(default)]
     pub participants: Vec<BorderlessId>,
