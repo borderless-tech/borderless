@@ -10,6 +10,8 @@ use std::path::Path;
 use std::{fs, io};
 use thiserror::Error;
 
+pub mod pkg;
+pub mod registry;
 mod semver;
 
 pub use semver::SemVer;
@@ -118,7 +120,7 @@ impl Bundle {
     }
 
     /// split the bundle in its parts
-    pub fn parts(self) -> (Option<Ident>, Metadata, Source) {
+    pub fn parts(self) -> (Option<Ident>, Metadata, WasmModule) {
         (self.ident, self.contract.meta, self.contract.src)
     }
 }

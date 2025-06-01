@@ -15,7 +15,8 @@ members = [
   "primitives/hash",
   "primitives/id-types",
   "primitives/format",
-  "registry"
+  "registry/server",
+  "registry/client"
 ]
 resolver = "2"
 
@@ -29,7 +30,9 @@ borderless-format = { path = "primitives/format" }
 borderless-hash = { path = "primitives/hash" }
 borderless-kv-store = { path = "kv-store" }
 borderless-runtime = { path = "executor/runtime" }
-borderless-registry = { path = "registry" }
+borderless-registry-server = { path = "registry/server" }
+borderless-registry-client = { path = "registry/client" }
+
 
 # External dependencies
 anyhow = "1.0"

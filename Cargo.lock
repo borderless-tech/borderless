@@ -255,6 +255,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89e25b6adfb930f02d1981565a6e5d9c547ac15a96606256d3b59040e5cd4ca3"
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -302,8 +311,10 @@ version = "0.1.0"
 name = "borderless-format"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "borderless-hash",
  "serde",
+ "serde_bytes",
  "serde_json",
  "thiserror 2.0.12",
 ]
@@ -346,11 +357,34 @@ dependencies = [
 ]
 
 [[package]]
-name = "borderless-registry"
+name = "borderless-registry-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "borderless-format",
+ "borderless-hash",
+ "reqwest",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+]
+
+[[package]]
+name = "borderless-registry-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
  "axum",
+ "bincode",
+ "borderless-format",
+ "borderless-hash",
+ "borderless-id-types",
+ "borderless-kv-store",
+ "clap",
+ "serde_json",
+ "thiserror 2.0.12",
  "tokio",
 ]
 

@@ -3,7 +3,7 @@ use crate::rt::CodeStore;
 use crate::{error::Result, Error};
 use base64::{engine::general_purpose, Engine as _};
 use borderless::{AgentId, ContractId};
-use borderless_format::{Bundle, Ident, Metadata as Meta, Source};
+use borderless_format::{Bundle, Ident, Metadata as Meta, WasmModule};
 use borderless_kv_store::Db;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use hex;
@@ -90,10 +90,8 @@ where
         todo!()
     }
 
-    fn init_wasm_module(engine: &Engine, src: &Source) -> Result<Module> {
-        let wasm_bytes: Vec<u8> = general_purpose::STANDARD.decode(&src.wasm)?;
-        let module = Module::new(engine, &wasm_bytes)?;
-        Ok(module)
+    fn init_wasm_module(engine: &Engine, src: &WasmModule) -> Result<Module> {
+        todo!()
     }
 
     fn verify_bundle(bundle: &Bundle) -> Result<VerificationLevel> {

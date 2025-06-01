@@ -8,3 +8,5 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
 borderless-hash = { path = "../hash" }
+serde_bytes = "0.11"
+async-trait = "0.1"
