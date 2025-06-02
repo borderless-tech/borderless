@@ -10,13 +10,13 @@ use axum::{
 use borderless::{events::CallAction, hash::Hash256, BorderlessId, ContractId};
 use borderless_kv_store::Db;
 use borderless_runtime::{
+    agent::SharedRuntime as SharedAgentRuntime,
     http::{
         agent::SwAgentService,
         contract::{ActionWriter, ContractService},
         Service,
     },
-    swagent::SharedRuntime as SharedAgentRuntime,
-    SharedRuntime as SharedContractRuntime,
+    SharedContractRuntime,
 };
 use log::info;
 
