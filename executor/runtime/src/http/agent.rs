@@ -55,11 +55,11 @@ impl EventHandler for NoEventHandler {
 ///
 /// Useful for testing.
 #[derive(Clone)]
-pub struct RecursiveEventHandler {
-    pub rt: Arc<Mutex<Runtime>>,
+pub struct RecursiveEventHandler<S: Db> {
+    pub rt: Arc<Mutex<Runtime<S>>>,
 }
 
-impl EventHandler for RecursiveEventHandler {
+impl<S: Db> EventHandler for RecursiveEventHandler<S> {
     type Error = crate::Error;
 
     async fn handle_events(&self, events: Events) -> Result<(), Self::Error> {
@@ -80,31 +80,45 @@ impl EventHandler for RecursiveEventHandler {
 
 /// Simple service around the runtime
 #[derive(Clone)]
-pub struct SwAgentService<S = Lmdb>
+pub struct SwAgentService<E, S = Lmdb>
 where
     S: Db + 'static,
+    E: EventHandler,
 {
     rt: Arc<Mutex<Runtime<S>>>,
     db: S,
     // TODO: This is not optimal. The runtime is not tied to a tx-writer,
     // and for our multi-tenant contract-node we require this to be flexible.
     writer: BorderlessId,
+    event_handler: E,
 }
 
-impl<S> SwAgentService<S>
+impl<S, E> SwAgentService<E, S>
 where
     S: Db + 'static,
+    E: EventHandler,
 {
-    pub fn new(db: S, rt: Runtime<S>, writer: BorderlessId) -> Self {
+    pub fn new(db: S, rt: Runtime<S>, writer: BorderlessId, event_handler: E) -> Self {
         Self {
             rt: Arc::new(Mutex::new(rt)),
             db,
             writer,
+            event_handler,
         }
     }
 
-    pub fn with_shared(db: S, rt: Arc<Mutex<Runtime<S>>>, writer: BorderlessId) -> Self {
-        Self { rt, db, writer }
+    pub fn with_shared(
+        db: S,
+        rt: Arc<Mutex<Runtime<S>>>,
+        writer: BorderlessId,
+        event_handler: E,
+    ) -> Self {
+        Self {
+            rt,
+            db,
+            writer,
+            event_handler,
+        }
     }
 
     async fn process_rq(&self, req: Request) -> crate::Result<Response> {
@@ -281,16 +295,15 @@ where
                         }
                     }
                 };
-                // TODO: Forward the events
-                // let tx_hash = self
-                //     .action_writer
-                //     .write_action(agent_id, action.clone())
-                //     .await
-                //     .map_err(|e| crate::Error::msg(format!("failed to write action: {e}")))?;
-
-                // Build action response
-                let resp = ActionResp { events, action };
-                Ok(json_response(&resp))
+                // Forward the events
+                match self.event_handler.handle_events(events.clone()).await {
+                    Ok(_) => {
+                        // Build action response
+                        let resp = ActionResp { events, action };
+                        Ok(json_response(&resp))
+                    }
+                    Err(e) => Ok(into_server_error(e)),
+                }
             }
             "" => Ok(method_not_allowed()),
             _ => Ok(reject_404()),
@@ -298,9 +311,10 @@ where
     }
 }
 
-impl<S> Service<Request> for SwAgentService<S>
+impl<E, S> Service<Request> for SwAgentService<E, S>
 where
     S: Db + 'static,
+    E: EventHandler + 'static,
 {
     type Response = Response;
     type Error = Infallible;

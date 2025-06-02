@@ -12,7 +12,7 @@ use borderless_kv_store::Db;
 use borderless_runtime::{
     agent::SharedRuntime as SharedAgentRuntime,
     http::{
-        agent::SwAgentService,
+        agent::{EventHandler, RecursiveEventHandler, SwAgentService},
         contract::{ActionWriter, ContractService},
         Service,
     },
@@ -38,10 +38,14 @@ async fn contract_handler(
 }
 
 /// Wraps the agent service
-async fn agent_handler(
-    State(mut srv): State<SwAgentService<impl Db + 'static>>,
+async fn agent_handler<E, S>(
+    State(mut srv): State<SwAgentService<E, S>>,
     req: Request<Body>,
-) -> Response<Body> {
+) -> Response<Body>
+where
+    E: EventHandler + 'static,
+    S: Db + 'static,
+{
     let (parts, body) = req.into_parts();
 
     // 10MB upper limit
@@ -111,8 +115,9 @@ pub async fn start_agent_server<DB: Db + 'static>(
     rt: SharedAgentRuntime<DB>,
 ) -> Result<()> {
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
+    let event_handler = RecursiveEventHandler { rt: rt.clone() };
     rt.lock().await.set_executor(writer)?;
-    let srv = SwAgentService::with_shared(db, rt, writer);
+    let srv = SwAgentService::with_shared(db, rt, writer, event_handler);
 
     // Create a router and attach the custom service to a route
     let contract = Router::new().fallback(agent_handler).with_state(srv);
