@@ -3,8 +3,11 @@
 /// We do this by initializing a contract with a number, and feeding that number + 1 into a process.
 /// Each processing entity will add +1 to the number, and then we check if the number has increased exactly 3 times
 // This contract is the "sink" at the end and also the "source" -> we go into circles here
+mod agent_actions;
+
 #[borderless::contract]
 pub mod cc_contract {
+    use super::agent_actions::Actions as ProcActions;
     use borderless::*;
     use events::ActionOutput;
     use serde::{Deserialize, Serialize};
@@ -17,7 +20,7 @@ pub mod cc_contract {
 
     #[derive(NamedSink)]
     pub enum Sinks {
-        // NextProcess(ProcActions),
+        NextProcess(ProcActions),
     }
 
     impl CC {
@@ -32,9 +35,9 @@ pub mod cc_contract {
         pub fn call_next(&mut self) -> Result<ActionOutput> {
             // Use own number + 1 and call the process to call the next process
             let mut out = ActionOutput::default();
-            // out.add_event(Sinks::NextProcess(ProcActions::IncreaseProcess {
-            //     number: self.number + 1,
-            // }));
+            out.add_event(Sinks::NextProcess(ProcActions::IncreaseProcess {
+                number: self.number + 1,
+            }));
             Ok(out)
         }
     }
