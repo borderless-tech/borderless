@@ -31,3 +31,6 @@ pub const AGENT_SUB_DB: &str = "agent-db";
 
 /// Sub-Database, where the wasm code is stored
 pub const WASM_CODE_SUB_DB: &str = "wasm-code-db";
+
+/// Sub-Database to store the relationship between an action and a transaction
+pub const ACTION_TX_REL_SUB_DB: &str = "rel-tx-action-db";

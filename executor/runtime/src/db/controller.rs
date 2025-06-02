@@ -6,13 +6,16 @@ use borderless::{
     hash::Hash256,
     http::{AgentInfo, ContractInfo},
     prelude::Id,
-    AgentId,
+    AgentId, TxIdentifier,
 };
 use borderless_kv_store::*;
 use serde::de::DeserializeOwned;
 
-use super::{action_log::ActionLog, logger::Logger};
-use crate::{Result, AGENT_SUB_DB, CONTRACT_SUB_DB};
+use super::{
+    action_log::{ActionLog, ActionRecord, RelTxAction},
+    logger::Logger,
+};
+use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB};
 
 // TODO: Add agent related functions aswell
 // -> We have to check here, that the controller always uses the correct sub-db
@@ -28,12 +31,12 @@ impl<'a, S: Db> Controller<'a, S> {
     }
 
     /// Returns the [`ActionLog`] of the contract
-    pub fn actions(self, cid: ContractId) -> ActionLog<'a, S> {
+    pub fn actions(&self, cid: ContractId) -> ActionLog<'a, S> {
         ActionLog::new(self.db, cid)
     }
 
     /// Returns the [`Logger`] of the contract or agent
-    pub fn logs(self, id: impl Into<Id>) -> Logger<'a, S> {
+    pub fn logs(&self, id: impl Into<Id>) -> Logger<'a, S> {
         Logger::new(self.db, id)
     }
 
@@ -180,6 +183,30 @@ impl<'a, S: Db> Controller<'a, S> {
     /// Returns the [`Revocation`] of the contract, if any.
     pub fn agent_revocation(&self, aid: &AgentId) -> Result<Option<Revocation>> {
         self.read_value(&Id::agent(*aid), BASE_KEY_METADATA, META_SUB_KEY_REVOCATION)
+    }
+
+    /// Queries an [`ActionRecord`] based on the [`TxIdentifier`]
+    pub fn query_action(&self, tx_id: &TxIdentifier) -> Result<Option<ActionRecord>> {
+        let tx_id_bytes = tx_id.to_bytes();
+        let relation = {
+            let rel_db = self.db.create_sub_db(ACTION_TX_REL_SUB_DB)?;
+            let txn = self.db.begin_ro_txn()?;
+            match txn.read(&rel_db, &tx_id_bytes)? {
+                Some(bytes) => RelTxAction::from_bytes(&bytes),
+                None => return Ok(None),
+            }
+        };
+        // Do a sanity-check before we return the record
+        match self
+            .actions(relation.cid)
+            .get(relation.action_idx as usize)?
+        {
+            Some(record) => {
+                debug_assert!(record.tx_ctx.tx_id == *tx_id, "tx-id must match");
+                Ok(Some(record))
+            }
+            None => Ok(None),
+        }
     }
 
     fn read_value<D: DeserializeOwned>(
