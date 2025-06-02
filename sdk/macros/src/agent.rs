@@ -205,6 +205,7 @@ pub fn parse_module_content(
             // So for now, we roll with it.
             match post_action_response(path, payload) {
                 Ok(action) => {
+                    let action_bytes = action.to_bytes()?;
                     let mut state = #as_state::load()?;
                     #match_and_call_action
                     let events = _match_result?;
@@ -214,7 +215,7 @@ pub fn parse_module_content(
                     }
                     #as_state::commit(state);
                     write_register(REGISTER_OUTPUT_HTTP_STATUS, 200u16.to_be_bytes());
-                    write_register(REGISTER_OUTPUT_HTTP_RESULT, action.to_bytes()?);
+                    write_register(REGISTER_OUTPUT_HTTP_RESULT, action_bytes);
                 }
                 Err(e) => {
                     write_register(REGISTER_OUTPUT_HTTP_STATUS, 400u16.to_be_bytes());
