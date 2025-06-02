@@ -11,7 +11,6 @@ use crate::{
     state::get_state,
 };
 
-// TODO: Add attributes
 pub fn parse_module_content(
     mod_span: Span,
     mod_items: &[Item],
@@ -134,7 +133,6 @@ pub fn parse_module_content(
         #[automatically_derived]
         pub(crate) fn exec_introduction() -> Result<()> {
             #read_input
-            // TODO: Use different introduction type for agents
             let introduction = Introduction::from_bytes(&input)?;
             let s = introduction.pretty_print()?;
             info!("{s}");
@@ -153,7 +151,6 @@ pub fn parse_module_content(
 
     let init_ws = if use_websocket {
         quote! {
-            // TODO: Websocket
             my_init.ws_config = Some(get_ws_config()?);
         }
     } else {
