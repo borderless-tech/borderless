@@ -15,22 +15,22 @@ use crate::utils::check_if_action;
 /// Helper struct to bundle all necessary information for our action-functions
 pub struct ActionFn {
     /// Ident (name) of the action
-    ident: Ident,
+    pub ident: Ident,
     /// Associated method-id - either calculated or overriden by the user
-    method_id: u32,
+    pub method_id: u32,
     /// Indicates that the method-name does not match the function name
-    name_override: Option<String>,
+    pub name_override: Option<String>,
     /// Weather or not the action should be exposed via api
-    web_api: bool,
+    pub web_api: bool,
     /// Roles, that are allowed to call the function. Empty means no restrictions.
-    roles: Vec<String>,
+    pub roles: Vec<String>,
     /// Weather or not the function requires &mut self
-    mut_self: bool,
+    pub mut_self: bool,
     /// Return type of the function
-    output: ReturnType,
+    pub output: ReturnType,
     /// Arguments of the function
-    args: Vec<(Ident, Box<Type>)>,
-    _span: Span,
+    pub args: Vec<(Ident, Box<Type>)>,
+    pub _span: Span,
 }
 
 impl ActionFn {
@@ -199,6 +199,36 @@ pub fn get_actions(state_ident: &Ident, mod_items: &[Item]) -> Result<Vec<Action
     ))
 }
 
+/// Creates the doubly nested match block required to match actions either by method-name or method-id.
+///
+/// The result of `call_fns` will be captured as an outer variable `_match_result`.
+pub fn match_action(
+    action_names: &[String],
+    action_ids: &[u32],
+    call_fns: &[TokenStream2],
+) -> TokenStream2 {
+    quote! {
+    let _match_result = match &action.method {
+        MethodOrId::ByName { method } => match method.as_str() {
+            #(
+            #action_names => {
+                #call_fns
+            }
+            )*
+            other => { return Err(new_error!("Unknown method: {other}")) }
+        }
+        MethodOrId::ById { method_id } => match method_id {
+            #(
+            #action_ids => {
+                #call_fns
+            }
+            )*
+            other => { return Err(new_error!("Unknown method-id: 0x{other:04x}")) }
+        }
+    };
+    }
+}
+
 fn get_actions_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result<Vec<ActionFn>> {
     let mut actions = Vec::new();
     for item in impl_block.items.iter() {
@@ -307,7 +337,7 @@ fn get_actions_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result<V
 }
 
 /// Calculate the method-id based on the state and action name.
-fn calc_method_id(state_ident: &Ident, action_ident: &Ident, rename: Option<String>) -> u32 {
+pub fn calc_method_id(state_ident: &Ident, action_ident: &Ident, rename: Option<String>) -> u32 {
     let action_name = rename.unwrap_or_else(|| action_ident.to_string());
     let full_name = format!("{}::{}", state_ident, action_name).to_uppercase();
     // Since we only want 32-bits, we simply truncate the output:

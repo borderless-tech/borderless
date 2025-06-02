@@ -46,6 +46,7 @@ impl From<wasmtime::Error> for Error {
 }
 
 #[derive(Debug, Error)]
+#[allow(dead_code)]
 pub(crate) enum ErrorKind {
     // --- High-level errors
     /// Storage errors
@@ -88,6 +89,9 @@ pub(crate) enum ErrorKind {
     #[error("contract is revoked and cannot process transactions cid={cid}")]
     RevokedContract { cid: ContractId },
 
+    #[error("introduction id is not for the correct type of entity - agent vs contract mismatch")]
+    InvalidIdType,
+
     /// Missing required value in register
     // --- Register errors
     #[error("missing required value '{0}' in register")]
@@ -106,6 +110,9 @@ pub(crate) enum ErrorKind {
 
     #[error("no active entity in VmState")]
     NoActiveEntity,
+
+    #[error("VmState is not initialized with async support")]
+    NoAsync,
 
     /// Generic error message - useful for communicating more complicated errors
     #[error("{0}")]

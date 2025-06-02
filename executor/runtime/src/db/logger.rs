@@ -4,12 +4,13 @@ use borderless::{
     __private::storage_keys::{StorageKey, BASE_KEY_LOGS},
     http::{queries::Pagination, PaginatedElements},
     log::{LogLevel, LogLine},
+    prelude::Id,
 };
 use borderless_kv_store::*;
 use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 
-use crate::{Result, CONTRACT_SUB_DB};
+use crate::{Result, AGENT_SUB_DB, CONTRACT_SUB_DB};
 
 /// Storage key, where the meta-information about the buffer is saved
 const SUB_KEY_META: u64 = u64::MAX;
@@ -27,13 +28,6 @@ struct BufferMeta {
     last_flush_count: u64,
 }
 
-struct Id([u8; 16]);
-impl AsRef<[u8; 16]> for Id {
-    fn as_ref(&self) -> &[u8; 16] {
-        &self.0
-    }
-}
-
 /// Logger instance that is created over a key-value storage for a given contract-id
 ///
 /// The logger is essentially a ring-buffer with a fixed size, that uses a specific key-space.
@@ -43,11 +37,8 @@ pub struct Logger<'a, S: Db> {
 }
 
 impl<'a, S: Db> Logger<'a, S> {
-    pub fn new(db: &'a S, id: impl AsRef<[u8; 16]>) -> Self {
-        Self {
-            db,
-            id: Id(*id.as_ref()),
-        }
+    pub fn new(db: &'a S, id: impl Into<Id>) -> Self {
+        Self { db, id: id.into() }
     }
 
     /// Flushes the given log lines into the ring-buffer.
@@ -133,7 +124,10 @@ impl<'a, S: Db> Logger<'a, S> {
     ///
     /// For example, to get the 100 oldest log lines, call with start_offset = 0 and count = 100.
     pub fn get_log_lines(&self, start_offset: u64, count: u64) -> Result<Vec<LogLine>> {
-        let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
+        let db_ptr = match self.id {
+            Id::Contract { .. } => self.db.open_sub_db(CONTRACT_SUB_DB)?,
+            Id::Agent { .. } => self.db.open_sub_db(AGENT_SUB_DB)?,
+        };
         let txn = self.db.begin_ro_txn()?;
         let meta_key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, SUB_KEY_META);
         // Read meta info; if missing, assume an empty buffer.
@@ -167,7 +161,10 @@ impl<'a, S: Db> Logger<'a, S> {
 
     /// Retrieves the log lines that were flushed in the last call to `flush_lines`.
     pub fn get_last_log(&self) -> Result<Vec<LogLine>> {
-        let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
+        let db_ptr = match self.id {
+            Id::Contract { .. } => self.db.open_sub_db(CONTRACT_SUB_DB)?,
+            Id::Agent { .. } => self.db.open_sub_db(AGENT_SUB_DB)?,
+        };
         let txn = self.db.begin_ro_txn()?;
         let meta_key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, SUB_KEY_META);
 
@@ -199,7 +196,10 @@ impl<'a, S: Db> Logger<'a, S> {
     /// so if logs have been overwritten in the ring-buffer, the current log count
     /// (meta.end - meta.start) may be lower.
     pub fn total_log_lines(&self) -> Result<u64> {
-        let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
+        let db_ptr = match self.id {
+            Id::Contract { .. } => self.db.open_sub_db(CONTRACT_SUB_DB)?,
+            Id::Agent { .. } => self.db.open_sub_db(AGENT_SUB_DB)?,
+        };
         let txn = self.db.begin_ro_txn()?;
         let meta_key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, SUB_KEY_META);
         // If meta is missing, we assume no logs have been flushed yet.
@@ -214,7 +214,10 @@ impl<'a, S: Db> Logger<'a, S> {
     pub fn get_logs_paginated(&self, pagination: Pagination) -> Result<PaginatedElements<LogLine>> {
         let page = pagination.page as u64;
         let per_page = pagination.per_page as u64;
-        let db_ptr = self.db.open_sub_db(CONTRACT_SUB_DB)?;
+        let db_ptr = match self.id {
+            Id::Contract { .. } => self.db.open_sub_db(CONTRACT_SUB_DB)?,
+            Id::Agent { .. } => self.db.open_sub_db(AGENT_SUB_DB)?,
+        };
         let txn = self.db.begin_ro_txn()?;
         let meta_key = StorageKey::system_key(&self.id, BASE_KEY_LOGS, SUB_KEY_META);
 

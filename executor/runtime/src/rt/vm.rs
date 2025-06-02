@@ -3,11 +3,7 @@
 //! This module contains the state of the virtual machine, that is shared across host function invocations,
 //! and the concrete implementation of the ABI host functions, that are linked to the webassembly module by the runtime.
 
-use std::{
-    cell::RefCell,
-    time::{Instant, SystemTime, UNIX_EPOCH},
-};
-
+use borderless::__private::registers::*;
 use borderless::{
     __private::storage_keys::StorageKey,
     contracts::{Introduction, Revocation, TxCtx},
@@ -15,29 +11,41 @@ use borderless::{
     log::LogLine,
     AgentId, ContractId,
 };
-use wasmtime::{Caller, Extern, Memory};
-
-use borderless::__private::registers::REGISTER_CURSOR;
 use borderless_kv_store::*;
 use log::{debug, warn};
 use nohash::IntMap;
 use rand::Rng;
+use std::{
+    cell::RefCell,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
+use wasmtime::{Caller, Extern, Memory};
+
+#[cfg(feature = "agents")]
+use tokio::sync::mpsc;
 
 use crate::{
-    controller::{write_introduction, write_revocation, Controller},
+    db::action_log::{ActionLog, ActionRecord},
+    db::controller::{write_introduction, write_revocation, Controller},
+    db::logger::Logger,
     error::ErrorKind,
-    rt::action_log::{ActionLog, ActionRecord},
-    rt::logger::Logger,
     Error, Result,
 };
 
-// NOTE: I think this generalizes for both contracts and sw-agents;
-//
-// We have to fine-tune some things, but in general this works.
-//
-// TODO: Since it does not generalize completely; we could maybe define a trait for this ?
-// -> Or not. Let's first add the functionality for the SW-Agents (websocket etc.)
-
+/// Virtual-Machine State
+///
+/// Represents the semi-persistent state of the wasm virtual machine.
+/// This definition is identical for smart-contracts and software-agents,
+/// with some additions for the async capabilities of the software-agents.
+///
+/// The main concepts behind this are the `registers`, which are used to share arbitrary data
+/// between the host and wasm guest side. You can think of them as a shared hashmap, with functions on both sides for reading and writing
+/// (e.g. [`read_register`] is called from guest code in wasm and [`VmState::get_register`] can be used from the host functions).
+///
+/// The `VmState` also tracks the currently active entity (contract or agent) and calculates the storage-keys based on its ID.
+/// Every operation on the storage is buffered (see [`StorageOp`]) and commited to the database, if the execution was successful.
+///
+/// The `VmState` is also polymorph over the storage implementation.
 pub struct VmState<S: Db> {
     registers: IntMap<u64, RefCell<Vec<u8>>>,
     db: S,
@@ -67,11 +75,7 @@ impl<S: Db> VmState<S> {
         }
     }
 
-    pub fn new_async(
-        db: S,
-        db_ptr: S::Handle,
-        ws_sender: std::sync::mpsc::Sender<(AgentId, String)>,
-    ) -> Self {
+    pub fn new_async(db: S, db_ptr: S::Handle) -> Self {
         VmState {
             registers: Default::default(),
             db,
@@ -79,7 +83,7 @@ impl<S: Db> VmState<S> {
             last_timer: None,
             log_buffer: Vec::new(),
             active: ActiveEntity::None,
-            _async: Some(AsyncState { ws: ws_sender }),
+            _async: Some(AsyncState::default()),
         }
     }
 
@@ -97,6 +101,10 @@ impl<S: Db> VmState<S> {
         if Controller::new(&self.db).contract_revoked(&cid)? {
             return Err(ErrorKind::RevokedContract { cid }.into());
         }
+
+        // Clear output register, just in case
+        self.registers.remove(&REGISTER_OUTPUT);
+
         self.active = ActiveEntity::Contract {
             cid,
             db_txns: Some(Vec::new()),
@@ -115,19 +123,19 @@ impl<S: Db> VmState<S> {
     /// # Errors
     ///
     /// Calling this function while the `VmState` has no active contract results in an error.
-    pub fn finish_mutable_exec(&mut self, commit: Commit) -> Result<()> {
+    pub fn finish_mutable_exec(&mut self, commit: ContractCommit) -> Result<()> {
         let result = self.finish_mut_exec_inner(commit);
 
         // Reset everything
         self.active = ActiveEntity::None;
-        self.clear_registers()?;
+        self.clear_cursor_registers()?;
         self.log_buffer.clear();
 
         result
     }
 
     // Inner wrapper, so we can return the result, but also perform the cleanup afterwards in case of an error
-    fn finish_mut_exec_inner(&mut self, commit: Commit) -> Result<()> {
+    fn finish_mut_exec_inner(&mut self, commit: ContractCommit) -> Result<()> {
         let active = std::mem::replace(&mut self.active, ActiveEntity::None);
         let (cid, buf) = match active {
             ActiveEntity::Contract { cid, db_txns } => {
@@ -171,20 +179,20 @@ impl<S: Db> VmState<S> {
 
         // Commit external item (introduction, action or revocation)
         match commit {
-            Commit::Action { action, tx_ctx } => {
+            ContractCommit::Action { action, tx_ctx } => {
                 let action_log = ActionLog::new(&self.db, cid);
                 action_log.commit(&self.db_ptr, &mut txn, &action, tx_ctx)?;
             }
-            Commit::Introduction {
+            ContractCommit::Introduction {
                 mut introduction,
                 tx_ctx,
             } => {
-                assert_eq!(introduction.contract_id, cid);
+                assert_eq!(introduction.id, cid);
                 introduction.meta.active_since = timestamp;
                 introduction.meta.tx_ctx_introduction = Some(tx_ctx);
                 write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
             }
-            Commit::Revocation { revocation, tx_ctx } => {
+            ContractCommit::Revocation { revocation, tx_ctx } => {
                 assert_eq!(revocation.contract_id, cid);
                 write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, tx_ctx, timestamp)?;
             }
@@ -219,6 +227,9 @@ impl<S: Db> VmState<S> {
             cid,
             db_txns: Some(Vec::new()),
         };
+        // Clear http-output register, just in case
+        self.registers.remove(&REGISTER_OUTPUT_HTTP_STATUS);
+        self.registers.remove(&REGISTER_OUTPUT_HTTP_RESULT);
         self.log_buffer.clear();
         Ok(())
     }
@@ -241,7 +252,7 @@ impl<S: Db> VmState<S> {
             return Err(Error::msg("Cannot clear non existing contract or sw-agent"));
         }
         self.active = ActiveEntity::None;
-        self.clear_registers()?;
+        self.clear_cursor_registers()?;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
@@ -254,11 +265,19 @@ impl<S: Db> VmState<S> {
         }
         let db_txns = if mutable { Some(Vec::new()) } else { None };
         self.active = ActiveEntity::Agent { aid, db_txns };
+
+        // Clear output registers
+        if mutable {
+            self.registers.remove(&REGISTER_OUTPUT);
+        } else {
+            self.registers.remove(&REGISTER_OUTPUT_HTTP_STATUS);
+            self.registers.remove(&REGISTER_OUTPUT_HTTP_RESULT);
+        }
         self.log_buffer.clear();
         Ok(())
     }
 
-    pub fn finish_agent_exec(&mut self, commit_state: bool) -> Result<Vec<LogLine>> {
+    pub fn finish_agent_exec(&mut self, commit_state: Option<AgentCommit>) -> Result<Vec<LogLine>> {
         let active = std::mem::replace(&mut self.active, ActiveEntity::None);
         let (aid, buf) = match active {
             ActiveEntity::Contract { .. } => {
@@ -267,7 +286,7 @@ impl<S: Db> VmState<S> {
                 ))
             }
             ActiveEntity::Agent { aid, db_txns } => {
-                if db_txns.is_none() && commit_state {
+                if db_txns.is_none() && commit_state.is_some() {
                     return Err(Error::msg("Agent execution was marked as immutable"));
                 }
                 (aid, db_txns)
@@ -276,7 +295,7 @@ impl<S: Db> VmState<S> {
                 return Err(Error::msg("No active sw-agent"));
             }
         };
-        if commit_state {
+        if commit_state.is_some() {
             let mut txn = self.db.begin_rw_txn()?;
             // Apply storage operations
             for op in buf.unwrap().into_iter() {
@@ -291,13 +310,41 @@ impl<S: Db> VmState<S> {
                 }
             }
 
+            // Current timestamp ( milliseconds since epoch )
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("timestamp < 1970")
+                .as_millis()
+                .try_into()
+                .expect("u64 should fit for 584942417 years");
+
+            // Commit external item (introduction, action or revocation)
+            match commit_state.unwrap() {
+                AgentCommit::Other => {
+                    // TODO: I think the best way would be to create a ring-buffer for the actions of an agent ?
+                    // let action_log = ActionLog::new(&self.db, aid);
+                    // action_log.commit(&self.db_ptr, &mut txn, &action, tx_ctx)?;
+                }
+                AgentCommit::Introduction { mut introduction } => {
+                    assert_eq!(introduction.id, aid);
+                    introduction.meta.active_since = timestamp;
+                    introduction.meta.tx_ctx_introduction = None;
+                    write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
+                }
+                AgentCommit::Revocation { revocation: _ } => {
+                    // assert_eq!(revocation.contract_id, aid); // TODO
+                    // write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, tx_ctx, timestamp)?;
+                    todo!()
+                }
+            }
+
             // Flush log
             let logger = Logger::new(&self.db, aid);
             logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
             txn.commit()?;
         }
 
-        self.clear_registers()?;
+        self.clear_cursor_registers()?;
         let log_output = std::mem::take(&mut self.log_buffer);
         Ok(log_output)
     }
@@ -321,7 +368,7 @@ impl<S: Db> VmState<S> {
     }
 
     /// Clears the registers from REGISTER_CURSOR until 2^64 -1
-    fn clear_registers(&mut self) -> Result<()> {
+    fn clear_cursor_registers(&mut self) -> Result<()> {
         self.registers.retain(|&k, _| k < REGISTER_CURSOR);
         Ok(())
     }
@@ -340,12 +387,21 @@ impl<S: Db> VmState<S> {
     pub fn len_actions(&self, cid: &ContractId) -> Result<u64> {
         ActionLog::new(&self.db, *cid).len()
     }
+
+    /// Registers a websocket sender
+    #[cfg(feature = "agents")]
+    pub fn register_ws(&mut self, aid: AgentId, ch: mpsc::Sender<Vec<u8>>) -> Result<()> {
+        let state = self._async.as_mut().ok_or_else(|| ErrorKind::NoAsync)?;
+        state.clients.insert(aid, ch);
+        Ok(())
+    }
 }
 
 /// Parts of `VmState` that are only relevant for async execution
+#[derive(Default)]
 struct AsyncState {
-    /// Websocket sender
-    ws: std::sync::mpsc::Sender<(AgentId, String)>,
+    #[cfg(feature = "agents")]
+    clients: ahash::HashMap<AgentId, mpsc::Sender<Vec<u8>>>,
 }
 
 /// Helper function to get the linear memory of the wasm module
@@ -390,10 +446,17 @@ fn copy_wasm_memory(
 }
 
 // --- Begin to implement abi
+
+/// Host function that starts a new timer.
+///
+/// This is the host implementation of `borderless_abi::tic` and must be linked by the runtime.
 pub fn tic(mut caller: Caller<'_, VmState<impl Db>>) {
     caller.data_mut().last_timer = Some(Instant::now());
 }
 
+/// Host function that stops a new timer.
+///
+/// This is the host implementation of `borderless_abi::toc` and must be linked by the runtime.
 pub fn toc(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
     let timer = caller
         .data()
@@ -407,6 +470,9 @@ pub fn toc(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<u64> {
 }
 
 // TODO: Change this to "log"
+/// Host function that logs a string with a log-level.
+///
+/// This is the host implementation of `borderless_abi::print` and must be linked by the runtime.
 pub fn print(
     mut caller: Caller<'_, VmState<impl Db>>,
     ptr: u64,
@@ -438,6 +504,14 @@ pub fn print(
     Ok(())
 }
 
+/// Host function that reads bytes from some register.
+///
+/// Used to feed data from the host to the guest.
+///
+/// The guest (wasm side) must use [`register_len`] before reading,
+/// to allocate enough space in the buffer behind the pointer `ptr`.
+///
+/// This is the host implementation of `borderless_abi::read_register` and must be linked by the runtime.
 pub fn read_register(
     mut caller: Caller<'_, VmState<impl Db>>,
     register_id: u64,
@@ -476,6 +550,12 @@ pub fn read_register(
     Ok(())
 }
 
+/// Host function that returns the number of bytes (length) that are stored in some register.
+///
+/// The guest (wasm side) must use [`register_len`] before calling [`read_register`],
+/// to know, how much space must be allocated for reading.
+///
+/// This is the host implementation of `borderless_abi::register_len` and must be linked by the runtime.
 pub fn register_len(caller: Caller<'_, VmState<impl Db>>, register_id: u64) -> u64 {
     match caller.data().registers.get(&register_id) {
         Some(data) => data.borrow().len() as u64,
@@ -483,6 +563,11 @@ pub fn register_len(caller: Caller<'_, VmState<impl Db>>, register_id: u64) -> u
     }
 }
 
+/// Host function that writes a value to some register.
+///
+/// Used to feed data from the guest to the host.
+///
+/// This is the host implementation of `borderless_abi::write_register` and must be linked by the runtime.
 pub fn write_register(
     mut caller: Caller<'_, VmState<impl Db>>,
     register_id: u64,
@@ -502,6 +587,12 @@ pub fn write_register(
 
 // --- Storage api
 
+/// Host function to write a value to the given storage location.
+///
+/// The storage location is defined by the `base_key` and `sub_key`, which are converted to a [`StorageKey`] by the `VmState` (see [`VmState::get_storage_key`]).
+/// The write operation will be commited to the storage, after the execution of the contract or agent.
+///
+/// This is the host implementation of `borderless_abi::storage_write` and must be linked by the runtime.
 pub fn storage_write(
     mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u64,
@@ -529,6 +620,11 @@ pub fn storage_write(
     Ok(())
 }
 
+/// Host function to read a value from the given storage location.
+///
+/// The storage location is defined by the `base_key` and `sub_key`, which are converted to a [`StorageKey`] by the `VmState` (see [`VmState::get_storage_key`]).
+///
+/// This is the host implementation of `borderless_abi::storage_read` and must be linked by the runtime.
 pub fn storage_read(
     mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u64,
@@ -556,6 +652,11 @@ pub fn storage_read(
     Ok(())
 }
 
+/// Host function to remove a value from the given storage location.
+///
+/// The storage location is defined by the `base_key` and `sub_key`, which are converted to a [`StorageKey`] by the `VmState` (see [`VmState::get_storage_key`]).
+///
+/// This is the host implementation of `borderless_abi::storage_remove` and must be linked by the runtime.
 pub fn storage_remove(
     mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u64,
@@ -576,6 +677,15 @@ pub fn storage_remove(
     Ok(())
 }
 
+/// Host function to create a storage cursor from the given base-key.
+///
+/// The storage locations are defined by a `base_key` and `sub_key`. The latter one is used for collections.
+/// This function is used to query all available sub-keys for some base-key. The mechanism for that is a storage-cursor,
+/// that starts iterating from (base-key, 0) until it hits the next base-key.
+/// All sub-keys are then stored in the registers, so that the wasm-side can query them, while this function
+/// returns the number of sub-keys found.
+///
+/// This is the host implementation of `borderless_abi::storage_cursor` and must be linked by the runtime.
 pub fn storage_cursor(
     mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u64,
@@ -618,6 +728,11 @@ pub fn storage_cursor(
     Ok(keys.len() as u64)
 }
 
+/// Host function to check, if a value exists at the given storage location.
+///
+/// The storage location is defined by the `base_key` and `sub_key`, which are converted to a [`StorageKey`] by the `VmState` (see [`VmState::get_storage_key`]).
+///
+/// This is the host implementation of `borderless_abi::storage_has_key` and must be linked by the runtime.
 pub fn storage_has_key(
     mut caller: Caller<'_, VmState<impl Db>>,
     base_key: u64,
@@ -635,18 +750,32 @@ pub fn storage_has_key(
     Ok(result as u64)
 }
 
+/// Host function to generate a new random sub-key.
+///
+/// This is a very naive implementation, that relies on chance to not create a collision. Since our key-space is so stupidly large,
+/// the chances are near zero to create the same storage key for the same base-key in the contract.
+///
+/// This is the host implementation of `borderless_abi::storage_gen_sub_key` and must be linked by the runtime.
 pub fn storage_gen_sub_key() -> wasmtime::Result<u64> {
     let mut rng = rand::rng();
     Ok(rng.random())
 }
 
+/// Host function to generate a random number between `min` and `max`
+///
+/// Should only be used in tests or for software-agents, as randomness would introduce side-effects in the contracts.
+///
+/// This is the host implementation of `borderless_abi::rand` and must be linked by the runtime.
 pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
     let mut rng = rand::rng();
     let value: u64 = rng.random_range(min..max);
     Ok(value)
 }
 
-/// Returns the current timestamp as milliseconds since epoch
+/// Host function to returns the milliseconds since unix-epoch.
+///
+/// This is the host implementation of `borderless_abi::timestamp` and must be linked by the runtime.
+#[cfg(feature = "agents")]
 pub fn timestamp() -> wasmtime::Result<i64> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)?
@@ -656,6 +785,8 @@ pub fn timestamp() -> wasmtime::Result<i64> {
     Ok(timestamp)
 }
 
+/// Async (agent) ABI implementation
+#[cfg(feature = "agents")]
 pub mod async_abi {
     use borderless::Context;
 
@@ -665,8 +796,16 @@ pub mod async_abi {
         header::{HeaderMap, HeaderName, HeaderValue},
         Client, Method as ReqwestMethod, Request, Response,
     };
-    use std::{result::Result, str::FromStr};
+    use std::{result::Result, str::FromStr, time::Duration};
 
+    /// Host function to send a websocket message
+    ///
+    /// The state of the websocket connection is not managed by the `VmState` itself.
+    /// Instead, the `VmState` can communicate the request to send a new message over the open connection,
+    /// via a channel (see [`tokio::mpsc::Sender`]). To avoid blocking - this function fails if the message
+    /// was not picked up within a finite amount of time by the task with the ws-connection.
+    ///
+    /// This is the host implementation of `borderless_abi::send_ws_msg` and must be linked by the runtime.
     pub async fn send_ws_msg(
         mut caller: Caller<'_, VmState<impl Db>>,
         msg_ptr: u64,
@@ -687,17 +826,37 @@ pub mod async_abi {
             .ok_or_else(|| wasmtime::Error::msg("Memory access out of bounds"))?
             .to_vec();
 
-        let msg = match String::from_utf8(data) {
-            Ok(s) => s,
-            Err(e) => {
-                warn!("send_ws_msg failed for agent {agent_id}: {e}");
-                return Ok(1);
-            }
-        };
+        let state = caller
+            .data()
+            ._async
+            .as_ref()
+            .ok_or_else(|| wasmtime::Error::msg("missing async-state in async runtime"))?;
 
-        Ok(0)
+        match state.clients.get(&agent_id) {
+            Some(ch) => {
+                // We add a timeout here to not create a deadlock in case the channel is full
+                match tokio::time::timeout(Duration::from_secs(10), ch.send(data)).await {
+                    Ok(Ok(())) => return Ok(0),
+                    Ok(Err(_)) => {
+                        warn!("failed to send websocket message for agent {agent_id} - receiver closed");
+                        Ok(1)
+                    }
+                    Err(_) => {
+                        warn!("failed to send websocket message for agent {agent_id} - timeout");
+                        Ok(2)
+                    }
+                }
+            }
+            None => {
+                warn!("failed to send websocket message for agent {agent_id} - websocket is not registered");
+                Ok(3)
+            }
+        }
     }
 
+    /// Host function to send a http-request
+    ///
+    /// This is the host implementation of `borderless_abi::send_http_rq` and must be linked by the runtime.
     pub async fn send_http_rq(
         mut caller: Caller<'_, VmState<impl Db>>,
         register_rq_head: u64,
@@ -763,6 +922,10 @@ pub mod async_abi {
         Ok(0)
     }
 
+    /// Helper function, that parses a [`reqwest::Request`] from raw parts
+    ///
+    /// As we designed the ABI, we communicate the header and the body seperately via registers.
+    /// To actually have a typesafe interface, this function parses the header and body into a typed request.
     fn parse_reqwest_request_from_parts(
         client: &Client,
         head: &str,
@@ -818,6 +981,9 @@ pub mod async_abi {
         Ok(rq)
     }
 
+    /// Helper function to serialize the response header
+    ///
+    /// See [`serialize_response_for_ffi`].
     fn serialize_response_head(resp: &Response) -> Result<String, String> {
         // Get status code and version
         let status = resp.status();
@@ -851,6 +1017,9 @@ pub mod async_abi {
         Ok(head)
     }
 
+    /// Helper function to serialize the response back to wasm
+    ///
+    /// Basically the inverse of [`parse_reqwest_request_from_parts`].
     async fn serialize_response_for_ffi(resp: Response) -> Result<(String, Vec<u8>), String> {
         let head = serialize_response_head(&resp)?;
         // Get body as bytes
@@ -950,7 +1119,7 @@ pub mod async_abi {
 }
 
 /// External data that must be commited in the contract
-pub enum Commit {
+pub enum ContractCommit {
     Action {
         action: CallAction,
         tx_ctx: TxCtx,
@@ -963,6 +1132,13 @@ pub enum Commit {
         revocation: Revocation,
         tx_ctx: TxCtx,
     },
+}
+
+/// External data that must be commited in the agent
+pub enum AgentCommit {
+    Other,
+    Introduction { introduction: Introduction },
+    Revocation { revocation: Revocation },
 }
 
 /// Represents an executable entity in the VmState.

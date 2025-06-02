@@ -22,53 +22,76 @@ pub use postcard::to_allocvec as to_postcard_bytes;
 
 // --- PLAYGROUND FOR NEW ABI STUFF
 
+#[allow(unused_variables)]
 pub fn send_http_rq(
     rq_head: impl AsRef<str>,
     rq_body: impl AsRef<[u8]>,
 ) -> Result<(String, Vec<u8>), String> {
-    write_string_to_register(REGISTER_REQUEST_HEAD, rq_head);
-    write_register(REGISTER_REQUEST_BODY, &rq_body);
+    #[cfg(target_arch = "wasm32")]
+    {
+        write_string_to_register(REGISTER_REQUEST_HEAD, rq_head);
+        write_register(REGISTER_REQUEST_BODY, &rq_body);
 
-    // TODO: We also have to provide a mock implementation for this,
-    // otherwise the testing would not work
-    let _result = {
-        #[cfg(target_arch = "wasm32")]
-        unsafe {
-            abi::send_http_rq(
-                REGISTER_REQUEST_HEAD,
-                REGISTER_REQUEST_BODY,
-                REGISTER_RESPONSE_HEAD,
-                REGISTER_RESPONSE_BODY,
-                REGISTER_ATOMIC_OP,
-            )
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        panic!("not-yet-implemented")
-    };
+        // TODO: We also have to provide a mock implementation for this,
+        // otherwise the testing would not work
+        let _result = {
+            unsafe {
+                abi::send_http_rq(
+                    REGISTER_REQUEST_HEAD,
+                    REGISTER_REQUEST_BODY,
+                    REGISTER_RESPONSE_HEAD,
+                    REGISTER_RESPONSE_BODY,
+                    REGISTER_ATOMIC_OP,
+                )
+            }
+        };
 
-    match _result {
-        0 => {
-            let rs_head = required(
-                read_string_from_register(REGISTER_RESPONSE_HEAD),
-                "missing required response header",
-            );
-            let rs_body = required(
-                read_register(REGISTER_RESPONSE_BODY),
-                "missing required response body",
-            );
-            Ok((rs_head, rs_body))
+        match _result {
+            0 => {
+                let rs_head = required(
+                    read_string_from_register(REGISTER_RESPONSE_HEAD),
+                    "missing required response header",
+                );
+                let rs_body = required(
+                    read_register(REGISTER_RESPONSE_BODY),
+                    "missing required response body",
+                );
+                Ok((rs_head, rs_body))
+            }
+            1 => {
+                let error = required(
+                    read_string_from_register(REGISTER_ATOMIC_OP),
+                    "missing required error message for failed responses",
+                );
+                Err(error)
+            }
+            _ => {
+                error!("SYSTEM: invalid return code in 'send_http_rq' func");
+                abort()
+            }
         }
-        1 => {
-            let error = required(
-                read_string_from_register(REGISTER_ATOMIC_OP),
-                "missing required error message for failed responses",
-            );
-            Err(error)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        panic!("http related functionality is only available from within wasm code")
+    }
+}
+
+/// Simple wrapper to send websocket messages via the abi
+///
+/// Requires that everything is setup for the websocket, otherwise this will always fail.
+#[allow(unused_variables)]
+pub fn send_ws_msg(msg: impl AsRef<[u8]>) -> anyhow::Result<()> {
+    #[cfg(target_arch = "wasm32")]
+    unsafe {
+        match abi::send_ws_msg(msg.as_ref().as_ptr() as _, msg.as_ref().len() as _) {
+            0 => Ok(()),
+            _ => Err(anyhow::Error::msg("failed to send websocket message")),
         }
-        _ => {
-            error!("SYSTEM: invalid return code in 'send_http_rq' func");
-            abort()
-        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        panic!("http related functionality is only available from within wasm code")
     }
 }
 
@@ -76,6 +99,7 @@ pub fn send_http_rq(
 /// we abort the execution (this is an implementation error of the runtime, and not an error that the user should handle).
 ///
 /// To avoid "being in the dark" when debugging this, we log an error message before aborting - just like we do with [`read_field`].
+#[allow(dead_code)]
 fn required<T, S: AsRef<str>>(value: Option<T>, msg: S) -> T {
     match value {
         Some(v) => v,
@@ -244,7 +268,7 @@ pub fn write_metadata_client(introduction: &Introduction) {
     write_field(
         BASE_KEY_METADATA,
         META_SUB_KEY_CONTRACT_ID,
-        &introduction.contract_id,
+        &introduction.id,
     );
 
     // Write participant list

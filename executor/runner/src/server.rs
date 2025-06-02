@@ -10,8 +10,13 @@ use axum::{
 use borderless::{events::CallAction, hash::Hash256, BorderlessId, ContractId};
 use borderless_kv_store::Db;
 use borderless_runtime::{
-    http::{ActionWriter, ContractService, Service},
-    CodeStore, Runtime, SharedRuntime,
+    agent::SharedRuntime as SharedAgentRuntime,
+    http::{
+        agent::{EventHandler, RecursiveEventHandler, SwAgentService},
+        contract::{ActionWriter, ContractService},
+        Service,
+    },
+    SharedContractRuntime,
 };
 use log::info;
 
@@ -32,10 +37,29 @@ async fn contract_handler(
     res.map(|bytes| bytes.into())
 }
 
+/// Wraps the agent service
+async fn agent_handler<E, S>(
+    State(mut srv): State<SwAgentService<E, S>>,
+    req: Request<Body>,
+) -> Response<Body>
+where
+    E: EventHandler + 'static,
+    S: Db + 'static,
+{
+    let (parts, body) = req.into_parts();
+
+    // 10MB upper limit
+    let bytes = to_bytes(body, 10_000_000).await.unwrap_or_default();
+
+    let req = Request::from_parts(parts, bytes);
+    let res = srv.call(req).await.expect("infallible");
+    res.map(|bytes| bytes.into())
+}
+
 /// A dummy action-writer, that instantly applies the actions to the runtime
 #[derive(Clone)]
 struct ActionApplier<S: Db> {
-    rt: SharedRuntime<S>,
+    rt: SharedContractRuntime<S>,
     writer: BorderlessId,
 }
 
@@ -62,10 +86,11 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
     }
 }
 
-pub async fn start_contract_server(db: impl Db + 'static) -> Result<()> {
+pub async fn start_contract_server<DB: Db + 'static>(
+    db: DB,
+    rt: SharedContractRuntime<DB>,
+) -> Result<()> {
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
-    let code_store = CodeStore::new(&db)?;
-    let rt = Runtime::new(&db, code_store)?.into_shared();
     rt.lock().set_executor(writer)?;
     let action_writer = ActionApplier {
         rt: rt.clone(),
@@ -77,6 +102,27 @@ pub async fn start_contract_server(db: impl Db + 'static) -> Result<()> {
     let contract = Router::new().fallback(contract_handler).with_state(srv);
 
     let app = Router::new().nest("/v0/contract", contract);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
+    info!("Listening on {}", listener.local_addr()?);
+
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
+pub async fn start_agent_server<DB: Db + 'static>(
+    db: DB,
+    rt: SharedAgentRuntime<DB>,
+) -> Result<()> {
+    let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
+    let event_handler = RecursiveEventHandler { rt: rt.clone() };
+    rt.lock().await.set_executor(writer)?;
+    let srv = SwAgentService::with_shared(db, rt, writer, event_handler);
+
+    // Create a router and attach the custom service to a route
+    let contract = Router::new().fallback(agent_handler).with_state(srv);
+
+    let app = Router::new().nest("/v0/agent", contract);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
     info!("Listening on {}", listener.local_addr()?);

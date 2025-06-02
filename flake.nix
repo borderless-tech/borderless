@@ -33,6 +33,10 @@
             cargo-flamegraph
             flatbuffers
             wabt
+          ] ++ lib.optionals pkgs.stdenv.isDarwin [
+            # Additional darwin specific inputs can be set here
+            pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+            pkgs.libiconv
           ];
 
           # Certain Rust tools won't work without this

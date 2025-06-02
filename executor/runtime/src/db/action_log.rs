@@ -1,5 +1,3 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use borderless::http::queries::Pagination;
 use borderless::http::{PaginatedElements, TxAction};
 use borderless::ContractId;
@@ -7,11 +5,13 @@ use borderless_kv_store::{Db, RawRead, Tx};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use borderless::{contracts::TxCtx, events::CallAction};
+use borderless::contracts::TxCtx;
 
 use borderless::__private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG};
 
-use crate::controller::{read_system_value, write_system_value};
+#[cfg(any(feature = "contracts", feature = "agents"))]
+use borderless::events::CallAction;
+
 use crate::{Result, CONTRACT_SUB_DB};
 
 /// Sub-Key where the length of the action-log is stored
@@ -22,6 +22,7 @@ pub const SUB_KEY_LOG_LEN: u64 = u64::MAX;
 //   - Key: contract-id:ACTION_KEY:action-index
 //   - Value: Action + Tx-Identifier
 //   - Related to: Tx
+// - Rel Tx->Action: link tx-identifier with contract-id + action-index
 // - Tx:
 //   - Key: chain-id:block-number:block-tx-number
 //   - Value: Tx-Info + Block-Id
@@ -78,12 +79,54 @@ impl TryFrom<ActionRecord> for TxAction {
     }
 }
 
+/// Relationship between an action and a transaction
+///
+/// This model is saved behind the key of a tx-identifier,
+/// to be able to relate a transaction back to the action.
+pub struct RelTxAction {
+    /// Contract-ID of the action's contract
+    pub cid: ContractId,
+    /// Index (number) of the action inside the contract
+    pub action_idx: u64,
+}
+
+impl RelTxAction {
+    /// Converts the `RelTxAction` into bytes
+    pub fn into_bytes(self) -> [u8; 24] {
+        let cid_bytes = self.cid.into_bytes();
+        let idx_bytes = self.action_idx.to_be_bytes();
+        let mut buf = [0u8; 24];
+        buf[..16].copy_from_slice(&cid_bytes);
+        buf[16..].copy_from_slice(&idx_bytes);
+        buf
+    }
+
+    /// Parses the relation from bytes
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the byte-slice is not an encoded [`RelTxAction`] object.
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        if bytes.len() != 24 {
+            panic!("invalid slice length - expected 24 bytes");
+        }
+        let mut cid_bytes = [0u8; 16];
+        cid_bytes.copy_from_slice(&bytes[..16]);
+        let cid = ContractId::from_bytes(cid_bytes);
+        let mut idx_bytes = [0u8; 8];
+        idx_bytes.copy_from_slice(&bytes[16..]);
+        let action_idx = u64::from_be_bytes(idx_bytes);
+        Self { cid, action_idx }
+    }
+}
+
 impl<'a, S: Db> ActionLog<'a, S> {
     /// Opens (or creates) the action log
     pub fn new(db: &'a S, cid: ContractId) -> Self {
         Self { db, cid }
     }
 
+    #[cfg(any(feature = "contracts", feature = "agents"))]
     pub(crate) fn commit(
         self,
         db_ptr: &S::Handle,
@@ -91,6 +134,13 @@ impl<'a, S: Db> ActionLog<'a, S> {
         action: &CallAction,
         tx_ctx: TxCtx,
     ) -> Result<()> {
+        use borderless_kv_store::RawWrite;
+
+        use crate::ACTION_TX_REL_SUB_DB;
+
+        use super::controller::{read_system_value, write_system_value};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("timestamp < 1970")
@@ -110,8 +160,15 @@ impl<'a, S: Db> ActionLog<'a, S> {
             value: action.to_bytes()?,
             commited: timestamp,
         };
-        write_system_value::<S, _>(db_ptr, txn, &self.cid, BASE_KEY_ACTION_LOG, sub_key, &value)?;
-        write_system_value::<S, _>(
+        write_system_value::<S, _, _>(
+            db_ptr,
+            txn,
+            &self.cid,
+            BASE_KEY_ACTION_LOG,
+            sub_key,
+            &value,
+        )?;
+        write_system_value::<S, _, _>(
             db_ptr,
             txn,
             &self.cid,
@@ -119,6 +176,15 @@ impl<'a, S: Db> ActionLog<'a, S> {
             SUB_KEY_LOG_LEN,
             &full_len,
         )?;
+
+        // Store relationship - this is just another sub-db, and outside the "normal" contract keyspace
+        let rel_db = self.db.create_sub_db(ACTION_TX_REL_SUB_DB)?;
+        let tx_id_bytes = value.tx_ctx.tx_id.to_bytes();
+        let relationship = RelTxAction {
+            cid: self.cid,
+            action_idx: sub_key,
+        };
+        txn.write(&rel_db, &tx_id_bytes, &relationship.into_bytes())?;
 
         log::debug!("Commited action to log. len={full_len}");
         Ok(())

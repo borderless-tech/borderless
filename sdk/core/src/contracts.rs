@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Display, str::FromStr};
 
 use borderless_hash::Hash256;
-use borderless_id_types::{BlockIdentifier, TxIdentifier, Uuid};
+use borderless_id_types::{AgentId, BlockIdentifier, TxIdentifier, Uuid};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -52,6 +52,7 @@ pub struct Role {
 pub struct Description {
     pub display_name: String,
     pub summary: String,
+    #[serde(default)]
     pub legal: Option<String>,
 }
 
@@ -177,13 +178,116 @@ pub struct Info {
     pub sinks: Vec<Sink>,
 }
 
-/// Contract-Introduction.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum Id {
+    Contract { contract_id: ContractId },
+    Agent { agent_id: AgentId },
+}
+
+impl Id {
+    pub fn as_cid(&self) -> Option<ContractId> {
+        match self {
+            Id::Contract { contract_id } => Some(*contract_id),
+            Id::Agent { .. } => None,
+        }
+    }
+
+    pub fn as_aid(&self) -> Option<AgentId> {
+        match self {
+            Id::Contract { .. } => None,
+            Id::Agent { agent_id } => Some(*agent_id),
+        }
+    }
+
+    pub fn contract(contract_id: ContractId) -> Self {
+        Id::Contract { contract_id }
+    }
+
+    pub fn agent(agent_id: AgentId) -> Self {
+        Id::Agent { agent_id }
+    }
+}
+
+impl AsRef<[u8; 16]> for Id {
+    fn as_ref(&self) -> &[u8; 16] {
+        match self {
+            Id::Contract { contract_id } => contract_id.as_ref(),
+            Id::Agent { agent_id } => agent_id.as_ref(),
+        }
+    }
+}
+
+impl PartialEq<ContractId> for Id {
+    fn eq(&self, other: &ContractId) -> bool {
+        match self {
+            Id::Contract { contract_id } => contract_id == other,
+            Id::Agent { .. } => false,
+        }
+    }
+}
+
+impl PartialEq<AgentId> for Id {
+    fn eq(&self, other: &AgentId) -> bool {
+        match self {
+            Id::Agent { agent_id } => agent_id == other,
+            Id::Contract { .. } => false,
+        }
+    }
+}
+
+impl From<ContractId> for Id {
+    fn from(contract_id: ContractId) -> Self {
+        Id::Contract { contract_id }
+    }
+}
+
+impl From<AgentId> for Id {
+    fn from(agent_id: AgentId) -> Self {
+        Id::Agent { agent_id }
+    }
+}
+
+/// Specifies the source for some wasm module
+///
+/// Can be either "remote", when the code can be fetched from our remote repository,
+/// or "local" - in this case the compiled module is just serialized as bytes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WasmSource {
+    Remote { repository: String },
+    Local { code: Vec<u8> },
+}
+
+// TODO: WIP - just to save some ideas
+// (the name should also be different)
+// -> maybe this should be part of the contract-package crate ?
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WasmModule {
+    /// Name of the application (group) that the contract is part of
+    pub application: String,
+
+    /// Name of the module inside the application
+    pub app_module: String,
+
+    // NOTE: This ensures compatibility with old versions
+    #[serde(default)]
+    #[serde(with = "crate::contracts::semver_as_string")]
+    /// SemVer compatible version string
+    pub version: SemVer,
+
+    /// Location, where the compiled module can be obtained
+    pub source: WasmSource,
+}
+
+/// Introduction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Introduction {
-    /// Contract-ID
-    pub contract_id: ContractId,
+    /// Contract- or Agent-ID
+    #[serde(flatten)]
+    pub id: Id,
 
     /// List of participants
+    #[serde(default)]
     pub participants: Vec<BorderlessId>,
 
     /// Bytes of the initial state.
@@ -192,10 +296,11 @@ pub struct Introduction {
     pub initial_state: Value,
 
     /// Mapping between users and roles.
+    #[serde(default)]
     pub roles: Vec<Role>,
 
-    // TODO: Re-Think Concept of sinks
     /// List of available sinks
+    #[serde(default)]
     pub sinks: Vec<Sink>,
 
     /// High-Level description of the contract
@@ -423,5 +528,73 @@ mod tests {
             }
         );
         assert_eq!(v1, "0.1.0".parse().unwrap());
+    }
+
+    #[test]
+    fn general_id() {
+        let cid = r#"{ "contract_id": "cbcd81bb-b90c-8806-8341-fe95b8ede45a" }"#;
+        let aid = r#"{ "agent_id": "abcd81bb-b90c-8806-8341-fe95b8ede45a" }"#;
+        let parsed: Result<Id, _> = serde_json::from_str(&cid);
+        assert!(parsed.is_ok(), "{}", parsed.unwrap_err());
+        match parsed.unwrap() {
+            Id::Contract { contract_id } => assert_eq!(
+                contract_id.to_string(),
+                "cbcd81bb-b90c-8806-8341-fe95b8ede45a"
+            ),
+            Id::Agent { .. } => panic!("result was not an agent-id"),
+        }
+
+        let parsed: Result<Id, _> = serde_json::from_str(&aid);
+        assert!(parsed.is_ok(), "{}", parsed.unwrap_err());
+        match parsed.unwrap() {
+            Id::Agent { agent_id } => {
+                assert_eq!(agent_id.to_string(), "abcd81bb-b90c-8806-8341-fe95b8ede45a")
+            }
+            Id::Contract { .. } => panic!("result was not a contract-id"),
+        }
+    }
+
+    #[test]
+    fn parse_introduction() {
+        let json = r#"
+{
+  "contract_id": "cc8ca79c-3bbb-89d2-bb28-29636c170387",
+  "participants": [],
+  "initial_state": {
+    "switch": true,
+    "counter": 0,
+    "history": []
+  },
+  "roles": [],
+  "sinks": [],
+  "desc": {
+    "display_name": "flipper",
+    "summary": "a flipper contract for testing the abi",
+    "legal": null
+  },
+  "meta": {
+    "application": "flipper",
+    "app_module": "test",
+    "version": "0.1.0"
+  }
+}
+"#;
+        let result: Result<Introduction, _> = serde_json::from_str(&json);
+        assert!(result.is_ok(), "{}", result.unwrap_err());
+        assert_eq!(
+            result.unwrap().id,
+            Id::Contract {
+                contract_id: "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse().unwrap()
+            }
+        );
+        let json = json.replace(r#""contract_id": "c"#, r#""agent_id": "a"#);
+        let result: Result<Introduction, _> = serde_json::from_str(&json);
+        assert!(result.is_ok(), "{}", result.unwrap_err());
+        assert_eq!(
+            result.unwrap().id,
+            Id::Agent {
+                agent_id: "ac8ca79c-3bbb-89d2-bb28-29636c170387".parse().unwrap()
+            }
+        );
     }
 }
