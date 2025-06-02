@@ -10,6 +10,112 @@ mod vm;
 #[cfg(any(feature = "contracts", feature = "agents"))]
 pub use code_store::CodeStore;
 
+#[cfg(any(feature = "contracts", feature = "agents"))]
+pub mod factory {
+    use std::num::NonZeroUsize;
+
+    use super::CodeStore;
+    use crate::{AgentLock, AgentRuntime, ContractLock, ContractRuntime, Result};
+    use borderless_kv_store::Db;
+
+    /// Create new runtimes with shared code-store, cache and lock.
+    ///
+    /// This factory is capable of spawning agent runtimes and contract runtimes.
+    /// The agent and contract runtimes spawned by this factory have a shared [`CodeStore`],
+    /// but their individual execution locks (there is one lock for all agents and one lock for all contracts).
+    pub struct RtFactory<'a, S: Db> {
+        code_store: Option<CodeStore<S>>,
+        #[cfg(feature = "contracts")]
+        lck_contract: Option<ContractLock>,
+        #[cfg(feature = "agents")]
+        lck_agent: Option<AgentLock>,
+        db: &'a S,
+    }
+
+    impl<'a, S: Db> RtFactory<'a, S> {
+        /// Creates a new factory
+        pub fn new(db: &'a S) -> Self {
+            Self {
+                code_store: None,
+                #[cfg(feature = "agents")]
+                lck_agent: None,
+                #[cfg(feature = "contracts")]
+                lck_contract: None,
+                db,
+            }
+        }
+
+        /// Creates a new over an existing code store
+        pub fn with_store(db: &'a S, code_store: CodeStore<S>) -> Self {
+            Self {
+                code_store: Some(code_store),
+                #[cfg(feature = "agents")]
+                lck_agent: None,
+                #[cfg(feature = "contracts")]
+                lck_contract: None,
+                db,
+            }
+        }
+
+        /// Sets the cache size and initializes the code-store
+        ///
+        /// # Panic
+        ///
+        /// This function will panic, if the code-store has already been initialized.
+        pub fn set_cache_size(&mut self, cache_size: NonZeroUsize) -> Result<()> {
+            match &mut self.code_store {
+                Some(_cache) => {
+                    panic!("cannot initialize cache twice")
+                }
+                None => {
+                    self.code_store = Some(CodeStore::with_cache_size(self.db, cache_size)?);
+                }
+            }
+            Ok(())
+        }
+
+        /// Creates a new contract runtime
+        #[cfg(feature = "contracts")]
+        pub fn spawn_contract_rt(&mut self) -> Result<ContractRuntime<S>> {
+            if self.code_store.is_none() {
+                self.code_store = Some(CodeStore::new(self.db)?);
+            }
+            let code_store = self.code_store.as_ref().unwrap();
+
+            if self.lck_contract.is_none() {
+                self.lck_contract = Some(ContractLock::default());
+            }
+            let lock = self.lck_contract.as_ref().unwrap();
+
+            Ok(ContractRuntime::new(
+                self.db,
+                code_store.clone(),
+                lock.clone(),
+            )?)
+        }
+
+        /// Creates a new agent runtime
+        #[cfg(feature = "agents")]
+        pub fn spawn_agent_rt(&mut self) -> Result<AgentRuntime<S>> {
+            if self.code_store.is_none() {
+                self.code_store = Some(CodeStore::new(self.db)?);
+            }
+            let code_store = self.code_store.as_ref().unwrap();
+
+            if self.lck_agent.is_none() {
+                self.lck_agent = Some(AgentLock::default());
+            }
+            let lock = self.lck_agent.as_ref().unwrap();
+
+            Ok(AgentRuntime::new(
+                self.db,
+                code_store.clone(),
+                lock.clone(),
+            )?)
+        }
+    }
+}
+
 #[cfg(feature = "code-store")]
 pub mod code_store {
     use super::vm::VmState;
