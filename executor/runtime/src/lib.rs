@@ -14,7 +14,7 @@ pub use rt::contract::{
 };
 
 #[cfg(feature = "agents")]
-pub use rt::swagent::{
+pub use rt::agent::{
     MutLock as AgentLock, Runtime as AgentRuntime, SharedRuntime as SharedAgentRuntime,
 };
 

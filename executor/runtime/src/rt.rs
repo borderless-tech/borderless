@@ -2,7 +2,7 @@
 pub mod contract;
 
 #[cfg(feature = "agents")]
-pub mod swagent;
+pub mod agent;
 
 #[cfg(any(feature = "contracts", feature = "agents"))]
 mod vm;

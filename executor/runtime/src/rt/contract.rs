@@ -500,7 +500,7 @@ type Lock = Arc<Mutex<()>>;
 /// However, if there is a writer thread, the readers do not care, and also the writer does not care about the readers.
 /// The readers will use the old state, until the new one is commited by the runtime.
 ///
-/// Note: In contrast to [`borderless_runtime::rt::swagent::MutLock`], this version uses only synchronous lock primitives.
+/// Note: In contrast to [`borderless_runtime::rt::agent::MutLock`], this version uses only synchronous lock primitives.
 #[derive(Clone, Default)]
 pub struct MutLock {
     map: Arc<Mutex<HashMap<ContractId, Lock>>>,
