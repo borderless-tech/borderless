@@ -858,7 +858,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "flipper"
+name = "flipper-agent"
+version = "0.1.0"
+dependencies = [
+ "borderless",
+ "serde",
+]
+
+[[package]]
+name = "flipper-contract"
 version = "0.1.0"
 dependencies = [
  "borderless",
