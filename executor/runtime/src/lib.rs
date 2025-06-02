@@ -9,7 +9,14 @@ mod rt;
 pub use error::{Error, Result};
 
 #[cfg(feature = "contracts")]
-pub use rt::contract::{Runtime, SharedRuntime};
+pub use rt::contract::{
+    MutLock as ContractLock, Runtime as ContractRuntime, SharedRuntime as SharedContractRuntime,
+};
+
+#[cfg(feature = "agents")]
+pub use rt::swagent::{
+    MutLock as AgentLock, Runtime as AgentRuntime, SharedRuntime as SharedAgentRuntime,
+};
 
 // Forward module content
 #[cfg(any(feature = "contracts", feature = "agents"))]
