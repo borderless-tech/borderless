@@ -38,8 +38,8 @@ pub mod http;
 pub mod prelude {
     pub use crate::agents::*;
     pub use crate::contracts::*;
-    pub use crate::contracts::{Introduction, TxCtx};
     pub use crate::events::*;
+    pub use crate::contracts::{TxCtx, Introduction};
 }
 
 /// Trait that must be implemented on the `Sink` enum inside a contract module.

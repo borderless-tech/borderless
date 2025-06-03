@@ -1,9 +1,9 @@
+use std::{collections::BTreeMap, fmt::Display, str::FromStr};
+
 use borderless_hash::Hash256;
 use borderless_id_types::{AgentId, BlockIdentifier, TxIdentifier, Uuid};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fmt::{Display, Formatter};
-use std::{collections::BTreeMap, str::FromStr};
 
 use crate::{events::Sink, BorderlessId, ContractId};
 
@@ -183,16 +183,6 @@ pub struct Info {
 pub enum Id {
     Contract { contract_id: ContractId },
     Agent { agent_id: AgentId },
-}
-
-impl Display for Id {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Id::Contract { contract_id } => writeln!(f, "{}", contract_id.to_string())?,
-            Id::Agent { agent_id } => writeln!(f, "{}", agent_id.to_string())?,
-        }
-        Ok(())
-    }
 }
 
 impl Id {
