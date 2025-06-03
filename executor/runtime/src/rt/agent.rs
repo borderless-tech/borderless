@@ -1,26 +1,23 @@
-#![allow(unused_imports)]
-use std::num::NonZeroUsize;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
 use ahash::HashMap;
 use borderless::__private::registers::*;
 use borderless::agents::Init;
-use borderless::common::{Introduction, Revocation, Symbols};
+use borderless::common::{Introduction, Symbols};
 use borderless::events::Events;
 use borderless::{events::CallAction, AgentId, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
-use log::{error, warn};
+use log::{info, warn};
 use parking_lot::Mutex as SyncMutex;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex};
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
 
 use super::vm::AgentCommit;
 use super::{
     code_store::CodeStore,
-    vm::{self, ContractCommit, VmState},
+    vm::{self, VmState},
 };
 use crate::db::logger::print_log_line;
 use crate::{
@@ -151,7 +148,7 @@ impl<S: Db> Runtime<S> {
 
         let store = Store::new(&engine, state);
 
-        log::info!("Initialized runtime in: {:?}", start.elapsed());
+        info!("Initialized runtime in: {:?}", start.elapsed());
 
         Ok(Self {
             linker,
@@ -166,13 +163,12 @@ impl<S: Db> Runtime<S> {
         Arc::new(Mutex::new(self))
     }
 
-    // TODO: Define container type, how we want to bundle contracts etc. and use this here, instead of reading from disk.
     pub fn instantiate_sw_agent(
         &mut self,
         contract_id: AgentId,
-        path: impl AsRef<Path>,
+        module_bytes: &[u8],
     ) -> Result<()> {
-        let module = Module::from_file(&self.engine, path)?;
+        let module = Module::new(&self.engine, module_bytes)?;
         check_module(&self.engine, &module)?;
         self.agent_store.insert_swagent(contract_id, module)?;
         Ok(())
@@ -251,6 +247,8 @@ impl<S: Db> Runtime<S> {
             borderless::prelude::Id::Contract { .. } => return Err(ErrorKind::InvalidIdType.into()),
             borderless::prelude::Id::Agent { agent_id } => agent_id,
         };
+        // TODO: We don't need to serialize the entire introduction to the other side !
+        // -> Let's change this to only the initial value from the introduction
         self.call_mut(
             &aid,
             input,

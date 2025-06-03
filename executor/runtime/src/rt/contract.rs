@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -143,13 +142,13 @@ impl<S: Db> Runtime<S> {
         Arc::new(Mutex::new(self))
     }
 
-    // TODO: Define container type, how we want to bundle contracts etc. and use this here, instead of reading from disk.
+    /// Creates a new instance of the wasm module in our [`CodeStore`] for the given contract-id
     pub fn instantiate_contract(
         &mut self,
         contract_id: ContractId,
-        path: impl AsRef<Path>,
+        module_bytes: &[u8],
     ) -> Result<()> {
-        let module = Module::from_file(&self.engine, path)?;
+        let module = Module::new(&self.engine, module_bytes)?;
         check_module(&self.engine, &module)?;
         self.contract_store.insert_contract(contract_id, module)?;
         Ok(())
@@ -207,6 +206,8 @@ impl<S: Db> Runtime<S> {
             borderless::prelude::Id::Contract { contract_id } => contract_id,
             borderless::prelude::Id::Agent { .. } => return Err(ErrorKind::InvalidIdType.into()),
         };
+        // TODO: We don't need to serialize the entire introduction to the other side !
+        // -> Let's change this to only the initial value from the introduction
         self.process_chain_tx(
             cid,
             input,
