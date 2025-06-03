@@ -330,6 +330,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "borderless-pkg"
+version = "0.1.0"
+dependencies = [
+ "borderless-hash",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+]
+
+[[package]]
 name = "borderless-runtime"
 version = "0.1.0"
 dependencies = [
@@ -1470,11 +1480,12 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "base16",
+ "borderless-hash",
  "clap",
  "json-syntax",
  "rand 0.8.5",
+ "serde",
  "serde_json",
- "sha3",
  "thiserror 2.0.12",
 ]
 

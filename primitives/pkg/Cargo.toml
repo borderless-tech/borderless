@@ -1,0 +1,12 @@
+[package]
+name = "borderless-pkg"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+borderless-hash.workspace = true
+serde.workspace = true
+serde_bytes.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
