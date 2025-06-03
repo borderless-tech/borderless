@@ -32,17 +32,16 @@ pub use borderless_id_types::*;
 // Re-export entire hash crate
 pub use borderless_hash as hash;
 
-// Re-export some parts of the http module
-pub mod http;
-
 pub mod prelude {
     pub use crate::agents::*;
+    pub use crate::common::*;
     pub use crate::contracts::*;
-    pub use crate::contracts::{Introduction, TxCtx};
     pub use crate::events::*;
 }
 
+pub mod common;
 pub mod events;
+pub mod http;
 
 /// Trait that must be implemented on the `Sink` enum inside a contract module.
 ///

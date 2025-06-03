@@ -16,7 +16,7 @@ use borderless_abi as abi;
 use registers::*;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{contracts::Introduction, error};
+use crate::error;
 pub use postcard::from_bytes as from_postcard_bytes;
 pub use postcard::to_allocvec as to_postcard_bytes;
 
@@ -255,54 +255,6 @@ where
             abort()
         }
     }
-}
-
-// TODO: Remove ! Introductions should be commited by the host !
-/// Helper function, that stores all information from the contract-introduction in the key-value-storage
-///
-/// Must be called from the webassembly code ("client-side"), as it internally relies on [`write_field`].
-pub fn write_metadata_client(introduction: &Introduction) {
-    use storage_keys::*;
-
-    // Write contract-id
-    write_field(
-        BASE_KEY_METADATA,
-        META_SUB_KEY_CONTRACT_ID,
-        &introduction.id,
-    );
-
-    // Write participant list
-    write_field(
-        BASE_KEY_METADATA,
-        META_SUB_KEY_PARTICIPANTS,
-        &introduction.participants,
-    );
-
-    // Write roles list
-    write_field(BASE_KEY_METADATA, META_SUB_KEY_ROLES, &introduction.roles);
-
-    // Write sink list
-    write_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS, &introduction.sinks);
-
-    // Write description
-    write_field(BASE_KEY_METADATA, META_SUB_KEY_DESC, &introduction.desc);
-
-    // Write meta
-    write_field(BASE_KEY_METADATA, META_SUB_KEY_META, &introduction.meta);
-
-    // Write initial state
-    //
-    // TODO: I am not sure, if a serde_json::Value can be encoded with postcard !
-    // -> Two options:
-    // 1. Store the bytes of the json with postcard
-    // 2. Store the initial state outside of this function, using the "real" model
-    //
-    // I kind of tend to option 1
-    write_field(
-        BASE_KEY_METADATA,
-        META_SUB_KEY_INIT_STATE,
-        &introduction.initial_state,
-    );
 }
 
 pub fn abort() -> ! {

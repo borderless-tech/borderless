@@ -277,6 +277,7 @@ dependencies = [
  "borderless-abi",
  "borderless-hash",
  "borderless-id-types",
+ "borderless-pkg",
  "borderless-sdk-macros",
  "http",
  "nohash-hasher",
