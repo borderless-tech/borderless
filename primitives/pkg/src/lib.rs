@@ -13,6 +13,9 @@ pub use crate::semver::SemVer;
 mod author;
 pub mod semver;
 
+// TODO: When using this with the CLI, it may be beneficial to add builders to all of those types.
+// However, this should be gated behind a feature flag, as other consumers of this library only require the parsing logic.
+
 /// Defines how to fetch the wasm code from a registry
 ///
 /// For now the definition is quite basic, but we can later expand on this and support different
@@ -109,6 +112,17 @@ pub enum PkgType {
     Agent,
 }
 
+/// Capabilities of a SW-Agent
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Capabilities {
+    /// Weather or not the agent is allowed to make http-calls
+    pub network: bool,
+    /// Weather or not the agent is allowed to establish websocket connections
+    pub websocket: bool,
+    /// URLs that the agent is allowed to call
+    pub url_whitelist: Vec<String>,
+}
+
 /// Definition of a wasm package
 ///
 /// Contains the necessary information about the source, a name for the package
@@ -139,6 +153,15 @@ pub struct WasmPkg {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_module: Option<String>,
 
+    /// (Networking) Capabilities of the package
+    ///
+    /// This is only used for software agents, which can make network calls and may use a websocket.
+    /// The capabilities are registered in the runtime, so that the agent cannot make any other network
+    /// calls than specified by the url-whitelist in [`Capabilities`].
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<Capabilities>,
+
     /// Package type (contract or agent)
     pub pkg_type: PkgType,
 
@@ -151,6 +174,9 @@ pub struct WasmPkg {
 }
 
 // TODO: Use json-proof package here
+// TODO: Or - do we need this ? we could simply sign the Vec<u8> of the "WasmPkg" and call it a day.
+//       I think the signing is also only a thing for the registries, because when sending introductions with inline code definition,
+//       the message is always signed by our p2p protocols..
 /// A signed wasm package
 ///
 /// The signature is generated, by first generating the json-proof for the [`WasmPkg`] and then signing it with some private-key.
