@@ -187,7 +187,8 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         // Otherwise: Read from env
         "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse()?
     };
-    rt.instantiate_contract(cid, command.contract)?;
+    let module_bytes = std::fs::read(command.contract)?;
+    rt.instantiate_contract(cid, &module_bytes)?;
 
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
 
@@ -274,7 +275,8 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
         // Otherwise: Read from env
         "a265e6fd-7f7a-85b5-aa24-a79305daf2a5".parse()?
     };
-    rt.instantiate_sw_agent(aid, command.code)?;
+    let module_bytes = std::fs::read(command.code)?;
+    rt.instantiate_sw_agent(aid, &module_bytes)?;
 
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
 
