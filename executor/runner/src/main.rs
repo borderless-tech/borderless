@@ -40,6 +40,10 @@ struct Cli {
     #[arg(short, long)]
     db: PathBuf,
 
+    /// Path to registry
+    #[args(shirt, long)]
+    registry: String,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -186,7 +190,6 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         // Otherwise: Read from env
         "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse()?
     };
-    rt.instantiate_contract(cid, command.contract)?;
 
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
 
@@ -199,6 +202,8 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             // Parse introduction
             let data = read_to_string(introduction)?;
             let introduction = Introduction::from_str(&data)?;
+
+            rt.instantiate_contract(cid, introduction.wasm)?;
 
             let cid = introduction.id.as_cid().unwrap();
             let tx_ctx = generate_tx_ctx(&mut rt, &cid)?;
