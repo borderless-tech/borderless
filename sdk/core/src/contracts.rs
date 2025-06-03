@@ -254,7 +254,7 @@ impl From<AgentId> for Id {
 /// or "local" - in this case the compiled module is just serialized as bytes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WasmSource {
-    Remote { repository: String },
+    Remote { repository: String, pkg: String },
     Local { code: Vec<u8> },
 }
 

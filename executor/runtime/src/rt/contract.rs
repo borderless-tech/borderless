@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -6,10 +5,14 @@ use ahash::HashMap;
 use borderless::__private::registers::*;
 use borderless::contracts::{BlockCtx, Introduction, Revocation, Symbols, TxCtx};
 use borderless::events::Events;
+use borderless::prelude::WasmSource;
 use borderless::{events::CallAction, ContractId};
 use borderless::{BlockIdentifier, BorderlessId};
+use borderless_format::pkg::Pkg;
+use borderless_format::registry::ContractService;
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
+use borderless_registry_client::ContractRegistryClient;
 use log::{error, warn};
 use parking_lot::Mutex;
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
@@ -146,9 +149,29 @@ impl<S: Db> Runtime<S> {
     pub fn instantiate_contract(
         &mut self,
         contract_id: ContractId,
-        path: impl AsRef<Path>,
+        wasm: WasmSource,
     ) -> Result<()> {
-        let module = Module::from_file(&self.engine, path)?;
+        // fetch contract from given source
+        let module: Module = match wasm {
+            WasmSource::Local { code } => Module::from_binary(&self.engine, &code)?,
+            WasmSource::Remote { repository, pkg } => {
+                let registry_client = ContractRegistryClient::new(&repository);
+
+                // refactor this!
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let code = rt
+                    .block_on(async {
+                        let pkg: Pkg = registry_client.read_pkg(pkg).await?;
+                        let code = registry_client.get_contract(pkg.hash).await;
+                        code
+                    })
+                    .unwrap();
+
+                Module::from_binary(&self.engine, &code)?
+            }
+        };
+
+        // let module = Module::from_file(&self.engine, path)?;
         check_module(&self.engine, &module)?;
         self.contract_store.insert_contract(contract_id, module)?;
         Ok(())

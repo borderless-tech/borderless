@@ -7,6 +7,7 @@ edition = "2021"
 borderless.workspace = true
 borderless-format.workspace = true
 borderless-kv-store.workspace = true
+borderless-registry-client.workspace = true
 nohash = "0.2.0"
 log.workspace = true
 postcard.workspace = true
@@ -24,7 +25,7 @@ lru = { version = "0.14", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
 serde_bytes.workspace = true
 thiserror.workspace = true
-tokio = { version = "1", features = ["macros"], optional = true }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"], optional = true }
 tokio-tungstenite = { version = "0.26.2", features = ["rustls"] }
 futures-util = "0.3.31"
 ed25519-dalek = "2.1"
