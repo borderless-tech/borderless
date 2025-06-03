@@ -15,14 +15,14 @@ use borderless::{
 };
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_runtime::{
+    agent::{
+        tasks::{handle_schedules, handle_ws_connection},
+        MutLock as AgentLock, Runtime as AgentRuntime,
+    },
     contract::{MutLock as ContractLock, Runtime as ContractRuntime},
     db::{
         controller::Controller,
         logger::{print_log_line, Logger},
-    },
-    swagent::{
-        tasks::{handle_schedules, handle_ws_connection},
-        MutLock as AgentLock, Runtime as AgentRuntime,
     },
     CodeStore,
 };

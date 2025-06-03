@@ -182,14 +182,8 @@ fn get_schedules_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result
             _span: impl_fn.span(),
         });
     }
-    if schedules.is_empty() {
-        Err(Error::new_spanned(
-            impl_block,
-            format!("No actions defined for '{state_ident}'"),
-        ))
-    } else {
-        Ok(schedules)
-    }
+    // NOTE: It is okay, to define no schedules
+    Ok(schedules)
 }
 
 #[derive(Debug)]

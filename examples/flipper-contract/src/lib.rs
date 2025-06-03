@@ -2,6 +2,7 @@
 pub mod flipper {
     use borderless::{Result, *};
     use collections::lazyvec::LazyVec;
+    use events::ActionOutput;
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
@@ -21,7 +22,7 @@ pub mod flipper {
     use self::actions::Actions;
 
     #[derive(NamedSink)]
-    pub enum Other {
+    pub enum Sinks {
         Flipper(Actions),
     }
 
@@ -41,9 +42,11 @@ pub mod flipper {
             self.switch = switch;
         }
 
-        // pub fn set_other(&self, switch: bool) -> Result<Events> {
-        //     Events::default().push(Sinks::)
-        //     todo!()
-        // }
+        #[action(web_api = true, roles = "Flipper")]
+        pub fn set_other(&self, switch: bool) -> Result<ActionOutput> {
+            let mut out = ActionOutput::default();
+            out.add_event(Sinks::Flipper(Actions::SetSwitch { switch }));
+            Ok(out)
+        }
     }
 }

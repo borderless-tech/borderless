@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
@@ -31,15 +32,6 @@ use crate::{
 pub mod tasks;
 
 pub type SharedRuntime<S> = Arc<Mutex<Runtime<S>>>;
-
-// NOTE: I think we have to use a different runtime for Contracts and SW-Agents;
-//
-// the linker should provide different host functions, and SW-Agents require async support, so everything will be async.
-//
-// There is however a big chunk, that is identical in both runtimes; so the question is, how to generalize over this.
-// Also: In the real world, we may want to embed the process runtimes (aswell as HTTP-contract-runtimes ??) in a sort of
-// executor pool, where we have a fixed list of wasm runtimes ready to execute the request.
-// This executor pool should itself be threadsafe, so it can be shared among threads safely.
 
 pub struct Runtime<S = Lmdb>
 where

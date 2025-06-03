@@ -11,7 +11,6 @@ use crate::{
     state::get_state,
 };
 
-// TODO: Add attributes
 pub fn parse_module_content(
     mod_span: Span,
     mod_items: &[Item],
@@ -134,7 +133,6 @@ pub fn parse_module_content(
         #[automatically_derived]
         pub(crate) fn exec_introduction() -> Result<()> {
             #read_input
-            // TODO: Use different introduction type for agents
             let introduction = Introduction::from_bytes(&input)?;
             let s = introduction.pretty_print()?;
             info!("{s}");
@@ -153,7 +151,6 @@ pub fn parse_module_content(
 
     let init_ws = if use_websocket {
         quote! {
-            // TODO: Websocket
             my_init.ws_config = Some(get_ws_config()?);
         }
     } else {
@@ -208,6 +205,7 @@ pub fn parse_module_content(
             // So for now, we roll with it.
             match post_action_response(path, payload) {
                 Ok(action) => {
+                    let action_bytes = action.to_bytes()?;
                     let mut state = #as_state::load()?;
                     #match_and_call_action
                     let events = _match_result?;
@@ -217,7 +215,7 @@ pub fn parse_module_content(
                     }
                     #as_state::commit(state);
                     write_register(REGISTER_OUTPUT_HTTP_STATUS, 200u16.to_be_bytes());
-                    write_register(REGISTER_OUTPUT_HTTP_RESULT, action.to_bytes()?);
+                    write_register(REGISTER_OUTPUT_HTTP_RESULT, action_bytes);
                 }
                 Err(e) => {
                     write_register(REGISTER_OUTPUT_HTTP_STATUS, 400u16.to_be_bytes());
