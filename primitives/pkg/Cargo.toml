@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+base64 = "0.22.1"
 borderless-hash.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true

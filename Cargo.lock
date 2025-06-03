@@ -317,6 +317,7 @@ dependencies = [
 name = "borderless-pkg"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "borderless-hash",
  "serde",
  "serde_bytes",

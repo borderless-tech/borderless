@@ -55,9 +55,27 @@ pub enum SourceType {
 
     /// Ready to use, compiled wasm module
     Wasm {
-        #[serde(with = "serde_bytes")]
+        #[serde(with = "code_as_base64")]
         wasm: Vec<u8>,
     },
+}
+
+mod code_as_base64 {
+    use base64::prelude::*;
+    use serde::{Deserialize, Serialize};
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(v: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
+        let base64 = BASE64_STANDARD.encode(v);
+        String::serialize(&base64, s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+        let b64 = String::deserialize(d)?;
+        BASE64_STANDARD
+            .decode(b64.as_bytes())
+            .map_err(|e| serde::de::Error::custom(e))
+    }
 }
 
 /// Specifies the complete source of a wasm module
@@ -191,4 +209,23 @@ pub struct WasmPkgSigned {
 
     /// Base-16 encoded signature
     pub signature: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_deserialize() {
+        let s = r#"{
+            "version": "1.2.3",
+            "digest": "",
+            "wasm": "AGFzbQEAAAABnAIqYAF/"
+        }"#;
+        let source: Result<Source, _> = serde_json::from_str(s);
+        assert!(source.is_ok());
+        let source = source.unwrap();
+        dbg!(source);
+        assert!(false);
+    }
 }
