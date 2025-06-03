@@ -153,4 +153,42 @@ mod tests {
             assert!(v.is_err());
         }
     }
+
+    #[test]
+    fn semver_parsing() {
+        let version = "1.0.0".parse::<SemVer>();
+        assert!(version.is_ok());
+        assert_eq!(
+            version.unwrap(),
+            SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0
+            }
+        );
+        let version = "asdf".parse::<SemVer>();
+        assert!(version.is_err());
+        let version = "v1.0.3".parse::<SemVer>();
+        assert!(version.is_err());
+        let version = "1.0".parse::<SemVer>();
+        assert!(version.is_err());
+        let version = "1".parse::<SemVer>();
+        assert!(version.is_err());
+        let version = "1.0.-10".parse::<SemVer>();
+        assert!(version.is_err());
+    }
+
+    #[test]
+    fn semver_default() {
+        let v1 = SemVer::default();
+        assert_eq!(
+            v1,
+            SemVer {
+                major: 0,
+                minor: 1,
+                patch: 0
+            }
+        );
+        assert_eq!(v1, "0.1.0".parse().unwrap());
+    }
 }
