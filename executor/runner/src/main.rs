@@ -12,6 +12,7 @@ use borderless::{
     contracts::TxCtx,
     events::CallAction,
     hash::Hash256,
+    pkg::SourceType,
     AgentId, BlockIdentifier, ContractId, TxIdentifier,
 };
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
@@ -187,8 +188,8 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         // Otherwise: Read from env
         "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse()?
     };
-    let module_bytes = std::fs::read(command.contract)?;
-    rt.instantiate_contract(cid, &module_bytes)?;
+    // let module_bytes = std::fs::read(command.contract)?;
+    // rt.instantiate_contract(cid, &module_bytes)?;
 
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
 
@@ -203,6 +204,21 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let introduction = Introduction::from_str(&data)?;
 
             let cid = introduction.id.as_cid().unwrap();
+
+            match &introduction.package.source.code {
+                SourceType::Registry { registry: _ } => {
+                    todo!("implement fetching from registry")
+                }
+                SourceType::Wasm { wasm } => {
+                    if !wasm.is_empty() {
+                        info!("try to instantiate the contract");
+                        rt.instantiate_contract(cid, &wasm)?;
+                    } else {
+                        info!("Introduction had empty code bytes - using filesystem instead");
+                    }
+                }
+            }
+
             let tx_ctx = generate_tx_ctx(&mut rt, &cid)?;
             info!("Introduce contract {cid}");
             let start = Instant::now();
@@ -275,8 +291,8 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
         // Otherwise: Read from env
         "a265e6fd-7f7a-85b5-aa24-a79305daf2a5".parse()?
     };
-    let module_bytes = std::fs::read(command.code)?;
-    rt.instantiate_sw_agent(aid, &module_bytes)?;
+    // let module_bytes = std::fs::read(command.code)?;
+    // rt.instantiate_sw_agent(aid, &module_bytes)?;
 
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
 
@@ -291,6 +307,19 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
             let introduction = Introduction::from_str(&data)?;
 
             let aid = introduction.id.as_aid().unwrap();
+
+            match &introduction.package.source.code {
+                SourceType::Registry { registry: _ } => {
+                    todo!("implement fetching from registry")
+                }
+                SourceType::Wasm { wasm } => {
+                    if !wasm.is_empty() {
+                        rt.instantiate_sw_agent(aid, &wasm)?;
+                    } else {
+                        info!("Introduction had empty code bytes - using filesystem instead");
+                    }
+                }
+            }
 
             info!("Introduce agent {aid}");
             let start = Instant::now();

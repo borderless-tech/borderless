@@ -32,6 +32,9 @@ pub use borderless_id_types::*;
 // Re-export entire hash crate
 pub use borderless_hash as hash;
 
+// Re-export pkg crate
+pub use borderless_pkg as pkg;
+
 pub mod prelude {
     pub use crate::agents::*;
     pub use crate::common::*;
