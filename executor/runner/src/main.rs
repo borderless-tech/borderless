@@ -8,7 +8,8 @@ use std::{
 
 use anyhow::{Context, Result};
 use borderless::{
-    contracts::{Introduction, Revocation, TxCtx},
+    common::{Introduction, Revocation},
+    contracts::TxCtx,
     events::CallAction,
     hash::Hash256,
     AgentId, BlockIdentifier, ContractId, TxIdentifier,
@@ -233,7 +234,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let data = read_to_string(revocation)?;
             let revocation = Revocation::from_str(&data)?;
             let tx_ctx = generate_tx_ctx(&mut rt, &cid)?;
-            assert_eq!(revocation.contract_id, cid);
+            assert_eq!(revocation.id, cid);
 
             info!("Revoke contract {cid}");
             let start = Instant::now();

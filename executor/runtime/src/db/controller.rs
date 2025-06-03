@@ -1,5 +1,6 @@
 use borderless::{
-    contracts::{Description, Info, Metadata, Revocation},
+    common::{Description, Metadata, Revocation},
+    contracts::Info,
     BorderlessId, ContractId,
     __private::storage_keys::*,
     events::Sink,
@@ -250,10 +251,10 @@ pub(crate) fn write_system_value<S: Db, D: serde::Serialize, ID: AsRef<[u8; 16]>
 
 // Helper function to write fields with system-keys
 #[cfg(any(feature = "contracts", feature = "agents"))]
-pub(crate) fn read_system_value<S: Db, D: DeserializeOwned>(
+pub(crate) fn read_system_value<S: Db, D: DeserializeOwned, ID: AsRef<[u8; 16]>>(
     db_ptr: &S::Handle,
     txn: &<S as Db>::RwTx<'_>,
-    cid: &ContractId,
+    cid: ID,
     base_key: u64,
     sub_key: u64,
 ) -> Result<Option<D>> {
@@ -272,7 +273,7 @@ pub(crate) fn read_system_value<S: Db, D: DeserializeOwned>(
 pub(crate) fn write_introduction<S: Db>(
     db_ptr: &S::Handle,
     txn: &mut <S as Db>::RwTx<'_>,
-    introduction: &borderless::contracts::Introduction,
+    introduction: &borderless::common::Introduction,
 ) -> Result<()> {
     use borderless::__private::storage_keys::*;
     let cid = introduction.id;
@@ -357,10 +358,10 @@ pub(crate) fn write_revocation<S: Db>(
     tx_ctx: borderless::contracts::TxCtx,
     timestamp: u64,
 ) -> Result<()> {
-    let cid = revocation.contract_id;
+    let cid = revocation.id;
     // Update metadata field
     let meta: Option<Metadata> =
-        read_system_value::<S, _>(db_ptr, txn, &cid, BASE_KEY_METADATA, META_SUB_KEY_META)?;
+        read_system_value::<S, _, _>(db_ptr, txn, &cid, BASE_KEY_METADATA, META_SUB_KEY_META)?;
     let mut meta = meta.unwrap();
 
     meta.inactive_since = timestamp;

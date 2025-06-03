@@ -272,8 +272,9 @@ pub struct IntroductionDto {
 /// Contract revocation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Revocation {
-    /// Contract-ID
-    pub contract_id: ContractId,
+    /// Contract- or Agent-ID
+    #[serde(flatten)]
+    pub id: Id,
 
     /// Reason for the revocation
     pub reason: String,

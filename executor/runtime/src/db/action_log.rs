@@ -149,8 +149,14 @@ impl<'a, S: Db> ActionLog<'a, S> {
             .expect("u64 should fit for 584942417 years");
 
         let len_commited: u64 = {
-            read_system_value::<S, _>(db_ptr, txn, &self.cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN)?
-                .unwrap_or_default()
+            read_system_value::<S, _, _>(
+                db_ptr,
+                txn,
+                &self.cid,
+                BASE_KEY_ACTION_LOG,
+                SUB_KEY_LOG_LEN,
+            )?
+            .unwrap_or_default()
         };
 
         let full_len = len_commited + 1;

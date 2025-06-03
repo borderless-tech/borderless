@@ -6,7 +6,8 @@
 use borderless::__private::registers::*;
 use borderless::{
     __private::storage_keys::StorageKey,
-    contracts::{Introduction, Revocation, TxCtx},
+    common::{Introduction, Revocation},
+    contracts::TxCtx,
     events::CallAction,
     log::LogLine,
     AgentId, ContractId,
@@ -193,7 +194,7 @@ impl<S: Db> VmState<S> {
                 write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
             }
             ContractCommit::Revocation { revocation, tx_ctx } => {
-                assert_eq!(revocation.contract_id, cid);
+                assert_eq!(revocation.id, cid);
                 write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, tx_ctx, timestamp)?;
             }
         }

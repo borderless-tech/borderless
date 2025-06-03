@@ -7,7 +7,7 @@ use std::time::Instant;
 use ahash::HashMap;
 use borderless::__private::registers::*;
 use borderless::agents::Init;
-use borderless::contracts::{Introduction, Revocation, Symbols};
+use borderless::common::{Introduction, Revocation, Symbols};
 use borderless::events::Events;
 use borderless::{events::CallAction, AgentId, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;

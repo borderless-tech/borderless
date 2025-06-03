@@ -4,7 +4,8 @@ use std::time::Instant;
 
 use ahash::HashMap;
 use borderless::__private::registers::*;
-use borderless::contracts::{BlockCtx, Introduction, Revocation, Symbols, TxCtx};
+use borderless::common::{Introduction, Revocation, Symbols};
+use borderless::contracts::{BlockCtx, TxCtx};
 use borderless::events::Events;
 use borderless::{events::CallAction, ContractId};
 use borderless::{BlockIdentifier, BorderlessId};
@@ -226,8 +227,12 @@ impl<S: Db> Runtime<S> {
         tx_ctx: TxCtx,
     ) -> Result<()> {
         let input = revocation.to_bytes()?;
+        let cid = match revocation.id {
+            borderless::prelude::Id::Contract { contract_id } => contract_id,
+            borderless::prelude::Id::Agent { .. } => return Err(ErrorKind::InvalidIdType.into()),
+        };
         self.process_chain_tx(
-            revocation.contract_id,
+            cid,
             input,
             *writer,
             tx_ctx.to_bytes()?,
