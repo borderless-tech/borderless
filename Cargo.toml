@@ -1,7 +1,5 @@
 [workspace]
 members = [
-  "examples/abi-test",
-  "examples/abi-test-swagent",
   "examples/collections",
   "examples/flipper-agent",
   "examples/flipper-contract",
