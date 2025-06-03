@@ -118,6 +118,27 @@ pub struct WasmPkg {
     /// Name of the package
     pub name: String,
 
+    /// Name of the application that this package is a part of
+    ///
+    /// An application is just an abstraction for multiple wasm packages.
+    /// It can be further split into application modules.
+    ///
+    /// The full specifier for the package would be (if application and app-modules are used):
+    /// `<app_name>/<app_module>/<pkg-name>`
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_name: Option<String>,
+
+    /// Name of the application module that this package is a part of
+    ///
+    /// An application module is a subset of wasm modules in an application.
+    ///
+    /// The full specifier for the package would be (if application and app-modules are used):
+    /// `<app_name>/<app_module>/<pkg-name>`
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_module: Option<String>,
+
     /// Package type (contract or agent)
     pub pkg_type: PkgType,
 
@@ -129,6 +150,7 @@ pub struct WasmPkg {
     pub source: Source,
 }
 
+// TODO: Use json-proof package here
 /// A signed wasm package
 ///
 /// The signature is generated, by first generating the json-proof for the [`WasmPkg`] and then signing it with some private-key.
