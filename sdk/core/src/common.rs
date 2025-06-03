@@ -389,17 +389,23 @@ mod tests {
     "summary": "a flipper contract for testing the abi",
     "legal": null
   },
-  "meta": {
-    "application": "flipper",
-    "app_module": "test",
-    "version": "0.1.0"
+  "meta": {},
+  "package": {
+     "name": "flipper-contract",
+     "pkg_type": "contract",
+     "source": {
+        "version": "0.1.0",
+        "digest": "",
+        "wasm": []
+     }
   }
 }
 "#;
         let result: Result<Introduction, _> = serde_json::from_str(&json);
         assert!(result.is_ok(), "{}", result.unwrap_err());
+        let introduction = result.unwrap();
         assert_eq!(
-            result.unwrap().id,
+            introduction.id,
             Id::Contract {
                 contract_id: "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse().unwrap()
             }
@@ -407,8 +413,9 @@ mod tests {
         let json = json.replace(r#""contract_id": "c"#, r#""agent_id": "a"#);
         let result: Result<Introduction, _> = serde_json::from_str(&json);
         assert!(result.is_ok(), "{}", result.unwrap_err());
+        let introduction = result.unwrap();
         assert_eq!(
-            result.unwrap().id,
+            introduction.id,
             Id::Agent {
                 agent_id: "ac8ca79c-3bbb-89d2-bb28-29636c170387".parse().unwrap()
             }

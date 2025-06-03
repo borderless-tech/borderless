@@ -48,13 +48,16 @@ pub struct Registry {
 /// This is either a [`Registry`], which can be used to download the `.wasm` blob,
 /// or it is an inline definition, that just contains the compiled `.wasm` module.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum SourceType {
     /// Registry, where the wasm module can be fetched from
-    Registry(Registry),
+    Registry { registry: Registry },
 
     /// Ready to use, compiled wasm module
-    #[serde(with = "serde_bytes")]
-    Wasm(Vec<u8>),
+    Wasm {
+        #[serde(with = "serde_bytes")]
+        wasm: Vec<u8>,
+    },
 }
 
 /// Specifies the complete source of a wasm module
@@ -63,14 +66,14 @@ pub enum SourceType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Source {
     /// Version of the wasm module
-    version: SemVer,
+    pub version: SemVer,
 
     /// Sha3-256 digest of the module
-    digest: Hash256,
+    pub digest: Hash256,
 
     /// Concrete source - see [`SourceType`]
     #[serde(flatten)]
-    code: SourceType,
+    pub code: SourceType,
 }
 
 /// Package metadata
