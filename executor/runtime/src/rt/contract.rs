@@ -201,16 +201,16 @@ impl<S: Db> Runtime<S> {
         writer: &BorderlessId,
         tx_ctx: TxCtx,
     ) -> Result<()> {
-        let input = introduction.to_bytes()?;
         let cid = match introduction.id {
             borderless::prelude::Id::Contract { contract_id } => contract_id,
             borderless::prelude::Id::Agent { .. } => return Err(ErrorKind::InvalidIdType.into()),
         };
-        // TODO: We don't need to serialize the entire introduction to the other side !
-        // -> Let's change this to only the initial value from the introduction
+        // NOTE: The input for the introduction is not the introduction, but only the initial state!
+        // The introduction itself is commited by the VmState
+        let initial_state = introduction.initial_state.to_string().into_bytes();
         self.process_chain_tx(
             cid,
-            input,
+            initial_state,
             *writer,
             tx_ctx.to_bytes()?,
             ContractCommit::Introduction {

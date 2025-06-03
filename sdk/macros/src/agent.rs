@@ -133,10 +133,10 @@ pub fn parse_module_content(
         #[automatically_derived]
         pub(crate) fn exec_introduction() -> Result<()> {
             #read_input
-            let introduction = Introduction::from_bytes(&input)?;
-            let s = introduction.pretty_print()?;
-            info!("{s}");
-            let state = #as_state::init(introduction.initial_state)?;
+            // Parse initial state
+            let initial_state: ::borderless::serialize::Value = ::borderless::serialize::from_slice(&input)?;
+            let state = #as_state::init(initial_state)?;
+            // Commit state
             #as_state::commit(state);
             Ok(())
         }

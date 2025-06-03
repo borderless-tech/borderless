@@ -241,17 +241,16 @@ impl<S: Db> Runtime<S> {
         &mut self,
         introduction: Introduction,
     ) -> Result<Option<Events>> {
-        // Parse action
-        let input = introduction.to_bytes()?;
         let aid = match introduction.id {
             borderless::prelude::Id::Contract { .. } => return Err(ErrorKind::InvalidIdType.into()),
             borderless::prelude::Id::Agent { agent_id } => agent_id,
         };
-        // TODO: We don't need to serialize the entire introduction to the other side !
-        // -> Let's change this to only the initial value from the introduction
+        // NOTE: The input for the introduction is not the introduction, but only the initial state!
+        // The introduction itself is commited by the VmState
+        let initial_state = introduction.initial_state.to_string().into_bytes();
         self.call_mut(
             &aid,
-            input,
+            initial_state,
             "process_introduction",
             AgentCommit::Introduction { introduction },
         )
