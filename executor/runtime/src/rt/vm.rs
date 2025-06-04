@@ -1243,10 +1243,4 @@ impl StorageOp {
             StorageOp::Write { key, .. } | StorageOp::Remove { key } => key.is_user_key(),
         }
     }
-
-    pub fn key(&self) -> &StorageKey {
-        match &self {
-            StorageOp::Write { key, .. } | StorageOp::Remove { key } => key,
-        }
-    }
 }
