@@ -31,7 +31,6 @@ pub mod semver;
 pub struct Registry {
     /// Type of registry. If none given, the OCI standard is used.
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub registry_type: Option<String>, // NOTE: We can expand on that later
 
     /// Base-URL of the registry
@@ -94,6 +93,70 @@ pub struct Source {
     pub code: SourceType,
 }
 
+impl Source {
+    /// 'flattens' the `Source` to create a [`SourceFlattened`]
+    ///
+    /// Useful for serializers that do not support advanced serde features.
+    pub fn flatten(self) -> SourceFlattened {
+        let (registry, wasm) = match self.code {
+            SourceType::Registry { registry } => (Some(registry), None),
+            SourceType::Wasm { wasm } => (None, Some(wasm)),
+        };
+        SourceFlattened {
+            version: self.version,
+            digest: self.digest,
+            registry,
+            wasm,
+        }
+    }
+}
+
+/// A 'flattened' version of [`Source`]
+///
+/// Some serializers do not support all serde features, like untagged enums or flattening.
+/// This struct is a replacement for [`Source`], in case your serializer cannot properly serialize the `Source` type.
+/// In this version, the content of [`SourceType`] is directly inlined into the struct definition using options.
+/// Also the base64 encoding of the wasm bytes is removed in this version.
+///
+/// You can see this as an "on-disk" version of `Source`. For transfer over the wire (especially with json !) you should use [`Source`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceFlattened {
+    pub version: SemVer,
+
+    /// Sha3-256 digest of the module
+    pub digest: Hash256,
+
+    #[serde(default)]
+    registry: Option<Registry>,
+
+    #[serde(default)]
+    #[serde(with = "serde_bytes")]
+    wasm: Option<Vec<u8>>,
+}
+
+impl SourceFlattened {
+    /// 'unflattens' the data back into a [`Source`]
+    ///
+    /// Inverse operation of [`Source::flatten`].
+    ///
+    /// # Safety
+    ///
+    /// This function panics, if the `SourceFlattened` cannot be converted into a `Source`,
+    /// because both `registry` and `wasm` are set to either `None` or `Some` ( it should be either or ).
+    pub fn unflatten(self) -> Source {
+        let code = match (self.registry, self.wasm) {
+            (Some(registry), None) => SourceType::Registry { registry  },
+            (None, Some(wasm)) => SourceType::Wasm { wasm  },
+            _ => panic!("Failed to convert into `Source` - either `registry` or `wasm` must be set, but neither both or none"),
+        };
+        Source {
+            version: self.version,
+            digest: self.digest,
+            code,
+        }
+    }
+}
+
 /// Package metadata
 ///
 /// Contains things like the authors, license, link to documentation etc.
@@ -105,24 +168,20 @@ pub struct PkgMeta {
 
     /// A description of the package
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 
     /// URL of the package documentation
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub documentation: Option<String>,
 
     /// License information
     ///
     /// SPDX 2.3 license expression
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
 
     /// URL of the package source repository
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub repository: Option<String>,
 }
 
@@ -161,7 +220,6 @@ pub struct WasmPkg {
     /// The full specifier for the package would be (if application and app-modules are used):
     /// `<app_name>/<app_module>/<pkg-name>`
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_name: Option<String>,
 
     /// Name of the application module that this package is a part of
@@ -171,7 +229,6 @@ pub struct WasmPkg {
     /// The full specifier for the package would be (if application and app-modules are used):
     /// `<app_name>/<app_module>/<pkg-name>`
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_module: Option<String>,
 
     /// (Networking) Capabilities of the package
@@ -180,7 +237,6 @@ pub struct WasmPkg {
     /// The capabilities are registered in the runtime, so that the agent cannot make any other network
     /// calls than specified by the url-whitelist in [`Capabilities`].
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<Capabilities>,
 
     /// Package type (contract or agent)
@@ -240,7 +296,6 @@ pub struct WasmPkgNoSource {
     /// The full specifier for the package would be (if application and app-modules are used):
     /// `<app_name>/<app_module>/<pkg-name>`
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_name: Option<String>,
 
     /// Name of the application module that this package is a part of
@@ -250,7 +305,6 @@ pub struct WasmPkgNoSource {
     /// The full specifier for the package would be (if application and app-modules are used):
     /// `<app_name>/<app_module>/<pkg-name>`
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_module: Option<String>,
 
     /// (Networking) Capabilities of the package
@@ -259,7 +313,6 @@ pub struct WasmPkgNoSource {
     /// The capabilities are registered in the runtime, so that the agent cannot make any other network
     /// calls than specified by the url-whitelist in [`Capabilities`].
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<Capabilities>,
 
     /// Package type (contract or agent)
@@ -300,8 +353,5 @@ mod tests {
         }"#;
         let source: Result<Source, _> = serde_json::from_str(s);
         assert!(source.is_ok());
-        let source = source.unwrap();
-        dbg!(source);
-        assert!(false);
     }
 }

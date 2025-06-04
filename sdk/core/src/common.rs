@@ -19,21 +19,19 @@ pub struct Description {
     pub display_name: String,
     pub summary: String,
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub legal: Option<String>,
 }
 
 /// Metadata of the contract or process.
 ///
 /// Used for administration purposes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     #[serde(default)]
     /// Time when the contract or process was created (milliseconds since unix epoch)
     pub active_since: u64,
 
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     /// Transaction context of the contract-introduction transaction
     ///
     /// Is `None`, if the entity is not a contract.
@@ -44,7 +42,6 @@ pub struct Metadata {
     pub inactive_since: u64,
 
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     /// Transaction context of the contract-revocation transaction (only for contracts)
     ///
     /// Is `None`, if the entity is not a contract.
@@ -52,7 +49,6 @@ pub struct Metadata {
 
     /// Parent of the contract or process (in case the contract / agent was updated or replaced by a newer version)
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<Uuid>,
 }
 
@@ -171,7 +167,6 @@ pub struct Introduction {
 
     /// List of participants
     #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub participants: Vec<BorderlessId>,
 
     /// Initial state as JSON value
@@ -183,17 +178,16 @@ pub struct Introduction {
     ///
     /// Only relevant for contracts
     #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub roles: Vec<Role>,
 
     /// List of available sinks
     #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub sinks: Vec<Sink>,
 
     /// High-Level description of the contract or agent
     pub desc: Description,
 
+    #[serde(default)]
     /// metadata of the contract or agent
     pub meta: Metadata,
 
@@ -398,7 +392,7 @@ mod tests {
      "source": {
         "version": "0.1.0",
         "digest": "",
-        "wasm": []
+        "wasm": ""
      }
   }
 }
