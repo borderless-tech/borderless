@@ -170,6 +170,7 @@ impl<S: Db> VmState<S> {
                 StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
             }
         }
+
         // Current timestamp ( milliseconds since epoch )
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -202,7 +203,6 @@ impl<S: Db> VmState<S> {
         // Flush log
         let logger = Logger::new(&self.db, cid);
         logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
-
         // Commit txn
         txn.commit()?;
 
@@ -1241,6 +1241,12 @@ impl StorageOp {
     pub fn is_userspace(&self) -> bool {
         match self {
             StorageOp::Write { key, .. } | StorageOp::Remove { key } => key.is_user_key(),
+        }
+    }
+
+    pub fn key(&self) -> &StorageKey {
+        match &self {
+            StorageOp::Write { key, .. } | StorageOp::Remove { key } => key,
         }
     }
 }
