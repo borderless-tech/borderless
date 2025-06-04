@@ -343,7 +343,7 @@ pub fn generate_ws_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     pub extern "C" fn on_ws_open() {
         let result = #derived::on_ws_open();
         match result {
-            Ok(()) => ::borderless::info!("on_ws_open: success."),
+            Ok(()) => ::borderless::debug!("on_ws_open: success."),
             Err(e) => ::borderless::error!("on_ws_open execution failed: {e:?}"),
         }
     }
@@ -352,7 +352,7 @@ pub fn generate_ws_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     pub extern "C" fn on_ws_msg() {
         let result = #derived::on_ws_msg();
         match result {
-            Ok(()) => ::borderless::info!("on_ws_msg: success."),
+            Ok(()) => ::borderless::debug!("on_ws_msg: success."),
             Err(e) => ::borderless::error!("on_ws_msg execution failed: {e:?}"),
         }
     }
@@ -361,7 +361,7 @@ pub fn generate_ws_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     pub extern "C" fn on_ws_error() {
         let result = #derived::on_ws_error();
         match result {
-            Ok(()) => ::borderless::info!("on_ws_error: success."),
+            Ok(()) => ::borderless::debug!("on_ws_error: success."),
             Err(e) => ::borderless::error!("on_ws_error execution failed: {e:?}"),
         }
     }
@@ -370,7 +370,7 @@ pub fn generate_ws_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     pub extern "C" fn on_ws_close() {
         let result = #derived::on_ws_close();
         match result {
-            Ok(()) => ::borderless::info!("on_ws_close: success."),
+            Ok(()) => ::borderless::debug!("on_ws_close: success."),
             Err(e) => ::borderless::error!("on_ws_close execution failed: {e:?}"),
         }
     }
@@ -386,7 +386,7 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     pub extern "C" fn on_init() {
         let result = #derived::exec_init();
         match result {
-            Ok(()) => ::borderless::info!("initialization successful"),
+            Ok(()) => ::borderless::debug!("initialization: success"),
             Err(e) => ::borderless::error!("initialization failed: {e:?}"),
         }
     }
@@ -396,7 +396,7 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     pub extern "C" fn on_shutdown() {
         let result = #derived::exec_shutdown();
         match result {
-            Ok(()) => ::borderless::info!("shutdown successful"),
+            Ok(()) => ::borderless::debug!("shutdown: success"),
             Err(e) => ::borderless::error!("shutdown failed: {e:?}"),
         }
     }
@@ -406,8 +406,8 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     pub extern "C" fn process_action() {
         let result = #derived::exec_action();
         match result {
-            Ok(()) => ::borderless::info!("execution successful"),
-            Err(e) => ::borderless::error!("execution failed: {e:?}"),
+            Ok(()) => ::borderless::debug!("process-action: success"),
+            Err(e) => ::borderless::error!("process-action - execution failed: {e:?}"),
         }
     }
 
@@ -416,8 +416,8 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     pub extern "C" fn process_introduction() {
         let result = #derived::exec_introduction();
         match result {
-            Ok(()) => ::borderless::info!("execution successful"),
-            Err(e) => ::borderless::error!("execution failed: {e:?}"),
+            Ok(()) => ::borderless::debug!("process-introduction: success"),
+            Err(e) => ::borderless::error!("process-introduction - execution failed: {e:?}"),
         }
     }
 
@@ -426,8 +426,8 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     pub extern "C" fn process_revocation() {
         let result = #derived::exec_revocation();
         match result {
-            Ok(()) => ::borderless::info!("execution successful"),
-            Err(e) => ::borderless::error!("execution failed: {e:?}"),
+            Ok(()) => ::borderless::debug!("process-revocation: success"),
+            Err(e) => ::borderless::error!("process-revocation - execution failed: {e:?}"),
         }
     }
 
