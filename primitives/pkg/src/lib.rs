@@ -8,9 +8,11 @@ use borderless_hash::Hash256;
 use serde::{Deserialize, Serialize};
 
 pub use crate::author::Author;
+use crate::dto::*;
 pub use crate::semver::SemVer;
 
 mod author;
+pub mod dto;
 pub mod semver;
 
 // TODO: When using this with the CLI, it may be beneficial to add builders to all of those types.
@@ -40,6 +42,12 @@ pub struct Registry {
     ///
     /// This can be an organization or arbitrary namespace.
     pub namespace: String,
+}
+
+impl Registry {
+    pub fn into_dto(self) -> RegistryDto {
+        self.into()
+    }
 }
 
 /// Specifies the source type - aka how to get the wasm module
@@ -73,7 +81,7 @@ mod code_as_base64 {
         let b64 = String::deserialize(d)?;
         BASE64_STANDARD
             .decode(b64.as_bytes())
-            .map_err(|e| serde::de::Error::custom(e))
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -185,6 +193,12 @@ pub struct PkgMeta {
     pub repository: Option<String>,
 }
 
+impl PkgMeta {
+    pub fn into_dto(self) -> PkgMetaDto {
+        self.into()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PkgType {
@@ -277,6 +291,10 @@ impl WasmPkg {
             source,
         }
     }
+
+    pub fn into_dto(self) -> WasmPkgDto {
+        self.into()
+    }
 }
 
 /// Definition of a wasm package - without the actual source
@@ -321,6 +339,12 @@ pub struct WasmPkgNoSource {
     /// Package metadata
     #[serde(default)]
     pub meta: PkgMeta,
+}
+
+impl WasmPkgNoSource {
+    pub fn into_dto(self) -> WasmPkgNoSourceDto {
+        self.into()
+    }
 }
 
 // TODO: Use json-proof package here
