@@ -12,7 +12,7 @@ use borderless::{
     contracts::TxCtx,
     events::CallAction,
     hash::Hash256,
-    pkg::SourceType,
+    pkg::{SourceType, WasmPkg},
     AgentId, BlockIdentifier, ContractId, TxIdentifier,
 };
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
@@ -29,6 +29,7 @@ use borderless_runtime::{
     CodeStore,
 };
 use clap::{Parser, Subcommand};
+use reqwest::blocking::Client;
 
 use log::info;
 use server::{start_agent_server, start_contract_server};
@@ -206,8 +207,18 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let cid = introduction.id.as_cid().unwrap();
 
             match &introduction.package.source.code {
-                SourceType::Registry { registry: _ } => {
-                    todo!("implement fetching from registry")
+                SourceType::Registry { registry } => {
+                    info!("fetching from registry");
+                    let client = Client::new();
+                    let response = client
+                        // for now write the full
+                        // path in the registry hostname field
+                        .get(&registry.registry_hostname)
+                        .header("Content-Type", "application/json")
+                        .send()?;
+
+                    let text = response.text()?;
+                    let pkg: WasmPkg = serde_json::from_str(&text)?;
                 }
                 SourceType::Wasm { wasm } => {
                     if !wasm.is_empty() {

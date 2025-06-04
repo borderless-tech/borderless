@@ -14,7 +14,9 @@ members = [
   "sdk/macros",
   "kv-store",
   "primitives/hash",
-  "primitives/id-types", "primitives/pkg",
+  "primitives/id-types",
+  "primitives/pkg",
+  "registry",
 ]
 resolver = "2"
 
@@ -28,6 +30,7 @@ borderless-hash = { path = "primitives/hash" }
 borderless-kv-store = { path = "kv-store" }
 borderless-pkg = { path = "primitives/pkg" }
 borderless-runtime = { path = "executor/runtime" }
+borderless-registry = { path = "registry" }
 json-proof = { path = "json-proof" }
 
 # External dependencies
