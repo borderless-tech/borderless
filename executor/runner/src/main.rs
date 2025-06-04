@@ -56,9 +56,6 @@ enum Commands {
 
 #[derive(Parser, Debug)]
 struct ContractCommand {
-    /// Path to the contract file (positional)
-    contract: PathBuf,
-
     /// Contract-ID of the contract
     #[arg(short, long)]
     contract_id: Option<ContractId>,
@@ -69,9 +66,6 @@ struct ContractCommand {
 
 #[derive(Parser, Debug)]
 struct AgentCommand {
-    /// Path to the contract file (positional)
-    code: PathBuf,
-
     /// Contract-ID of the contract
     #[arg(short, long)]
     agent_id: Option<AgentId>,
@@ -189,8 +183,6 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         // Otherwise: Read from env
         "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse()?
     };
-    // let module_bytes = std::fs::read(command.contract)?;
-    // rt.instantiate_contract(cid, &module_bytes)?;
 
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
 
@@ -302,8 +294,6 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
         // Otherwise: Read from env
         "a265e6fd-7f7a-85b5-aa24-a79305daf2a5".parse()?
     };
-    // let module_bytes = std::fs::read(command.code)?;
-    // rt.instantiate_sw_agent(aid, &module_bytes)?;
 
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
 
