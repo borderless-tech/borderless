@@ -22,6 +22,7 @@ use crate::db::{
     action_log::ActionRecord,
     logger::{self, print_log_line},
 };
+use crate::ACTION_TX_REL_SUB_DB;
 use crate::{
     error::{ErrorKind, Result},
     CONTRACT_SUB_DB,
@@ -43,6 +44,7 @@ where
 impl<S: Db> Runtime<S> {
     pub fn new(storage: &S, contract_store: CodeStore<S>, lock: MutLock) -> Result<Self> {
         let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
+        let _ = storage.create_sub_db(ACTION_TX_REL_SUB_DB)?; // Also create the action relation db here
         let start = Instant::now();
         let state = VmState::new(storage.clone(), db_ptr);
 

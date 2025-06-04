@@ -144,7 +144,7 @@ async fn main() -> Result<()> {
 
     let args = Cli::parse();
     // Setup the DB connection, etc.
-    let db = Lmdb::new(&args.db, 2).context("failed to open database")?;
+    let db = Lmdb::new(&args.db, 16).context("failed to open database")?;
 
     match args.command {
         Commands::Contract(cmd) => contract(cmd, db).await?,
