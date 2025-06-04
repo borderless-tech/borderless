@@ -220,7 +220,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
                     let text = response.text()?;
                     let pkg: WasmPkg = serde_json::from_str(&text)?;
                 }
-                SourceType::Wasm { wasm } => {
+                SourceType::Wasm { wasm, .. } => {
                     if !wasm.is_empty() {
                         info!("try to instantiate the contract");
                         rt.instantiate_contract(cid, &wasm)?;
@@ -323,7 +323,7 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
                 SourceType::Registry { registry: _ } => {
                     todo!("implement fetching from registry")
                 }
-                SourceType::Wasm { wasm } => {
+                SourceType::Wasm { wasm, .. } => {
                     if !wasm.is_empty() {
                         rt.instantiate_sw_agent(aid, &wasm)?;
                     } else {
