@@ -46,17 +46,6 @@ impl Schedule {
     }
 }
 
-/// Capabilities of a SW-Agent
-#[derive(Serialize, Deserialize)]
-pub struct Capabilities {
-    /// Weather or not the agent is allowed to make http-calls
-    pub network: bool,
-    /// Weather or not the agent is allowed to establish websocket connections
-    pub websocket: bool,
-    /// URLs that the agent is allowed to call
-    pub url_whitelist: Vec<String>,
-}
-
 /// Websocket configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WsConfig {

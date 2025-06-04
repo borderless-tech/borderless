@@ -8,9 +8,11 @@ use std::{
 
 use anyhow::{Context, Result};
 use borderless::{
-    contracts::{Introduction, Revocation, TxCtx},
+    common::{Introduction, Revocation},
+    contracts::TxCtx,
     events::CallAction,
     hash::Hash256,
+    pkg::{SourceType, WasmPkg},
     AgentId, BlockIdentifier, ContractId, TxIdentifier,
 };
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
@@ -27,6 +29,7 @@ use borderless_runtime::{
     CodeStore,
 };
 use clap::{Parser, Subcommand};
+use reqwest::blocking::Client;
 
 use log::info;
 use server::{start_agent_server, start_contract_server};
@@ -53,9 +56,6 @@ enum Commands {
 
 #[derive(Parser, Debug)]
 struct ContractCommand {
-    /// Path to the contract file (positional)
-    contract: PathBuf,
-
     /// Contract-ID of the contract
     #[arg(short, long)]
     contract_id: Option<ContractId>,
@@ -66,9 +66,6 @@ struct ContractCommand {
 
 #[derive(Parser, Debug)]
 struct AgentCommand {
-    /// Path to the contract file (positional)
-    code: PathBuf,
-
     /// Contract-ID of the contract
     #[arg(short, long)]
     agent_id: Option<AgentId>,
@@ -141,7 +138,7 @@ async fn main() -> Result<()> {
 
     let args = Cli::parse();
     // Setup the DB connection, etc.
-    let db = Lmdb::new(&args.db, 2).context("failed to open database")?;
+    let db = Lmdb::new(&args.db, 16).context("failed to open database")?;
 
     match args.command {
         Commands::Contract(cmd) => contract(cmd, db).await?,
@@ -186,7 +183,6 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         // Otherwise: Read from env
         "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse()?
     };
-    rt.instantiate_contract(cid, command.contract)?;
 
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
 
@@ -201,6 +197,31 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let introduction = Introduction::from_str(&data)?;
 
             let cid = introduction.id.as_cid().unwrap();
+
+            match &introduction.package.source.code {
+                SourceType::Registry { registry } => {
+                    info!("fetching from registry");
+                    let client = Client::new();
+                    let response = client
+                        // for now write the full
+                        // path in the registry hostname field
+                        .get(&registry.registry_hostname)
+                        .header("Content-Type", "application/json")
+                        .send()?;
+
+                    let text = response.text()?;
+                    let pkg: WasmPkg = serde_json::from_str(&text)?;
+                }
+                SourceType::Wasm { wasm, .. } => {
+                    if !wasm.is_empty() {
+                        info!("try to instantiate the contract");
+                        rt.instantiate_contract(cid, &wasm)?;
+                    } else {
+                        info!("Introduction had empty code bytes - using filesystem instead");
+                    }
+                }
+            }
+
             let tx_ctx = generate_tx_ctx(&mut rt, &cid)?;
             info!("Introduce contract {cid}");
             let start = Instant::now();
@@ -233,7 +254,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             let data = read_to_string(revocation)?;
             let revocation = Revocation::from_str(&data)?;
             let tx_ctx = generate_tx_ctx(&mut rt, &cid)?;
-            assert_eq!(revocation.contract_id, cid);
+            assert_eq!(revocation.id, cid);
 
             info!("Revoke contract {cid}");
             let start = Instant::now();
@@ -273,7 +294,6 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
         // Otherwise: Read from env
         "a265e6fd-7f7a-85b5-aa24-a79305daf2a5".parse()?
     };
-    rt.instantiate_sw_agent(aid, command.code)?;
 
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
 
@@ -288,6 +308,19 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
             let introduction = Introduction::from_str(&data)?;
 
             let aid = introduction.id.as_aid().unwrap();
+
+            match &introduction.package.source.code {
+                SourceType::Registry { registry: _ } => {
+                    todo!("implement fetching from registry")
+                }
+                SourceType::Wasm { wasm, .. } => {
+                    if !wasm.is_empty() {
+                        rt.instantiate_sw_agent(aid, &wasm)?;
+                    } else {
+                        info!("Introduction had empty code bytes - using filesystem instead");
+                    }
+                }
+            }
 
             info!("Introduce agent {aid}");
             let start = Instant::now();

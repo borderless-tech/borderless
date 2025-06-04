@@ -7,6 +7,7 @@ edition = "2021"
 anyhow.workspace = true
 borderless-abi.workspace = true
 borderless-id-types.workspace = true
+borderless-pkg.workspace = true
 borderless-sdk-macros.workspace = true
 borderless-hash.workspace = true
 postcard.workspace = true

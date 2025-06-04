@@ -1,10 +1,12 @@
 use borderless::{
-    contracts::{Description, Info, Metadata, Revocation},
+    common::{Description, Metadata, Revocation},
+    contracts::Info,
     BorderlessId, ContractId,
     __private::storage_keys::*,
     events::Sink,
     hash::Hash256,
     http::{AgentInfo, ContractInfo},
+    pkg::{Source, SourceFlattened, WasmPkg, WasmPkgNoSource},
     prelude::Id,
     AgentId, TxIdentifier,
 };
@@ -209,6 +211,64 @@ impl<'a, S: Db> Controller<'a, S> {
         }
     }
 
+    /// Returns the package definition for an agent
+    pub fn agent_pkg_def(&self, aid: &AgentId) -> Result<Option<WasmPkgNoSource>> {
+        self.read_value(
+            &Id::agent(*aid),
+            BASE_KEY_METADATA,
+            META_SUB_KEY_PACKAGE_DEF,
+        )
+    }
+
+    /// Returns the package definition for an agent
+    pub fn agent_pkg_source(&self, aid: &AgentId) -> Result<Option<Source>> {
+        self.read_value(
+            &Id::agent(*aid),
+            BASE_KEY_METADATA,
+            META_SUB_KEY_PACKAGE_SOURCE,
+        )
+    }
+
+    /// Returns the package definition for an agent
+    pub fn agent_pkg_full(&self, aid: &AgentId) -> Result<Option<WasmPkg>> {
+        let pkg_def = self.agent_pkg_def(aid)?;
+        let source = self.agent_pkg_source(aid)?;
+        match (pkg_def, source) {
+            (Some(pkg), Some(source)) => Ok(Some(WasmPkg::from_def_and_source(pkg, source))),
+            _ => Ok(None),
+        }
+    }
+
+    /// Returns the package definition for an contract
+    pub fn contract_pkg_def(&self, aid: &ContractId) -> Result<Option<WasmPkgNoSource>> {
+        self.read_value(
+            &Id::contract(*aid),
+            BASE_KEY_METADATA,
+            META_SUB_KEY_PACKAGE_DEF,
+        )
+    }
+
+    /// Returns the package definition for an contract
+    pub fn contract_pkg_source(&self, aid: &ContractId) -> Result<Option<Source>> {
+        // NOTE: We write a flattened source to the disk, because postcard does not support all serde features
+        let source: Option<SourceFlattened> = self.read_value(
+            &Id::contract(*aid),
+            BASE_KEY_METADATA,
+            META_SUB_KEY_PACKAGE_SOURCE,
+        )?;
+        Ok(source.map(|s| s.unflatten()))
+    }
+
+    /// Returns the package definition for an contract
+    pub fn contract_pkg_full(&self, aid: &ContractId) -> Result<Option<WasmPkg>> {
+        let pkg_def = self.contract_pkg_def(aid)?;
+        let source = self.contract_pkg_source(aid)?;
+        match (pkg_def, source) {
+            (Some(pkg), Some(source)) => Ok(Some(WasmPkg::from_def_and_source(pkg, source))),
+            _ => Ok(None),
+        }
+    }
+
     fn read_value<D: DeserializeOwned>(
         &self,
         id: &Id,
@@ -250,10 +310,10 @@ pub(crate) fn write_system_value<S: Db, D: serde::Serialize, ID: AsRef<[u8; 16]>
 
 // Helper function to write fields with system-keys
 #[cfg(any(feature = "contracts", feature = "agents"))]
-pub(crate) fn read_system_value<S: Db, D: DeserializeOwned>(
+pub(crate) fn read_system_value<S: Db, D: DeserializeOwned, ID: AsRef<[u8; 16]>>(
     db_ptr: &S::Handle,
     txn: &<S as Db>::RwTx<'_>,
-    cid: &ContractId,
+    cid: ID,
     base_key: u64,
     sub_key: u64,
 ) -> Result<Option<D>> {
@@ -272,7 +332,7 @@ pub(crate) fn read_system_value<S: Db, D: DeserializeOwned>(
 pub(crate) fn write_introduction<S: Db>(
     db_ptr: &S::Handle,
     txn: &mut <S as Db>::RwTx<'_>,
-    introduction: &borderless::contracts::Introduction,
+    introduction: borderless::common::Introduction,
 ) -> Result<()> {
     use borderless::__private::storage_keys::*;
     let cid = introduction.id;
@@ -346,6 +406,31 @@ pub(crate) fn write_introduction<S: Db>(
         META_SUB_KEY_INIT_STATE,
         &introduction.initial_state,
     )?;
+
+    // Write package and source (flattened, because postcard does not support untagged enums)
+    let (pkg_def, pkg_source) = introduction.package.into_def_and_source();
+    let pkg_source = pkg_source.flatten();
+
+    // Write pkg-def
+    write_system_value::<S, _, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_PACKAGE_DEF,
+        &pkg_def,
+    )?;
+
+    // Write pkg-source
+    write_system_value::<S, _, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_PACKAGE_SOURCE,
+        &pkg_source,
+    )?;
+
     Ok(())
 }
 
@@ -357,10 +442,10 @@ pub(crate) fn write_revocation<S: Db>(
     tx_ctx: borderless::contracts::TxCtx,
     timestamp: u64,
 ) -> Result<()> {
-    let cid = revocation.contract_id;
+    let cid = revocation.id;
     // Update metadata field
     let meta: Option<Metadata> =
-        read_system_value::<S, _>(db_ptr, txn, &cid, BASE_KEY_METADATA, META_SUB_KEY_META)?;
+        read_system_value::<S, _, _>(db_ptr, txn, &cid, BASE_KEY_METADATA, META_SUB_KEY_META)?;
     let mut meta = meta.unwrap();
 
     meta.inactive_since = timestamp;

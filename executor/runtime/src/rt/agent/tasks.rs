@@ -9,15 +9,16 @@ use borderless::{
     AgentId,
 };
 use borderless_kv_store::Db;
+use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use thiserror::Error;
 use tokio::{
-    sync::{broadcast, mpsc, Mutex},
+    sync::{mpsc, Mutex},
     task::JoinSet,
     time::{interval, sleep, MissedTickBehavior},
 };
-
-use crate::error::ErrorKind;
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::{Bytes, Message};
 
 use super::Runtime;
 
@@ -94,13 +95,6 @@ where
     }
     Ok(())
 }
-
-use futures_util::{stream::SplitSink, SinkExt, StreamExt};
-use tokio_tungstenite::tungstenite::{
-    http::{Method, Request},
-    Bytes, Message,
-};
-use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
 
 pub async fn handle_ws_connection<S>(
     rt: Arc<Mutex<Runtime<S>>>,

@@ -6,7 +6,8 @@
 use borderless::__private::registers::*;
 use borderless::{
     __private::storage_keys::StorageKey,
-    contracts::{Introduction, Revocation, TxCtx},
+    common::{Introduction, Revocation},
+    contracts::TxCtx,
     events::CallAction,
     log::LogLine,
     AgentId, ContractId,
@@ -169,6 +170,7 @@ impl<S: Db> VmState<S> {
                 StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
             }
         }
+
         // Current timestamp ( milliseconds since epoch )
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -190,10 +192,10 @@ impl<S: Db> VmState<S> {
                 assert_eq!(introduction.id, cid);
                 introduction.meta.active_since = timestamp;
                 introduction.meta.tx_ctx_introduction = Some(tx_ctx);
-                write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
+                write_introduction::<S>(&self.db_ptr, &mut txn, introduction)?;
             }
             ContractCommit::Revocation { revocation, tx_ctx } => {
-                assert_eq!(revocation.contract_id, cid);
+                assert_eq!(revocation.id, cid);
                 write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, tx_ctx, timestamp)?;
             }
         }
@@ -201,7 +203,6 @@ impl<S: Db> VmState<S> {
         // Flush log
         let logger = Logger::new(&self.db, cid);
         logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
-
         // Commit txn
         txn.commit()?;
 
@@ -329,7 +330,7 @@ impl<S: Db> VmState<S> {
                     assert_eq!(introduction.id, aid);
                     introduction.meta.active_since = timestamp;
                     introduction.meta.tx_ctx_introduction = None;
-                    write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
+                    write_introduction::<S>(&self.db_ptr, &mut txn, introduction)?;
                 }
                 AgentCommit::Revocation { revocation: _ } => {
                     // assert_eq!(revocation.contract_id, aid); // TODO

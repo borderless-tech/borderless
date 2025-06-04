@@ -7,9 +7,10 @@ use crate::{
         registers::{REGISTER_BLOCK_CTX, REGISTER_EXECUTOR, REGISTER_TX_CTX, REGISTER_WRITER},
         storage_keys::*,
     },
+    common::{Description, Metadata},
 };
 
-use super::{BlockCtx, Description, Metadata, Role, Sink, TxCtx};
+use super::{BlockCtx, Role, Sink, TxCtx};
 
 /// Returns the contract-id of the current contract
 pub fn contract_id() -> ContractId {

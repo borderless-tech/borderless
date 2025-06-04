@@ -223,6 +223,21 @@ where
                 let symbols = rt.get_symbols(&agent_id).await?;
                 Ok(json_response(&symbols))
             }
+            "pkg" => match trunc.as_str() {
+                "/" => {
+                    let result = controller.agent_pkg_full(&agent_id)?.map(|r| r.into_dto());
+                    Ok(json_response(&result))
+                }
+                "/def" => {
+                    let result = controller.agent_pkg_def(&agent_id)?.map(|r| r.into_dto());
+                    Ok(json_response(&result))
+                }
+                "/source" => {
+                    let result = controller.agent_pkg_source(&agent_id)?;
+                    Ok(json_response(&result))
+                }
+                _ => Ok(reject_404()),
+            },
             // Same as empty path
             "" => {
                 let full_info = controller.agent_full(&agent_id)?;

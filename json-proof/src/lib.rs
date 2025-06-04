@@ -1,8 +1,8 @@
 use std::{cmp::Ordering, collections::VecDeque};
 
+use borderless_hash::{Hash256, Hasher};
 use error::ErrorImpl;
 use serde_json::{Map, Value};
-use sha3::{Digest, Sha3_256};
 
 /// Arbitrary prefix that we use to distinguish "real" values in the document from the ones that we added.
 ///
@@ -55,6 +55,21 @@ pub mod error {
 pub type Result<T> = std::result::Result<T, Error>;
 pub use error::Error;
 
+/// Generates the json-proof for some serializable value
+///
+/// Note: If the value is not an object, this function will fail.
+pub fn generate_proof_for_obj<V>(value: &V) -> Result<Hash256>
+where
+    V: serde::Serialize,
+{
+    let value = serde_json::to_value(value)?;
+    let mut canonicalized = canonicalize_json(value)?;
+    let encoded_proof = gen_proof(&mut canonicalized)?;
+    let mut out = [0; 32];
+    base16::decode_slice(&encoded_proof, &mut out).map_err(ErrorImpl::InvalidHash)?;
+    Ok(out.into())
+}
+
 /// Processes the json value and re-encodes it in a canonical way.
 ///
 /// This process ensures, that the output document will always be the same,
@@ -78,8 +93,8 @@ pub fn canonicalize_json(value: Value) -> Result<Map<String, Value>> {
 ///
 /// Also includes the key of the value in the hash calculation,
 /// to avoid different json objects with the same content evaluating to the same hash.
-fn hash_value(key: &str, value: &Value) -> [u8; 32] {
-    let mut hasher = Sha3_256::new();
+fn hash_value(key: &str, value: &Value) -> Hash256 {
+    let mut hasher = Hasher::new();
 
     match value {
         // For objects, the hash is the hash of all keys
@@ -90,7 +105,7 @@ fn hash_value(key: &str, value: &Value) -> [u8; 32] {
                     continue;
                 }
                 let hash = hash_value(key, value);
-                hasher.update(hash);
+                hasher.update(&hash);
             }
         }
         // For everything else, we just convert the value to a string, and hash this
@@ -99,8 +114,8 @@ fn hash_value(key: &str, value: &Value) -> [u8; 32] {
             let mut canonical = json_syntax::Value::from_serde_json(other.clone());
             canonical.canonicalize();
             let string = canonical.to_string();
-            hasher.update(key.as_bytes());
-            hasher.update(string.as_bytes());
+            hasher.update(&key.as_bytes());
+            hasher.update(&string.as_bytes());
         }
     }
     let digest = hasher.finalize();
@@ -252,11 +267,11 @@ fn contains_prefix(map: &Map<String, Value>) -> bool {
 }
 
 /// Decodes the hash from an obfuscated value.
-fn hash_from_obfuscated(value: &Value) -> Result<[u8; 32]> {
+fn hash_from_obfuscated(value: &Value) -> Result<Hash256> {
     if let Value::String(s) = value {
         let mut out = [0; 32];
         base16::decode_slice(s, &mut out).map_err(ErrorImpl::InvalidHash)?;
-        Ok(out)
+        Ok(out.into())
     } else {
         Err(ErrorImpl::NotAString.into())
     }
@@ -271,7 +286,7 @@ fn hash_from_obfuscated(value: &Value) -> Result<[u8; 32]> {
 /// # Errors
 ///
 /// This function will fail, if the value under a `HASH_PREFIX` key is not a base-58 encoded sha3-256 hash.
-fn rebuild_proof(map: &Map<String, Value>) -> Result<[u8; 32]> {
+fn rebuild_proof(map: &Map<String, Value>) -> Result<Hash256> {
     let mut unprefixed: VecDeque<_> = map
         .keys()
         .filter_map(|k| k.strip_prefix(&format!("{HASH_PREFIX}_")))
@@ -280,7 +295,7 @@ fn rebuild_proof(map: &Map<String, Value>) -> Result<[u8; 32]> {
     unprefixed.make_contiguous().sort();
     let mut next_obfuscated = unprefixed.pop_front();
 
-    let mut hasher = Sha3_256::new();
+    let mut hasher = Hasher::new();
 
     for (key, value) in map.iter() {
         // Ignore all prefixed keys
@@ -294,7 +309,7 @@ fn rebuild_proof(map: &Map<String, Value>) -> Result<[u8; 32]> {
                     // Use the hash from the prefixed key
                     let decoded = map.get(&format!("{HASH_PREFIX}_{obfs}")).unwrap();
                     let hash = hash_from_obfuscated(decoded)?;
-                    hasher.update(hash);
+                    hasher.update(&hash);
                 }
                 Ordering::Equal => {
                     return Err(ErrorImpl::SameKey.into());
@@ -308,10 +323,10 @@ fn rebuild_proof(map: &Map<String, Value>) -> Result<[u8; 32]> {
         // Nest one level deeper, if required
         if let Value::Object(nested) = value {
             let hash = rebuild_proof(nested)?;
-            hasher.update(hash);
+            hasher.update(&hash);
         } else {
             let hash = hash_value(key, value);
-            hasher.update(hash);
+            hasher.update(&hash);
         }
     }
     // If there are still some prefixed-keys left, we also have to apply them
@@ -319,12 +334,12 @@ fn rebuild_proof(map: &Map<String, Value>) -> Result<[u8; 32]> {
         // Use the hash from the prefixed key
         let decoded = map.get(&format!("{HASH_PREFIX}_{obfs}")).unwrap();
         let hash = hash_from_obfuscated(decoded)?;
-        hasher.update(hash);
+        hasher.update(&hash);
         next_obfuscated = unprefixed.pop_front();
     }
 
     let digest = hasher.finalize();
-    Ok(digest.into())
+    Ok(digest)
 }
 
 /// Generates a proof for some JSON object

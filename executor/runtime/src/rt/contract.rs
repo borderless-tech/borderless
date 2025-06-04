@@ -1,10 +1,10 @@
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
 use ahash::HashMap;
 use borderless::__private::registers::*;
-use borderless::contracts::{BlockCtx, Introduction, Revocation, Symbols, TxCtx};
+use borderless::common::{Introduction, Revocation, Symbols};
+use borderless::contracts::{BlockCtx, TxCtx};
 use borderless::events::Events;
 use borderless::{events::CallAction, ContractId};
 use borderless::{BlockIdentifier, BorderlessId};
@@ -22,6 +22,7 @@ use crate::db::{
     action_log::ActionRecord,
     logger::{self, print_log_line},
 };
+use crate::ACTION_TX_REL_SUB_DB;
 use crate::{
     error::{ErrorKind, Result},
     CONTRACT_SUB_DB,
@@ -43,6 +44,7 @@ where
 impl<S: Db> Runtime<S> {
     pub fn new(storage: &S, contract_store: CodeStore<S>, lock: MutLock) -> Result<Self> {
         let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
+        let _ = storage.create_sub_db(ACTION_TX_REL_SUB_DB)?; // Also create the action relation db here
         let start = Instant::now();
         let state = VmState::new(storage.clone(), db_ptr);
 
@@ -142,13 +144,13 @@ impl<S: Db> Runtime<S> {
         Arc::new(Mutex::new(self))
     }
 
-    // TODO: Define container type, how we want to bundle contracts etc. and use this here, instead of reading from disk.
+    /// Creates a new instance of the wasm module in our [`CodeStore`] for the given contract-id
     pub fn instantiate_contract(
         &mut self,
         contract_id: ContractId,
-        path: impl AsRef<Path>,
+        module_bytes: &[u8],
     ) -> Result<()> {
-        let module = Module::from_file(&self.engine, path)?;
+        let module = Module::new(&self.engine, module_bytes)?;
         check_module(&self.engine, &module)?;
         self.contract_store.insert_contract(contract_id, module)?;
         Ok(())
@@ -201,14 +203,16 @@ impl<S: Db> Runtime<S> {
         writer: &BorderlessId,
         tx_ctx: TxCtx,
     ) -> Result<()> {
-        let input = introduction.to_bytes()?;
         let cid = match introduction.id {
             borderless::prelude::Id::Contract { contract_id } => contract_id,
             borderless::prelude::Id::Agent { .. } => return Err(ErrorKind::InvalidIdType.into()),
         };
+        // NOTE: The input for the introduction is not the introduction, but only the initial state!
+        // The introduction itself is commited by the VmState
+        let initial_state = introduction.initial_state.to_string().into_bytes();
         self.process_chain_tx(
             cid,
-            input,
+            initial_state,
             *writer,
             tx_ctx.to_bytes()?,
             ContractCommit::Introduction {
@@ -226,8 +230,12 @@ impl<S: Db> Runtime<S> {
         tx_ctx: TxCtx,
     ) -> Result<()> {
         let input = revocation.to_bytes()?;
+        let cid = match revocation.id {
+            borderless::prelude::Id::Contract { contract_id } => contract_id,
+            borderless::prelude::Id::Agent { .. } => return Err(ErrorKind::InvalidIdType.into()),
+        };
         self.process_chain_tx(
-            revocation.contract_id,
+            cid,
             input,
             *writer,
             tx_ctx.to_bytes()?,

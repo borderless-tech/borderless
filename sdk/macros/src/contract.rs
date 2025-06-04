@@ -121,10 +121,10 @@ pub fn parse_module_content(
         #[automatically_derived]
         pub(crate) fn exec_introduction() -> Result<()> {
             #read_input
-            let introduction = Introduction::from_bytes(&input)?;
-            let s = introduction.pretty_print()?;
-            info!("{s}");
-            let state = #as_state::init(introduction.initial_state)?;
+            // Parse initial state
+            let initial_state: ::borderless::serialize::Value = ::borderless::serialize::from_slice(&input)?;
+            let state = #as_state::init(initial_state)?;
+            // Commit state
             #as_state::commit(state);
             Ok(())
         }
@@ -202,8 +202,8 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     pub extern "C" fn process_transaction() {
         let result = #derived::exec_txn();
         match result {
-            Ok(()) => ::borderless::info!("execution successful"),
-            Err(e) => ::borderless::error!("execution failed: {e:?}"),
+            Ok(()) => ::borderless::debug!("process-transaction: success"),
+            Err(e) => ::borderless::error!("process-transaction - execution failed: {e:?}"),
         }
     }
 
@@ -212,8 +212,8 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     pub extern "C" fn process_introduction() {
         let result = #derived::exec_introduction();
         match result {
-            Ok(()) => ::borderless::info!("execution successful"),
-            Err(e) => ::borderless::error!("execution failed: {e:?}"),
+            Ok(()) => ::borderless::debug!("process-introduction: success"),
+            Err(e) => ::borderless::error!("process-introduction - execution failed: {e:?}"),
         }
     }
 
@@ -222,8 +222,8 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     pub extern "C" fn process_revocation() {
         let result = #derived::exec_revocation();
         match result {
-            Ok(()) => ::borderless::info!("execution successful"),
-            Err(e) => ::borderless::error!("execution failed: {e:?}"),
+            Ok(()) => ::borderless::debug!("process-revocation: success"),
+            Err(e) => ::borderless::error!("process-revocation - execution failed: {e:?}"),
         }
     }
 

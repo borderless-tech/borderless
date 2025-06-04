@@ -149,8 +149,14 @@ impl<'a, S: Db> ActionLog<'a, S> {
             .expect("u64 should fit for 584942417 years");
 
         let len_commited: u64 = {
-            read_system_value::<S, _>(db_ptr, txn, &self.cid, BASE_KEY_ACTION_LOG, SUB_KEY_LOG_LEN)?
-                .unwrap_or_default()
+            read_system_value::<S, _, _>(
+                db_ptr,
+                txn,
+                &self.cid,
+                BASE_KEY_ACTION_LOG,
+                SUB_KEY_LOG_LEN,
+            )?
+            .unwrap_or_default()
         };
 
         let full_len = len_commited + 1;
@@ -178,7 +184,7 @@ impl<'a, S: Db> ActionLog<'a, S> {
         )?;
 
         // Store relationship - this is just another sub-db, and outside the "normal" contract keyspace
-        let rel_db = self.db.create_sub_db(ACTION_TX_REL_SUB_DB)?;
+        let rel_db = self.db.open_sub_db(ACTION_TX_REL_SUB_DB)?;
         let tx_id_bytes = value.tx_ctx.tx_id.to_bytes();
         let relationship = RelTxAction {
             cid: self.cid,

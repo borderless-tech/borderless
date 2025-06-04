@@ -1,6 +1,0 @@
-{
-  "method": "set_switch",
-  "params": {
-    "switch": false
-  }
-}
