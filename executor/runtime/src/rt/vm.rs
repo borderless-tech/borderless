@@ -191,7 +191,7 @@ impl<S: Db> VmState<S> {
                 assert_eq!(introduction.id, cid);
                 introduction.meta.active_since = timestamp;
                 introduction.meta.tx_ctx_introduction = Some(tx_ctx);
-                write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
+                write_introduction::<S>(&self.db_ptr, &mut txn, introduction)?;
             }
             ContractCommit::Revocation { revocation, tx_ctx } => {
                 assert_eq!(revocation.id, cid);
@@ -330,7 +330,7 @@ impl<S: Db> VmState<S> {
                     assert_eq!(introduction.id, aid);
                     introduction.meta.active_since = timestamp;
                     introduction.meta.tx_ctx_introduction = None;
-                    write_introduction::<S>(&self.db_ptr, &mut txn, &introduction)?;
+                    write_introduction::<S>(&self.db_ptr, &mut txn, introduction)?;
                 }
                 AgentCommit::Revocation { revocation: _ } => {
                     // assert_eq!(revocation.contract_id, aid); // TODO

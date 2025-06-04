@@ -5,6 +5,8 @@ use borderless_pkg::WasmPkg;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub use borderless_pkg as pkg;
+
 use crate::{
     contracts::{Role, TxCtx},
     events::Sink,

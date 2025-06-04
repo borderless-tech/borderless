@@ -194,6 +194,82 @@ pub struct WasmPkg {
     pub source: Source,
 }
 
+impl WasmPkg {
+    /// Split the `Source` out of the `WasmPkg`, so we can store or handle it separately
+    pub fn into_def_and_source(self) -> (WasmPkgNoSource, Source) {
+        let pkg_def = WasmPkgNoSource {
+            name: self.name,
+            app_name: self.app_name,
+            app_module: self.app_module,
+            capabilities: self.capabilities,
+            pkg_type: self.pkg_type,
+            meta: self.meta,
+        };
+        let source = self.source;
+        (pkg_def, source)
+    }
+
+    /// Merge the `Source` back into the `WasmPkg`
+    pub fn from_def_and_source(pkg_def: WasmPkgNoSource, source: Source) -> Self {
+        Self {
+            name: pkg_def.name,
+            app_name: pkg_def.app_name,
+            app_module: pkg_def.app_module,
+            capabilities: pkg_def.capabilities,
+            pkg_type: pkg_def.pkg_type,
+            meta: pkg_def.meta,
+            source,
+        }
+    }
+}
+
+/// Definition of a wasm package - without the actual source
+///
+/// There are cases where you want to handle the package definition and the source seperately,
+/// so we need a type to represent a `WasmPkg` without the actual `Source`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WasmPkgNoSource {
+    /// Name of the package
+    pub name: String,
+
+    /// Name of the application that this package is a part of
+    ///
+    /// An application is just an abstraction for multiple wasm packages.
+    /// It can be further split into application modules.
+    ///
+    /// The full specifier for the package would be (if application and app-modules are used):
+    /// `<app_name>/<app_module>/<pkg-name>`
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_name: Option<String>,
+
+    /// Name of the application module that this package is a part of
+    ///
+    /// An application module is a subset of wasm modules in an application.
+    ///
+    /// The full specifier for the package would be (if application and app-modules are used):
+    /// `<app_name>/<app_module>/<pkg-name>`
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_module: Option<String>,
+
+    /// (Networking) Capabilities of the package
+    ///
+    /// This is only used for software agents, which can make network calls and may use a websocket.
+    /// The capabilities are registered in the runtime, so that the agent cannot make any other network
+    /// calls than specified by the url-whitelist in [`Capabilities`].
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<Capabilities>,
+
+    /// Package type (contract or agent)
+    pub pkg_type: PkgType,
+
+    /// Package metadata
+    #[serde(default)]
+    pub meta: PkgMeta,
+}
+
 // TODO: Use json-proof package here
 // TODO: Or - do we need this ? we could simply sign the Vec<u8> of the "WasmPkg" and call it a day.
 //       I think the signing is also only a thing for the registries, because when sending introductions with inline code definition,

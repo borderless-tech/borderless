@@ -273,7 +273,7 @@ pub(crate) fn read_system_value<S: Db, D: DeserializeOwned, ID: AsRef<[u8; 16]>>
 pub(crate) fn write_introduction<S: Db>(
     db_ptr: &S::Handle,
     txn: &mut <S as Db>::RwTx<'_>,
-    introduction: &borderless::common::Introduction,
+    introduction: borderless::common::Introduction,
 ) -> Result<()> {
     use borderless::__private::storage_keys::*;
     let cid = introduction.id;
@@ -347,6 +347,30 @@ pub(crate) fn write_introduction<S: Db>(
         META_SUB_KEY_INIT_STATE,
         &introduction.initial_state,
     )?;
+
+    // Write package and source
+    let (pkg_def, pkg_source) = &introduction.package.into_def_and_source();
+
+    // Write pkg-def
+    write_system_value::<S, _, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_PACKAGE_DEF,
+        &pkg_def,
+    )?;
+
+    // Write pkg-source
+    write_system_value::<S, _, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_PACKAGE_SOURCE,
+        &pkg_source,
+    )?;
+
     Ok(())
 }
 

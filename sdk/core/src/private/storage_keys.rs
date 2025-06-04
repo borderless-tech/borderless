@@ -145,6 +145,16 @@ pub const META_SUB_KEY_REVOKED_TS: u64 = 7;
 /// Expected data-model: `Revocation`
 pub const META_SUB_KEY_REVOCATION: u64 = 8;
 
+/// Sub-Key to store the package definition of the contract ( without source )
+///
+/// Expected data-model: [`WasmPackNoSource`](crate::pkg::WasmPackNoSource)
+pub const META_SUB_KEY_PACKAGE_DEF: u64 = 9;
+
+/// Sub-Key to store the package source of the contract
+///
+/// Expected data-model: [`Source`](crate::pkg::Source)
+pub const META_SUB_KEY_PACKAGE_SOURCE: u64 = 10;
+
 /// Reserved Sub-Key - max. possible value.
 pub const META_SUB_KEY_RESERVED: u64 = u64::MAX & !(1 << 63);
 
