@@ -5,6 +5,7 @@
 //! that bundles the `.wasm` module together with some meta information about the package.
 //!
 use borderless_hash::Hash256;
+use git_info::GitInfo;
 use serde::{Deserialize, Serialize};
 
 pub use crate::author::Author;
@@ -13,6 +14,7 @@ pub use crate::semver::SemVer;
 
 mod author;
 pub mod dto;
+pub mod git_info;
 pub mod semver;
 
 // TODO: When using this with the CLI, it may be beneficial to add builders to all of those types.
@@ -60,10 +62,23 @@ pub enum SourceType {
     /// Registry, where the wasm module can be fetched from
     Registry { registry: Registry },
 
-    /// Ready to use, compiled wasm module
+    /// Compiled wasm module
     Wasm {
+        /// Compiled wasm module
         #[serde(with = "code_as_base64")]
         wasm: Vec<u8>,
+
+        /// Git information
+        ///
+        /// When creating the package, this information can be added to aid with debugging.
+        /// In general, the version *should* be enough to describe the package,
+        /// but when not working with a registry (which does some sanity checks and
+        /// e.g. forbids changing the code without increasing the version number),
+        /// it is easier to make mistakes along the way. Being able to track back the origin of the
+        /// compiled module to its git hash is very helpful.
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        git_info: Option<GitInfo>,
     },
 }
 
@@ -106,15 +121,16 @@ impl Source {
     ///
     /// Useful for serializers that do not support advanced serde features.
     pub fn flatten(self) -> SourceFlattened {
-        let (registry, wasm) = match self.code {
-            SourceType::Registry { registry } => (Some(registry), None),
-            SourceType::Wasm { wasm } => (None, Some(wasm)),
+        let (registry, wasm, git_info) = match self.code {
+            SourceType::Registry { registry } => (Some(registry), None, None),
+            SourceType::Wasm { wasm, git_info } => (None, Some(wasm), git_info),
         };
         SourceFlattened {
             version: self.version,
             digest: self.digest,
             registry,
             wasm,
+            git_info,
         }
     }
 }
@@ -140,6 +156,9 @@ pub struct SourceFlattened {
     #[serde(default)]
     #[serde(with = "serde_bytes")]
     wasm: Option<Vec<u8>>,
+
+    #[serde(default)]
+    git_info: Option<GitInfo>,
 }
 
 impl SourceFlattened {
@@ -154,7 +173,7 @@ impl SourceFlattened {
     pub fn unflatten(self) -> Source {
         let code = match (self.registry, self.wasm) {
             (Some(registry), None) => SourceType::Registry { registry  },
-            (None, Some(wasm)) => SourceType::Wasm { wasm  },
+            (None, Some(wasm)) => SourceType::Wasm { wasm, git_info: self.git_info  },
             _ => panic!("Failed to convert into `Source` - either `registry` or `wasm` must be set, but neither both or none"),
         };
         Source {
