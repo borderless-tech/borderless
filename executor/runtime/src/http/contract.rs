@@ -204,8 +204,28 @@ where
                 let symbols = rt.get_symbols(&contract_id)?;
                 Ok(json_response(&symbols))
             }
+            "pkg" => match trunc.as_str() {
+                "/" => {
+                    let result = controller
+                        .contract_pkg_full(&contract_id)?
+                        .map(|r| r.into_dto());
+                    Ok(json_response(&result))
+                }
+                "/def" => {
+                    let result = controller
+                        .contract_pkg_def(&contract_id)?
+                        .map(|r| r.into_dto());
+                    Ok(json_response(&result))
+                }
+                "/source" => {
+                    let result = controller.contract_pkg_source(&contract_id)?;
+                    Ok(json_response(&result))
+                }
+                _ => Ok(reject_404()),
+            },
             // Same as empty path
             "" => {
+                // TODO: Maybe we also add the package definition to this
                 let full_info = controller.contract_full(&contract_id)?;
                 Ok(json_response(&full_info))
             }
