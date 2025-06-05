@@ -77,7 +77,6 @@ pub fn parse_module_content(
             let path = path.strip_prefix('/').unwrap_or(&path); // stip leading "/"
 
             let content = String::from_utf8(payload.clone()).unwrap_or_default();
-            info!("{content}");
 
             #[allow(unreachable_code)]
             match path {
@@ -119,7 +118,6 @@ pub fn parse_module_content(
 
             let action = CallAction::from_bytes(&input)?;
             let s = action.pretty_print()?;
-            info!("{s}");
             let mut state = #as_state::load()?;
             #match_and_call_action
             let events = _match_result?;
@@ -144,7 +142,6 @@ pub fn parse_module_content(
         pub(crate) fn exec_revocation() -> Result<()> {
             #read_input
             let r = Revocation::from_bytes(&input)?;
-            info!("Revoked agent. Reason: {}", r.reason);
             Ok(())
         }
     };

@@ -40,7 +40,7 @@ pub mod prelude {
     pub use crate::common::*;
     pub use crate::contracts::*;
     pub use crate::events::*;
-    pub use crate::Result;
+    pub use crate::{ensure, new_error, Context, Error, Result};
     pub use borderless_sdk_macros::*;
 }
 
