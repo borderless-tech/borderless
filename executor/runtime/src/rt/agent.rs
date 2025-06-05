@@ -4,7 +4,7 @@ use std::time::Instant;
 use ahash::HashMap;
 use borderless::__private::registers::*;
 use borderless::agents::Init;
-use borderless::common::{Introduction, Symbols};
+use borderless::common::{Introduction, Revocation, Symbols};
 use borderless::events::Events;
 use borderless::{events::CallAction, AgentId, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
@@ -163,14 +163,10 @@ impl<S: Db> Runtime<S> {
         Arc::new(Mutex::new(self))
     }
 
-    pub fn instantiate_sw_agent(
-        &mut self,
-        contract_id: AgentId,
-        module_bytes: &[u8],
-    ) -> Result<()> {
+    pub fn instantiate_sw_agent(&mut self, agent_id: AgentId, module_bytes: &[u8]) -> Result<()> {
         let module = Module::new(&self.engine, module_bytes)?;
         check_module(&self.engine, &module)?;
-        self.agent_store.insert_swagent(contract_id, module)?;
+        self.agent_store.insert_swagent(agent_id, module)?;
         Ok(())
     }
 
@@ -237,10 +233,7 @@ impl<S: Db> Runtime<S> {
             .await
     }
 
-    pub async fn process_introduction(
-        &mut self,
-        introduction: Introduction,
-    ) -> Result<Option<Events>> {
+    pub async fn process_introduction(&mut self, introduction: Introduction) -> Result<()> {
         let aid = match introduction.id {
             borderless::prelude::Id::Contract { .. } => return Err(ErrorKind::InvalidIdType.into()),
             borderless::prelude::Id::Agent { agent_id } => agent_id,
@@ -248,18 +241,42 @@ impl<S: Db> Runtime<S> {
         // NOTE: The input for the introduction is not the introduction, but only the initial state!
         // The introduction itself is commited by the VmState
         let initial_state = introduction.initial_state.to_string().into_bytes();
-        self.call_mut(
-            &aid,
-            initial_state,
-            "process_introduction",
-            AgentCommit::Introduction { introduction },
-        )
-        .await
+        let res = self
+            .call_mut(
+                &aid,
+                initial_state,
+                "process_introduction",
+                AgentCommit::Introduction { introduction },
+            )
+            .await?;
+        assert!(res.is_none(), "introductions should not write events");
+        Ok(())
+    }
+
+    pub async fn process_revocation(&mut self, revocation: Revocation) -> Result<()> {
+        let aid = match revocation.id {
+            borderless::prelude::Id::Contract { .. } => return Err(ErrorKind::InvalidIdType.into()),
+            borderless::prelude::Id::Agent { agent_id } => agent_id,
+        };
+        // NOTE: The input for the introduction is not the introduction, but only the initial state!
+        // The introduction itself is commited by the VmState
+        let input = revocation.to_bytes()?;
+        let res = self
+            .call_mut(
+                &aid,
+                input,
+                "process_revocation",
+                AgentCommit::Revocation { revocation },
+            )
+            .await?;
+        assert!(res.is_none(), "revocations should not write events");
+        Ok(())
     }
 
     // OK; Just to get some stuff going; I want to just simply call an action, and execute an http-request with it.
     // That's more than enough to test stuff out.
     // TODO: Logging ?
+    #[must_use = "You have to handle the output events of this function"]
     pub async fn process_action(
         &mut self,
         aid: &AgentId,
