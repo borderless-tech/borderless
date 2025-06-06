@@ -5,16 +5,11 @@ use super::{
     m20250605_000006_create_sources_table::Sources,
 };
 
-pub struct Migration;
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m_20250605_000001_create_pkg_table"
-    }
-}
+#[derive(DeriveMigrationName)]
+pub struct CreatePackageTable;
 
 #[async_trait::async_trait]
-impl MigrationTrait for Migration {
+impl MigrationTrait for CreatePackageTable {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
             .create_table(
