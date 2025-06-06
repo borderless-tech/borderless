@@ -1,0 +1,19 @@
+mod m20250605_000001_create_authors_table;
+mod m20250605_000002_create_registries_table;
+mod m20250605_000003_create_gitinfo_table;
+mod m20250605_000004_ceate_capabilities_table;
+mod m20250605_000005_create_url_whitelists_table;
+mod m20250605_000006_create_sources_table;
+mod m20250605_000007_create_pkgs_table;
+mod m20250605_000008_create_package_authors_tables;
+
+use sea_orm_migration::prelude::*;
+
+pub struct Migrator;
+
+#[async_trait::async_trait]
+impl MigratorTrait for Migrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        vec![]
+    }
+}
