@@ -12,7 +12,7 @@ impl MigrationTrait for CreateCapabilitiesTable {
                     .table(Capabilities::Table)
                     .col(
                         ColumnDef::new(Capabilities::Id)
-                            .integer()
+                            .big_integer()
                             .not_null()
                             .auto_increment()
                             .primary_key(),

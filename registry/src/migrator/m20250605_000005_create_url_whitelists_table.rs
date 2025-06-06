@@ -39,7 +39,7 @@ impl MigrationTrait for CreateUrlWhitelistTable {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(Capabilities::Table).to_owned())
+            .drop_table(Table::drop().table(UrlWhitelist::Table).to_owned())
             .await
     }
 }
