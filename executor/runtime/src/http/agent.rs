@@ -148,13 +148,19 @@ where
             Some(aid) => aid,
             None => return Ok(reject_404()),
         };
+        let controller = Controller::new(&self.db);
+
+        // Ensure, that the agent exists
+        if !controller.agent_exists(&agent_id)? {
+            return Ok(reject_404());
+        }
 
         // Get top-level route
         let route = match pieces.next() {
             Some(r) => r,
             None => {
                 // Get full agent info
-                let full_info = Controller::new(&self.db).agent_full(&agent_id)?;
+                let full_info = controller.agent_full(&agent_id)?;
                 return Ok(json_response(&full_info));
             }
         };
@@ -172,7 +178,6 @@ where
             trunc.push('?');
             trunc.push_str(query);
         }
-        let controller = Controller::new(&self.db);
         match route {
             "state" => {
                 // TODO: The agent should also parse query parameters !

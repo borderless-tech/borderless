@@ -129,13 +129,19 @@ where
             Some(cid) => cid,
             None => return Ok(reject_404()),
         };
+        let controller = Controller::new(&self.db);
+
+        // Ensure, that the contract exists
+        if !controller.contract_exists(&contract_id)? {
+            return Ok(reject_404());
+        }
 
         // Get top-level route
         let route = match pieces.next() {
             Some(r) => r,
             None => {
                 // Get full contract info
-                let full_info = Controller::new(&self.db).contract_full(&contract_id)?;
+                let full_info = controller.contract_full(&contract_id)?;
                 return Ok(json_response(&full_info));
             }
         };
@@ -153,7 +159,6 @@ where
             trunc.push('?');
             trunc.push_str(query);
         }
-        let controller = Controller::new(&self.db);
         match route {
             "state" => {
                 // TODO: The contract should also parse query parameters !
