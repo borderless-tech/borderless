@@ -177,7 +177,10 @@ pub mod code_store {
             store: &mut Store<VmState<S>>,
             linker: &mut Linker<VmState<S>>,
         ) -> Result<Option<Instance>> {
+            let start = std::time::Instant::now();
             if let Some(instance) = self.cache.lock().get(cid.as_bytes()) {
+                let elapsed = start.elapsed();
+                log::info!("Served cached module in {elapsed:?}");
                 return Ok(Some(*instance));
             }
             let db_ptr = self.db.open_sub_db(WASM_CODE_SUB_DB)?;
@@ -188,8 +191,13 @@ pub mod code_store {
                 None => return Ok(None),
             };
             txn.commit()?;
+            let elapsed = start.elapsed();
+            log::info!("Read module in {elapsed:?}");
+            let start = std::time::Instant::now();
             let instance = linker.instantiate(store, &module)?;
             self.cache.lock().push(*cid.as_bytes(), instance);
+            let elapsed = start.elapsed();
+            log::info!("Instantiated module in {elapsed:?}");
             Ok(Some(instance))
         }
 

@@ -29,7 +29,7 @@ pub struct ActionResp {
 }
 
 pub trait EventHandler: Clone + Send + Sync {
-    type Error: std::error::Error + Send + Sync;
+    type Error: std::fmt::Display + Send + Sync;
 
     fn handle_events(&self, events: Events)
         -> impl Future<Output = Result<(), Self::Error>> + Send;
@@ -110,8 +110,8 @@ where
     pub fn with_shared(
         db: S,
         rt: Arc<Mutex<Runtime<S>>>,
-        writer: BorderlessId,
         event_handler: E,
+        writer: BorderlessId,
     ) -> Self {
         Self {
             rt,
@@ -195,17 +195,6 @@ where
 
                 Ok(json_response(&log))
             }
-            // "txs" => {
-            //     // Extract pagination
-            //     let pagination = Pagination::from_query(query).unwrap_or_default();
-
-            //     // Get actions
-            //     let paginated = controller
-            //         .actions(agent_id)
-            //         .get_tx_action_paginated(pagination)?;
-
-            //     Ok(json_response(&paginated))
-            // }
             "sinks" => {
                 let sinks = controller.agent_sinks(&agent_id)?;
                 Ok(json_response(&sinks))

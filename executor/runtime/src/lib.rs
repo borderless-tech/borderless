@@ -33,3 +33,6 @@ pub const WASM_CODE_SUB_DB: &str = "wasm-code-db";
 
 /// Sub-Database to store the relationship between an action and a transaction
 pub const ACTION_TX_REL_SUB_DB: &str = "rel-tx-action-db";
+
+// TODO: Tracing vs Logging !
+// We should make this toggleable via feature switch.

@@ -19,9 +19,6 @@ use super::{
 };
 use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB};
 
-// TODO: Add agent related functions aswell
-// -> We have to check here, that the controller always uses the correct sub-db
-
 /// Model-controller to retrieve information about a contract from the key-value storage.
 pub struct Controller<'a, S: Db> {
     db: &'a S,
@@ -100,8 +97,13 @@ impl<'a, S: Db> Controller<'a, S> {
     /// Returns the hash of the last-tx that was executed by the contract
     pub fn contract_last_tx_hash(&self, cid: &ContractId) -> Result<Option<Hash256>> {
         let actions = ActionLog::new(self.db, *cid);
-        match actions.last()? {
-            Some(action) => Ok(Some(action.tx_ctx.tx_id.hash)),
+        if let Some(action) = actions.last()? {
+            return Ok(Some(action.tx_ctx.tx_id.hash));
+        }
+        // If there are no actions, the contract could simply be just introduced.
+        // In this case, read the introduction and parse the tx_introduced value
+        match self.contract_meta(cid)? {
+            Some(meta) => Ok(meta.tx_ctx_introduction.map(|t| t.tx_id.hash)),
             None => Ok(None),
         }
     }
@@ -222,11 +224,12 @@ impl<'a, S: Db> Controller<'a, S> {
 
     /// Returns the package definition for an agent
     pub fn agent_pkg_source(&self, aid: &AgentId) -> Result<Option<Source>> {
-        self.read_value(
+        let source: Option<SourceFlattened> = self.read_value(
             &Id::agent(*aid),
             BASE_KEY_METADATA,
             META_SUB_KEY_PACKAGE_SOURCE,
-        )
+        )?;
+        Ok(source.map(|s| s.unflatten()))
     }
 
     /// Returns the package definition for an agent

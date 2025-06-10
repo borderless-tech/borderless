@@ -117,7 +117,7 @@ pub async fn start_agent_server<DB: Db + 'static>(
     let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
     let event_handler = RecursiveEventHandler { rt: rt.clone() };
     rt.lock().await.set_executor(writer)?;
-    let srv = SwAgentService::with_shared(db, rt, writer, event_handler);
+    let srv = SwAgentService::with_shared(db, rt, event_handler, writer);
 
     // Create a router and attach the custom service to a route
     let contract = Router::new().fallback(agent_handler).with_state(srv);

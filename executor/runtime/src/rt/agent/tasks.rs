@@ -22,15 +22,6 @@ use tokio_tungstenite::tungstenite::{Bytes, Message};
 
 use super::Runtime;
 
-// TODO: There is one inconsistency in our design:
-// In general, there should never be more than one mutable execution for an agent,
-// or we might end up with changing the state, while something else is still running !
-// This is also true for the contracts, but since there is only one thread feeding the transactions, this is always true.
-//
-// For the agents though, the schedules and the websocket messages and the actions can occur completely at random.
-// We should therefore implement some mechanism, that prevent multiple runtimes from mutating the state at the same time !
-// -> Semaphore over the agent-id
-
 #[derive(Debug, Error)]
 #[error("Critical error in schedule task - forced to shutdown")]
 pub struct ScheduleError;

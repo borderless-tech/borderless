@@ -30,6 +30,15 @@ use crate::{
 
 pub type SharedRuntime<S> = Arc<Mutex<Runtime<S>>>;
 
+/*
+ * Runtime TODO's:
+ * - use one global engine for all runtimes
+ * - make the Store a short lived object
+ * - use per-runtime caching (as an Instance is bound to the Store)
+ * - invalidate the cache, when re-creating the store
+ *
+ */
+
 pub struct Runtime<S = Lmdb>
 where
     S: Db,

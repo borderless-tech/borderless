@@ -32,7 +32,7 @@ pub fn unsupported_media_type() -> Response {
     resp
 }
 
-fn bad_request(err: String) -> Response {
+pub fn bad_request(err: String) -> Response {
     let mut resp = Response::new(err.into_bytes().into());
     *resp.status_mut() = StatusCode::BAD_REQUEST;
     resp

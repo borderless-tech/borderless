@@ -20,7 +20,7 @@ pub use super::*;
 use crate::{db::controller::Controller, rt::contract::Runtime};
 
 pub trait ActionWriter: Clone + Send + Sync {
-    type Error: std::error::Error + Send + Sync;
+    type Error: std::fmt::Display + Send + Sync;
 
     fn write_action(
         &self,
