@@ -2,6 +2,7 @@ use bytes::Bytes;
 use http::request::Parts;
 use http::{header::CONTENT_TYPE, HeaderValue, StatusCode};
 use mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8};
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 pub use tower::Service;
 
@@ -56,6 +57,18 @@ pub fn json_body(bytes: Vec<u8>) -> Response<Bytes> {
         HeaderValue::from_static(APPLICATION_JSON.as_ref()),
     );
     resp
+}
+
+pub(crate) fn json_response_nested<S: Serialize + DeserializeOwned>(
+    value: S,
+    truncated_path: &str,
+) -> Response<Bytes> {
+    use borderless::__private::storage_traits::ToPayload;
+    match value.to_payload(truncated_path) {
+        Ok(Some(s)) => json_body(s.into_bytes()),
+        Ok(None) => json_response(&None::<()>),
+        Err(e) => into_server_error(e),
+    }
 }
 
 pub fn check_json_content(parts: &Parts) -> bool {

@@ -1,10 +1,8 @@
-#![allow(dead_code)]
-use borderless::events::AgentCall;
-use borderless::events::CallAction;
-use borderless::events::Events;
-use borderless::http::queries::Pagination;
-use borderless::AgentId;
-use borderless::BorderlessId;
+use borderless::{
+    events::{AgentCall, CallAction, Events},
+    http::queries::Pagination,
+    AgentId, BorderlessId,
+};
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use http::method::Method;
 use log::info;
@@ -201,16 +199,16 @@ where
             }
             "desc" => {
                 let desc = controller.agent_desc(&agent_id)?;
-                Ok(json_response(&desc))
+                Ok(json_response_nested(desc, &trunc))
             }
             "meta" => {
                 let meta = controller.agent_meta(&agent_id)?;
-                Ok(json_response(&meta))
+                Ok(json_response_nested(meta, &trunc))
             }
             "symbols" => {
                 let mut rt = self.rt.lock().await;
                 let symbols = rt.get_symbols(&agent_id).await?;
-                Ok(json_response(&symbols))
+                Ok(json_response_nested(symbols, &trunc))
             }
             "pkg" => match trunc.as_str() {
                 "/" => {

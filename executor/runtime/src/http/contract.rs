@@ -189,15 +189,15 @@ where
             }
             "info" => {
                 let info = controller.contract_info(&contract_id)?;
-                Ok(json_response(&info))
+                Ok(json_response_nested(info, &trunc))
             }
             "desc" => {
                 let desc = controller.contract_desc(&contract_id)?;
-                Ok(json_response(&desc))
+                Ok(json_response_nested(desc, &trunc))
             }
             "meta" => {
                 let meta = controller.contract_meta(&contract_id)?;
-                Ok(json_response(&meta))
+                Ok(json_response_nested(meta, &trunc))
             }
             "symbols" => {
                 let mut rt = self.rt.lock();
