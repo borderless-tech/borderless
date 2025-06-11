@@ -36,3 +36,58 @@ pub const ACTION_TX_REL_SUB_DB: &str = "rel-tx-action-db";
 
 // TODO: Tracing vs Logging !
 // We should make this toggleable via feature switch.
+
+mod log_shim {
+    #[cfg(all(feature = "tracing", not(feature = "log")))]
+    pub use tracing::{debug, error, info, trace, warn};
+
+    #[cfg(all(feature = "log", not(feature = "tracing")))]
+    pub use log::{debug, error, info, trace, warn};
+
+    // If neither logging or tracing are enabled, just send the input into the void
+    #[cfg(any(
+        all(not(feature = "log"), not(feature = "tracing")),
+        all(feature = "log", feature = "tracing")
+    ))]
+    pub use crate::void as trace;
+
+    #[cfg(any(
+        all(not(feature = "log"), not(feature = "tracing")),
+        all(feature = "log", feature = "tracing")
+    ))]
+    pub use crate::void as debug;
+
+    #[cfg(any(
+        all(not(feature = "log"), not(feature = "tracing")),
+        all(feature = "log", feature = "tracing")
+    ))]
+    pub use crate::void as info;
+
+    #[cfg(any(
+        all(not(feature = "log"), not(feature = "tracing")),
+        all(feature = "log", feature = "tracing")
+    ))]
+    pub use crate::void as warn;
+
+    #[cfg(any(
+        all(not(feature = "log"), not(feature = "tracing")),
+        all(feature = "log", feature = "tracing")
+    ))]
+    pub use crate::void as error;
+
+    #[cfg(any(
+        all(not(feature = "log"), not(feature = "tracing")),
+        all(feature = "log", feature = "tracing")
+    ))]
+    #[macro_export]
+    macro_rules! void {
+        ($($t:tt)*) => {{
+            let _ = format_args!($($t)*);
+        }};
+    }
+
+    // NOTE: We emit a compiler warning in the build.rs - which is far better than a compiler error.
+    //
+    // #[cfg(all(feature = "log", feature = "tracing"))]
+    // compile_error!("Features `log` and `tracing` are mutually exclusive.");
+}

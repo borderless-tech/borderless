@@ -12,6 +12,7 @@ use borderless::__private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG};
 #[cfg(any(feature = "contracts", feature = "agents"))]
 use borderless::events::CallAction;
 
+use crate::log_shim::*;
 use crate::{Result, CONTRACT_SUB_DB};
 
 /// Sub-Key where the length of the action-log is stored
@@ -192,7 +193,7 @@ impl<'a, S: Db> ActionLog<'a, S> {
         };
         txn.write(&rel_db, &tx_id_bytes, &relationship.into_bytes())?;
 
-        log::debug!("Commited action to log. len={full_len}");
+        debug!("Commited action to log. len={full_len}");
         Ok(())
     }
 

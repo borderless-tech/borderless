@@ -7,9 +7,9 @@ use borderless::{
     prelude::Id,
 };
 use borderless_kv_store::*;
-use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 
+use crate::log_shim::{debug, error, info, trace, warn};
 use crate::{Result, AGENT_SUB_DB, CONTRACT_SUB_DB};
 
 /// Storage key, where the meta-information about the buffer is saved

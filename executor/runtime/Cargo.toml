@@ -7,7 +7,7 @@ edition = "2021"
 borderless.workspace = true
 borderless-kv-store.workspace = true
 nohash = "0.2.0"
-log.workspace = true
+log = { workspace = true, optional = true }
 postcard.workspace = true
 rand.workspace = true
 serde.workspace = true
@@ -25,12 +25,15 @@ serde_bytes.workspace = true
 thiserror.workspace = true
 tokio = { version = "1", features = ["macros"], optional = true }
 tokio-tungstenite = { version = "0.26.2", features = ["rustls"] }
+tracing = { version = "0.1", optional = true }
 futures-util = "0.3.31"
 
 
 [features]
 default = [ "http", "contracts", "agents" ] # for now we enable all features by default
-contracts = ["code-store"]
-agents = ["code-store", "dep:reqwest", "dep:tokio"]
-code-store = ["dep:lru", "dep:ahash"]
-http = ["dep:http", "dep:tower", "dep:mime"]
+contracts = [ "code-store" ]
+agents = [ "code-store", "dep:reqwest", "dep:tokio" ]
+code-store = [ "dep:lru", "dep:ahash" ]
+http = [ "dep:http", "dep:tower", "dep:mime" ]
+tracing = [ "dep:tracing" ]
+log = [ "dep:log" ]

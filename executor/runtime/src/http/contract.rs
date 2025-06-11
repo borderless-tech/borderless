@@ -5,7 +5,6 @@ use borderless::BorderlessId;
 use borderless::ContractId;
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use http::method::Method;
-use log::info;
 use parking_lot::Mutex;
 use std::convert::Infallible;
 use std::future::Future;
@@ -17,6 +16,7 @@ use std::{
 };
 
 pub use super::*;
+use crate::log_shim::*;
 use crate::{db::controller::Controller, rt::contract::Runtime};
 
 pub trait ActionWriter: Clone + Send + Sync {

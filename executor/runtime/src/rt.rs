@@ -126,6 +126,7 @@ pub mod code_store {
     use std::{num::NonZeroUsize, sync::Arc};
     use wasmtime::{Engine, Instance, Linker, Module, Store};
 
+    use crate::log_shim::*;
     use crate::{Result, WASM_CODE_SUB_DB};
 
     /// Generalized ID - this is either a Contract-ID or an Agent-ID
@@ -170,6 +171,7 @@ pub mod code_store {
             Ok(())
         }
 
+        #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(contract_id = %cid)))]
         pub fn get_contract(
             &mut self,
             cid: &ContractId,
@@ -180,27 +182,24 @@ pub mod code_store {
             let start = std::time::Instant::now();
             if let Some(instance) = self.cache.lock().get(cid.as_bytes()) {
                 let elapsed = start.elapsed();
-                log::info!("Served cached module in {elapsed:?}");
+                debug!("Served cached module in {elapsed:?}");
                 return Ok(Some(*instance));
             }
-            let db_ptr = self.db.open_sub_db(WASM_CODE_SUB_DB)?;
-            let txn = self.db.begin_ro_txn()?;
-            let module_bytes = txn.read(&db_ptr, cid)?;
-            let module = match module_bytes {
-                Some(bytes) => unsafe { Module::deserialize(engine, bytes)? },
+            let module = match self.read_module(cid, engine)? {
+                Some(m) => m,
                 None => return Ok(None),
             };
-            txn.commit()?;
             let elapsed = start.elapsed();
-            log::info!("Read module in {elapsed:?}");
+            debug!("Read module in {elapsed:?}");
             let start = std::time::Instant::now();
             let instance = linker.instantiate(store, &module)?;
             self.cache.lock().push(*cid.as_bytes(), instance);
             let elapsed = start.elapsed();
-            log::info!("Instantiated module in {elapsed:?}");
+            debug!("Instantiated module in {elapsed:?}");
             Ok(Some(instance))
         }
 
+        #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid)))]
         pub async fn get_agent(
             &mut self,
             aid: &AgentId,
@@ -208,15 +207,23 @@ pub mod code_store {
             store: &mut Store<VmState<S>>,
             linker: &mut Linker<VmState<S>>,
         ) -> Result<Option<Instance>> {
+            let start = std::time::Instant::now();
             if let Some(instance) = self.cache.lock().get(aid.as_bytes()) {
+                let elapsed = start.elapsed();
+                debug!("Served cached module in {elapsed:?}");
                 return Ok(Some(*instance));
             }
             let module = match self.read_module(aid, engine)? {
                 Some(m) => m,
                 None => return Ok(None),
             };
+            let elapsed = start.elapsed();
+            debug!("Read module in {elapsed:?}");
+            let start = std::time::Instant::now();
             let instance = linker.instantiate_async(store, &module).await?;
             self.cache.lock().push(*aid.as_bytes(), instance);
+            let elapsed = start.elapsed();
+            debug!("Instantiated module in {elapsed:?}");
             Ok(Some(instance))
         }
 

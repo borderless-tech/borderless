@@ -5,7 +5,6 @@ use borderless::{
 };
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use http::method::Method;
-use log::info;
 use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::future::Future;
@@ -18,6 +17,7 @@ use std::{
 use tokio::sync::Mutex;
 
 pub use super::*;
+use crate::log_shim::*;
 use crate::{db::controller::Controller, rt::agent::Runtime};
 
 #[derive(Serialize)]

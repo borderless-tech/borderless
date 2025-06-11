@@ -10,7 +10,6 @@ use borderless::{
 };
 use borderless_kv_store::Db;
 use futures_util::{SinkExt, StreamExt};
-use log::{error, info, warn};
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, Mutex},
@@ -19,6 +18,8 @@ use tokio::{
 };
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::{Bytes, Message};
+
+use crate::log_shim::*;
 
 use super::Runtime;
 

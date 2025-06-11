@@ -13,7 +13,6 @@ use borderless::{
     AgentId, ContractId,
 };
 use borderless_kv_store::*;
-use log::{debug, warn};
 use nohash::IntMap;
 use rand::Rng;
 use std::{
@@ -30,6 +29,7 @@ use crate::{
     db::controller::{write_introduction, write_revocation, Controller},
     db::logger::Logger,
     error::ErrorKind,
+    log_shim::*,
     Error, Result,
 };
 

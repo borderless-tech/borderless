@@ -10,7 +10,6 @@ use borderless::{events::CallAction, ContractId};
 use borderless::{BlockIdentifier, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
-use log::{error, warn};
 use parking_lot::Mutex;
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
 
@@ -22,6 +21,7 @@ use crate::db::{
     action_log::ActionRecord,
     logger::{self, print_log_line},
 };
+use crate::log_shim::*;
 use crate::ACTION_TX_REL_SUB_DB;
 use crate::{
     error::{ErrorKind, Result},
@@ -138,7 +138,7 @@ impl<S: Db> Runtime<S> {
 
         let store = Store::new(&engine, state);
 
-        log::info!("Initialized runtime in: {:?}", start.elapsed());
+        info!("Initialized runtime in: {:?}", start.elapsed());
 
         Ok(Self {
             linker,
@@ -154,6 +154,7 @@ impl<S: Db> Runtime<S> {
     }
 
     /// Creates a new instance of the wasm module in our [`CodeStore`] for the given contract-id
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(%contract_id), err))]
     pub fn instantiate_contract(
         &mut self,
         contract_id: ContractId,
@@ -168,6 +169,7 @@ impl<S: Db> Runtime<S> {
     /// Sets the currently active block
     ///
     /// This writes the [`BlockCtx`] to the dedicated register, so that the wasm side can query it.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(%block_id), err))]
     pub fn set_block(&mut self, block_id: BlockIdentifier, block_timestamp: u64) -> Result<()> {
         let ctx = BlockCtx {
             block_id,
@@ -182,12 +184,15 @@ impl<S: Db> Runtime<S> {
     /// Sets the currently active executor
     ///
     /// This writes the [`BorderlessId`] of the executor to the dedicated register, so that the wasm side can query it.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(%executor_id), err))]
     pub fn set_executor(&mut self, executor_id: BorderlessId) -> Result<()> {
         let bytes = executor_id.into_bytes().to_vec();
         self.store.data_mut().set_register(REGISTER_EXECUTOR, bytes);
         Ok(())
     }
 
+    #[must_use = "You have to handle the output events of this function"]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(contract_id = %cid, %writer), err))]
     pub fn process_transaction(
         &mut self,
         cid: &ContractId,
@@ -206,6 +211,8 @@ impl<S: Db> Runtime<S> {
         Ok(events)
     }
 
+    // TODO: Calling process introduction on an already introduced contract should generate an error
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(contract_id = %introduction.id, %writer), err))]
     pub fn process_introduction(
         &mut self,
         introduction: Introduction,
@@ -232,6 +239,8 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
+    // TODO: Calling process introduction on an already revoked contract should generate an error
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(contract_id = %revocation.id, %writer), err))]
     pub fn process_revocation(
         &mut self,
         revocation: Revocation,
@@ -315,6 +324,7 @@ impl<S: Db> Runtime<S> {
     }
 
     /// Executes an action without commiting the state
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(contract_id = %cid, %writer), err))]
     pub fn perform_dry_run(
         &mut self,
         cid: &ContractId,
@@ -352,6 +362,7 @@ impl<S: Db> Runtime<S> {
 
     // --- NOTE: Maybe we should create a separate runtime for the HTTP handling ?
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(contract_id = %cid, %path), err))]
     pub fn http_get_state(&mut self, cid: &ContractId, path: String) -> Result<(u16, Vec<u8>)> {
         let instance = self
             .contract_store
@@ -398,6 +409,7 @@ impl<S: Db> Runtime<S> {
     /// The return type is a nested result. The outer result type should convert to a server error,
     /// as it represents errors in the runtime itself.
     /// The inner error type comes from the wasm code and contains the error status and message.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(contract_id = %cid, %path), err))]
     pub fn http_post_action(
         &mut self,
         cid: &ContractId,

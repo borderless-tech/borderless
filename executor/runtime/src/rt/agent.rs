@@ -9,7 +9,6 @@ use borderless::events::Events;
 use borderless::{events::CallAction, AgentId, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
-use log::{info, warn};
 use parking_lot::Mutex as SyncMutex;
 use tokio::sync::{mpsc, Mutex};
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
@@ -20,6 +19,7 @@ use super::{
     vm::{self, VmState},
 };
 use crate::db::logger::print_log_line;
+use crate::log_shim::*;
 use crate::{
     db::logger,
     error::{ErrorKind, Result},
@@ -163,6 +163,7 @@ impl<S: Db> Runtime<S> {
         Arc::new(Mutex::new(self))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(%agent_id), err))]
     pub fn instantiate_sw_agent(&mut self, agent_id: AgentId, module_bytes: &[u8]) -> Result<()> {
         let module = Module::new(&self.engine, module_bytes)?;
         check_module(&self.engine, &module)?;
@@ -173,6 +174,7 @@ impl<S: Db> Runtime<S> {
     /// Sets the currently active executor
     ///
     /// This writes the [`BorderlessId`] of the executor to the dedicated register, so that the wasm side can query it.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(%executor_id), err))]
     pub fn set_executor(&mut self, executor_id: BorderlessId) -> Result<()> {
         let bytes = executor_id.into_bytes().to_vec();
         self.store.data_mut().set_register(REGISTER_EXECUTOR, bytes);
@@ -180,12 +182,14 @@ impl<S: Db> Runtime<S> {
     }
 
     /// Registers a new websocket client
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub fn register_ws(&mut self, aid: AgentId) -> Result<mpsc::Receiver<Vec<u8>>> {
         let (tx, rx) = mpsc::channel(4);
         self.store.data_mut().register_ws(aid, tx)?;
         Ok(rx)
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub async fn initialize(&mut self, aid: &AgentId) -> Result<Init> {
         let instance = self
             .agent_store
@@ -213,26 +217,32 @@ impl<S: Db> Runtime<S> {
         Ok(init)
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub async fn process_ws_msg(&mut self, aid: &AgentId, msg: Vec<u8>) -> Result<Option<Events>> {
         self.call_mut(aid, msg, "on_ws_msg", AgentCommit::Other)
             .await
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub async fn on_ws_open(&mut self, aid: &AgentId) -> Result<Option<Events>> {
         self.call_mut(aid, Vec::new(), "on_ws_open", AgentCommit::Other)
             .await
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub async fn on_ws_error(&mut self, aid: &AgentId) -> Result<Option<Events>> {
         self.call_mut(aid, Vec::new(), "on_ws_error", AgentCommit::Other)
             .await
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub async fn on_ws_close(&mut self, aid: &AgentId) -> Result<Option<Events>> {
         self.call_mut(aid, Vec::new(), "on_ws_close", AgentCommit::Other)
             .await
     }
 
+    // TODO: Calling process introduction on an already introduced agent should generate an error
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %introduction.id), err))]
     pub async fn process_introduction(&mut self, introduction: Introduction) -> Result<()> {
         let aid = match introduction.id {
             borderless::prelude::Id::Contract { .. } => return Err(ErrorKind::InvalidIdType.into()),
@@ -253,6 +263,8 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
+    // TODO: Calling process revocation on an already revoked agent should generate an error
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %revocation.id), err))]
     pub async fn process_revocation(&mut self, revocation: Revocation) -> Result<()> {
         let aid = match revocation.id {
             borderless::prelude::Id::Contract { .. } => return Err(ErrorKind::InvalidIdType.into()),
@@ -277,6 +289,7 @@ impl<S: Db> Runtime<S> {
     // That's more than enough to test stuff out.
     // TODO: Logging ?
     #[must_use = "You have to handle the output events of this function"]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub async fn process_action(
         &mut self,
         aid: &AgentId,
@@ -331,6 +344,7 @@ impl<S: Db> Runtime<S> {
 
     // --- NOTE: Maybe we should create a separate runtime for the HTTP handling ?
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid, %path), err))]
     pub async fn http_get_state(&mut self, aid: &AgentId, path: String) -> Result<(u16, Vec<u8>)> {
         // Get instance
         let instance = self
@@ -383,6 +397,7 @@ impl<S: Db> Runtime<S> {
     /// The return type is a nested result. The outer result type should convert to a server error,
     /// as it represents errors in the runtime itself.
     /// The inner error type comes from the wasm code and contains the error status and message.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid, %path, %writer), err))]
     pub async fn http_post_action(
         &mut self,
         aid: &AgentId,
