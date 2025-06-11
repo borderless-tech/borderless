@@ -8,12 +8,16 @@ use crate::{debug, error, NamedSink};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
+/// Enum to represent the type of method-call
 pub enum MethodOrId {
+    /// Method is called by its name
     ByName { method: String },
-    ById { method_id: u32 }, // < TODO Use first bit for blinding here, to distinguish user and system actions ?
+    /// Method is called by its id
+    ById { method_id: u32 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Data-model for an action-call in contracts and agents.
 pub struct CallAction {
     #[serde(flatten)]
     pub method: MethodOrId,
@@ -29,10 +33,12 @@ impl FromStr for CallAction {
 }
 
 impl CallAction {
+    /// Create a new `CallAction`
     pub fn new(method: MethodOrId, params: Value) -> Self {
         Self { method, params }
     }
 
+    /// Create a new `CallAction` by method-name
     pub fn by_method(method_name: impl AsRef<str>, params: Value) -> Self {
         Self {
             method: MethodOrId::ByName {
@@ -42,6 +48,7 @@ impl CallAction {
         }
     }
 
+    /// Create a new `CallAction` by method-id
     pub fn by_method_id(method_id: u32, params: Value) -> Self {
         Self {
             method: MethodOrId::ById { method_id },
@@ -49,6 +56,7 @@ impl CallAction {
         }
     }
 
+    /// Returns the method-name of this action (if any)
     pub fn method_name(&self) -> Option<&str> {
         match &self.method {
             MethodOrId::ByName { method } => Some(method.as_str()),
@@ -56,6 +64,7 @@ impl CallAction {
         }
     }
 
+    /// Returns the method-id of this action (if any)
     pub fn method_id(&self) -> Option<u32> {
         match self.method {
             MethodOrId::ByName { .. } => None,
@@ -63,14 +72,25 @@ impl CallAction {
         }
     }
 
+    /// Prints either the method-name or method-id for this action
+    pub fn print_method(&self) -> String {
+        match &self.method {
+            MethodOrId::ByName { method } => format!("method-name={method}"),
+            MethodOrId::ById { method_id } => format!("method-id={method_id}"),
+        }
+    }
+
+    /// Deserializes the JSON-Bytes into a `CallAction`
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
         serde_json::from_slice(bytes)
     }
 
+    /// Pretty-prints the entire `CallAction` as JSON
     pub fn pretty_print(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(&self)
     }
 
+    /// Serialized the `CallAction` into JSON-Bytes
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(&self)
     }
@@ -93,6 +113,7 @@ pub struct ContractCall {
     pub action: CallAction,
 }
 
+/// An outgoing event for another agent
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentCall {
     pub agent_id: AgentId,

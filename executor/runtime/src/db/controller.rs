@@ -338,7 +338,21 @@ pub(crate) fn write_introduction<S: Db>(
     introduction: borderless::common::Introduction,
 ) -> Result<()> {
     use borderless::__private::storage_keys::*;
+
+    use crate::error::ErrorKind;
     let cid = introduction.id;
+
+    // NOTE: If the id was already written to disk, this means that the contract has already been written !
+    let check_id = read_system_value::<S, Id, _>(
+        db_ptr,
+        txn,
+        &cid,
+        BASE_KEY_METADATA,
+        META_SUB_KEY_CONTRACT_ID,
+    )?;
+    if check_id.is_some() {
+        return Err(ErrorKind::DoubleIntroduction.into());
+    }
 
     // Write contract-id
     write_system_value::<S, _, _>(

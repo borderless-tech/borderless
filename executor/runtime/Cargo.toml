@@ -1,6 +1,6 @@
 [package]
 name = "borderless-runtime"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 [dependencies]
@@ -24,7 +24,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 serde_bytes.workspace = true
 thiserror.workspace = true
 tokio = { version = "1", features = ["macros"], optional = true }
-tokio-tungstenite = { version = "0.26.2", features = ["rustls"] }
+tokio-tungstenite = { version = "0.26.2", features = ["rustls"], optional = true }
 tracing = { version = "0.1", optional = true }
 futures-util = "0.3.31"
 
@@ -32,7 +32,7 @@ futures-util = "0.3.31"
 [features]
 default = [ "http", "contracts", "agents" ] # for now we enable all features by default
 contracts = [ "code-store" ]
-agents = [ "code-store", "dep:reqwest", "dep:tokio" ]
+agents = [ "code-store", "dep:reqwest", "dep:tokio", "dep:tokio-tungstenite" ]
 code-store = [ "dep:lru", "dep:ahash" ]
 http = [ "dep:http", "dep:tower", "dep:mime" ]
 tracing = [ "dep:tracing" ]

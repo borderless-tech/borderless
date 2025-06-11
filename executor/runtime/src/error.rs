@@ -92,6 +92,9 @@ pub(crate) enum ErrorKind {
     #[error("introduction id is not for the correct type of entity - agent vs contract mismatch")]
     InvalidIdType,
 
+    #[error("the entity was already introduced")]
+    DoubleIntroduction,
+
     /// Missing required value in register
     // --- Register errors
     #[error("missing required value '{0}' in register")]

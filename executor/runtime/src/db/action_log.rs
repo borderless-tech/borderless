@@ -12,6 +12,7 @@ use borderless::__private::storage_keys::{StorageKey, BASE_KEY_ACTION_LOG};
 #[cfg(any(feature = "contracts", feature = "agents"))]
 use borderless::events::CallAction;
 
+#[allow(unused_imports)]
 use crate::log_shim::*;
 use crate::{Result, CONTRACT_SUB_DB};
 

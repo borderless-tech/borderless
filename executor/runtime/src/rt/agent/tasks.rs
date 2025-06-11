@@ -1,6 +1,6 @@
 use std::{
     sync::Arc,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant},
 };
 
 use borderless::{
@@ -28,6 +28,7 @@ use super::Runtime;
 pub struct ScheduleError;
 
 /// Function to handle all schedules of a single sw-agent
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
 pub async fn handle_schedules<S>(
     rt: Arc<Mutex<Runtime<S>>>,
     aid: AgentId,
@@ -43,6 +44,7 @@ where
         let aid = aid.clone();
         let action = sched.get_action();
         let out_tx = out_tx.clone();
+        let action_name = action.print_method();
 
         join_set.spawn(async move {
             if sched.delay > 0 {
@@ -55,7 +57,7 @@ where
             loop {
                 interval.tick().await;
                 // Dispatch output events
-                let now = SystemTime::now();
+                let now = Instant::now();
                 let result = rt.lock().await.process_action(&aid, action.clone()).await;
                 match result {
                     Ok(Some(events)) => {
@@ -66,9 +68,12 @@ where
                             .expect("receiver dropped or closed");
                     }
                     Ok(None) => (),
-                    Err(e) => error!("failure while executing schedule: {e}"),
+                    Err(e) => error!("failure while executing schedule {action_name}: {e}"),
                 }
-                info!("-- Outer time elapsed: {:?}", now.elapsed().unwrap());
+                info!(
+                    "executed schedule {action_name}, time elapsed: {:?}",
+                    now.elapsed()
+                );
             }
         });
     }
@@ -88,6 +93,7 @@ where
     Ok(())
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
 pub async fn handle_ws_connection<S>(
     rt: Arc<Mutex<Runtime<S>>>,
     aid: AgentId,
@@ -133,12 +139,17 @@ where
     S: Db + 'static,
 {
     info!("opening websocket connection to '{}'", ws_config.url);
-    let result = connect_async(ws_config.url)
+    let result = connect_async(&ws_config.url)
         .await
         .map_err(|e| format!("failed to open ws-connection - {e}"))?;
 
     let (stream, response) = result;
-    info!("{response:#?}");
+    if response.status().is_client_error() || response.status().is_server_error() {
+        return Err(format!(
+            "failed to open ws-connection - status={}",
+            response.status()
+        ));
+    }
 
     // Call "on-open"
     handle_events(rt.lock().await.on_ws_open(&aid).await, &out_tx).await;
@@ -148,6 +159,8 @@ where
 
     // Now start receiving messages from the websocket
     let (mut tx, mut rx) = stream.split();
+
+    info!("successfully opened ws-connection to '{}'", ws_config.url);
 
     // main loop
     loop {
@@ -186,10 +199,16 @@ where
                 }
                 let data = match msg.unwrap() {
                     Message::Text(text) => {
+                        // TODO: Remove this log line, once everything is up and running
+                        info!("incoming text ws msg");
                         let bytes: Bytes = text.into();
                         bytes.into()
                     }
-                    Message::Binary(b) => b.into(),
+                    Message::Binary(b) => {
+                        // TODO: Remove this log line, once everything is up and running
+                        info!("incoming binary ws msg");
+                        b.into()
+                    }
                     Message::Pong(_) => continue,
                     Message::Close(frame) => {
                         // TODO: Forward closing frame to wasm ?

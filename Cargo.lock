@@ -263,7 +263,7 @@ dependencies = [
 
 [[package]]
 name = "borderless"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "borderless-abi",
@@ -352,7 +352,7 @@ dependencies = [
 
 [[package]]
 name = "borderless-runtime"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ahash 0.8.11",
  "borderless",

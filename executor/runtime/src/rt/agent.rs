@@ -18,7 +18,6 @@ use super::{
     code_store::CodeStore,
     vm::{self, VmState},
 };
-use crate::db::logger::print_log_line;
 use crate::log_shim::*;
 use crate::{
     db::logger,
@@ -325,7 +324,7 @@ impl<S: Db> Runtime<S> {
         let func = instance.get_typed_func::<(), ()>(&mut self.store, method)?;
         self.store.data_mut().begin_agent_exec(*aid, true)?;
 
-        let logs = match func.call_async(&mut self.store, ()).await {
+        let _logs = match func.call_async(&mut self.store, ()).await {
             Ok(()) => self.store.data_mut().finish_agent_exec(Some(commit))?,
             Err(e) => {
                 warn!("{method} failed with error: {e}");
@@ -333,7 +332,7 @@ impl<S: Db> Runtime<S> {
             }
         };
         // Just print the logs here
-        logs.into_iter().for_each(print_log_line);
+        // logs.into_iter().for_each(print_log_line);
 
         // Return output events
         match self.store.data().get_register(REGISTER_OUTPUT) {
