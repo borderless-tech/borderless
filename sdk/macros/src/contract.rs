@@ -210,7 +210,10 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
         let result = #derived::exec_introduction();
         match result {
             Ok(()) => ::borderless::debug!("process-introduction: success"),
-            Err(e) => ::borderless::error!("process-introduction - execution failed: {e:?}"),
+            Err(e) => {
+                ::borderless::error!("process-introduction - execution failed: {e:?}");
+                ::borderless::__private::abort();
+            }
         }
     }
 
@@ -220,7 +223,10 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
         let result = #derived::exec_revocation();
         match result {
             Ok(()) => ::borderless::debug!("process-revocation: success"),
-            Err(e) => ::borderless::error!("process-revocation - execution failed: {e:?}"),
+            Err(e) => {
+                ::borderless::error!("process-revocation - execution failed: {e:?}");
+                ::borderless::__private::abort();
+            }
         }
     }
 
