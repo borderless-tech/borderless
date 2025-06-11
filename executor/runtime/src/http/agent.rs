@@ -292,6 +292,7 @@ where
                 }
                 let (events, action) = {
                     let mut rt = self.rt.lock().await;
+                    rt.set_executor(self.writer)?; // For agents the executor and the writer are actually the same
                     match rt
                         .http_post_action(&agent_id, trunc, payload.into(), &self.writer)
                         .await?

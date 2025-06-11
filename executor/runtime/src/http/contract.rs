@@ -292,6 +292,7 @@ where
 
                 let action = {
                     let mut rt = self.rt.lock();
+                    rt.set_executor(self.writer)?; // NOTE: In this case writer and executor are identical
                     match rt.http_post_action(&contract_id, trunc, payload.into(), &self.writer)? {
                         Ok(action) => {
                             // Perform dry-run of action ( and return action resp in case of error )
