@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow.workspace = true
 borderless.workspace = true
-borderless-runtime.workspace = true
+borderless-runtime = { workspace = true, features = ["log"] }
 borderless-kv-store.workspace = true
 serde_json.workspace = true
 
