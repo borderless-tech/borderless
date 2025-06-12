@@ -10,7 +10,7 @@ license-file = "../../LICENSE"
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 uuid = { workspace = true, features = ["serde", "v8"] }
-borderless-hash = { path = "../hash" }
+borderless-hash = { version = "1", path = "../hash" }
 bytes = "1.10.1"
 
 [dev-dependencies]
