@@ -2,6 +2,7 @@
 name = "borderless-pkg"
 version = "0.1.0"
 edition = "2021"
+description = "Definition of the borderless 'package' format to wrap executable wasm binaries"
 authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>", "Paul Jökel <paul.joekel@borderless-technologies.com>" ]
 repository = "https://github.com/borderless-tech/borderless"
 homepage = "https://borderless-technologies.com/"
