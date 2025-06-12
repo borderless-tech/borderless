@@ -6,7 +6,7 @@ description = "Basic kv-storage traits and backend implementations"
 authors = [ "Paul Jökel <paul.joekel@borderless-technologies.com>", "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]
 repository = "https://github.com/borderless-tech/borderless"
 homepage = "https://borderless-technologies.com/"
-license-file = "LICENSE"
+license-file = "../LICENSE"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
