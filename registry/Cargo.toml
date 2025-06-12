@@ -5,6 +5,7 @@ edition = "2021"
 authors = [ "Paul Jökel <paul.joekel@borderless-technologies.com>" ]
 repository = "https://github.com/borderless-tech/borderless"
 homepage = "https://borderless-technologies.com/"
+license-file = "../LICENSE"
 
 [dependencies]
 borderless-kv-store.workspace = true

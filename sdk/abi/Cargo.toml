@@ -6,6 +6,7 @@ description = "Abstract ABI definition for the borderless smart-contracts and so
 authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]
 repository = "https://github.com/borderless-tech/borderless"
 homepage = "https://borderless-technologies.com/"
+license-file = "../../LICENSE"
 
 [dependencies]
 

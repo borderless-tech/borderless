@@ -5,6 +5,7 @@ edition = "2021"
 authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>", "Paul Jökel <paul.joekel@borderless-technologies.com>" ]
 repository = "https://github.com/borderless-tech/borderless"
 homepage = "https://borderless-technologies.com/"
+license-file = "../../LICENSE"
 
 [dependencies]
 base64 = "0.22.1"
