@@ -2,6 +2,10 @@
 name = "borderless-hash"
 version = "1.0.0"
 edition = "2021"
+description = "Definition of the Hash256 type, which is a thin wrapper for the sha3-256 hash with flatbuffer support."
+authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]
+repository = "https://github.com/borderless-tech/borderless"
+homepage = "https://borderless-technologies.com/"
 
 [features]
 default = []

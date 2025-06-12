@@ -2,6 +2,10 @@
 name = "runner"
 version = "0.1.0"
 edition = "2021"
+description = "Local Test-CLI to start a runtime"
+authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]
+repository = "https://github.com/borderless-tech/borderless"
+homepage = "https://borderless-technologies.com/"
 
 [dependencies]
 anyhow.workspace = true

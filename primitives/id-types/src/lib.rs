@@ -241,6 +241,27 @@ impl_uuid!(ContractId, 0xcf, 0xc0);
 pub struct Did(uuid::Uuid);
 impl_uuid!(Did, 0xdf, 0xd0);
 
+/// The external-id used to identify external entities, that are not in the borderless-network.
+///
+/// These ids are version 8 [uuids](https://en.wikipedia.org/wiki/Universally_unique_identifier), where
+/// the first four bits of the uuid are set to `0xb`, to indicate that it is a borderless-id and not another uuid based id.
+///
+/// Example:
+/// ```sh
+/// ebc23cb3-f447-8107-8f93-9bfb8e1d157d
+/// ```
+///
+/// All uuid-based ids used in the borderless-ecosystem have a different prefix, based on what the id is used for.
+/// This mechanism ensures that you cannot mistake an participant-id for e.g. a contract-id and vice versa. Even if you convert the participant-id
+/// back into a uuid and the result into a contract-id, the results are different.
+///
+/// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
+/// as we utilize standard version 8 uuids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub struct ExternalId(uuid::Uuid);
+impl_uuid!(ExternalId, 0xef, 0xe0);
+// TODO: Add tests for external ID and prefix checks
+
 /// Check weather or not an array of bytes contains the prefix of an [`AgentId`].
 ///
 /// Useful for filtering in key-value storages, when multiple ID types are used as keys or key-prefixes.
@@ -283,6 +304,17 @@ pub fn did_prefix(bytes: impl AsRef<[u8]>) -> bool {
         return false;
     }
     bytes[0] | 0x0f == 0xdf
+}
+
+/// Check weather or not an array of bytes contains the prefix of an [`ExternalId`].
+///
+/// Useful for filtering in key-value storages, when multiple ID types are used as keys or key-prefixes.
+pub fn eid_prefix(bytes: impl AsRef<[u8]>) -> bool {
+    let bytes = bytes.as_ref();
+    if bytes.is_empty() {
+        return false;
+    }
+    bytes[0] | 0x0f == 0xef
 }
 
 /// Type used to identify blocks.

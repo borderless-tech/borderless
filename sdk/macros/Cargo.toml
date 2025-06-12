@@ -3,6 +3,9 @@ name = "borderless-sdk-macros"
 version = "0.1.0"
 edition = "2021"
 description = "Core implementation of all macros related to contracts or software-agents."
+authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]
+repository = "https://github.com/borderless-tech/borderless"
+homepage = "https://borderless-technologies.com/"
 
 [lib]
 proc-macro = true

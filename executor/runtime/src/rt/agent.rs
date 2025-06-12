@@ -240,6 +240,9 @@ impl<S: Db> Runtime<S> {
             .await
     }
 
+    // TODO: If the initial state from the introduction cannot be parsed, the agent should *not* be saved !!
+    // Currently, this creates an agent, where decoding the state will constantly explode during runtime !!!
+    //
     // TODO: Calling process introduction on an already introduced agent should generate an error
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %introduction.id), err))]
     pub async fn process_introduction(&mut self, introduction: Introduction) -> Result<()> {
