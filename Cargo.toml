@@ -22,16 +22,16 @@ resolver = "2"
 
 [workspace.dependencies]
 # Export own crates
-borderless = { path = "sdk/core" }
-borderless-abi = { path = "sdk/abi" }
-borderless-sdk-macros = { path = "sdk/macros" }
-borderless-id-types = { path = "primitives/id-types" }
+borderless = { version = "0.1.2", path = "sdk/core" }
+borderless-abi = { version = "0.1.0", path = "sdk/abi" }
+borderless-sdk-macros = { version = "0.1.0", path = "sdk/macros" }
+borderless-id-types = { version = "0.1.0", path = "primitives/id-types" }
 borderless-hash = { version = "1.0.0", path = "primitives/hash" }
-borderless-kv-store = { path = "kv-store" }
-borderless-pkg = { path = "primitives/pkg" }
-borderless-runtime = { path = "executor/runtime" }
-borderless-registry = { path = "registry" }
-json-proof = { path = "json-proof" }
+borderless-kv-store = { version = "1.0.0", path = "kv-store" }
+borderless-pkg = { version = "0.1.0", path = "primitives/pkg" }
+borderless-runtime = { version = "0.2.0", path = "executor/runtime" }
+borderless-registry = { version = "0.1.0", path = "registry" }
+json-proof = { version = "1.0.0", path = "json-proof" }
 
 # External dependencies
 anyhow = "1.0"
