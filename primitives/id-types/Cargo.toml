@@ -2,6 +2,7 @@
 name = "borderless-id-types"
 version = "0.1.0"
 edition = "2021"
+description = "Definition of various identifier types for the borderless ecosystem"
 authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]
 repository = "https://github.com/borderless-tech/borderless"
 homepage = "https://borderless-technologies.com/"
