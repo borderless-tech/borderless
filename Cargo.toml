@@ -26,7 +26,7 @@ borderless = { path = "sdk/core" }
 borderless-abi = { path = "sdk/abi" }
 borderless-sdk-macros = { path = "sdk/macros" }
 borderless-id-types = { path = "primitives/id-types" }
-borderless-hash = { path = "primitives/hash" }
+borderless-hash = { version = "1.0.0", path = "primitives/hash" }
 borderless-kv-store = { path = "kv-store" }
 borderless-pkg = { path = "primitives/pkg" }
 borderless-runtime = { path = "executor/runtime" }
