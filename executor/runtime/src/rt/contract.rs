@@ -13,14 +13,12 @@ use borderless_kv_store::Db;
 use parking_lot::Mutex;
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
 
+use super::vm::{ActiveEntity, Commit};
 use super::{
     code_store::CodeStore,
-    vm::{self, ContractCommit, VmState},
+    vm::{self, VmState},
 };
-use crate::db::{
-    action_log::ActionRecord,
-    logger::{self, print_log_line},
-};
+use crate::db::action_log::ActionRecord;
 use crate::log_shim::*;
 use crate::ACTION_TX_REL_SUB_DB;
 use crate::{
@@ -36,6 +34,7 @@ pub type SharedRuntime<S> = Arc<Mutex<Runtime<S>>>;
  * - make the Store a short lived object
  * - use per-runtime caching (as an Instance is bound to the Store)
  * - invalidate the cache, when re-creating the store
+ * - check State::decode before introducing
  *
  */
 
@@ -181,6 +180,38 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
+    /// Sanity check for introductions
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, err))]
+    pub fn check_module_and_state(
+        &mut self,
+        module_bytes: Vec<u8>,
+        state: serde_json::Value,
+    ) -> Result<(bool, Vec<String>)> {
+        let module = Module::new(&self.engine, module_bytes)?;
+        check_module(&self.engine, &module)?;
+        let instance = self.linker.instantiate(&mut self.store, &module)?;
+
+        // Prepare registers
+        self.store
+            .data_mut()
+            .set_register(REGISTER_INPUT, state.to_string().into_bytes());
+
+        // Call the actual function on the wasm side
+        self.store.data_mut().prepare_exec(ActiveEntity::None)?;
+        let success = match instance
+            .get_typed_func::<(), u32>(&mut self.store, "parse_state")
+            .and_then(|func| func.call(&mut self.store, ()))
+        {
+            Ok(status) => status == 0,
+            Err(e) => {
+                warn!("parse_state failed with error: {e}");
+                false
+            }
+        };
+        let log = self.store.data_mut().finish_exec(None)?;
+        Ok((success, log.into_iter().map(|l| l.msg).collect()))
+    }
+
     /// Sets the currently active executor
     ///
     /// This writes the [`BorderlessId`] of the executor to the dedicated register, so that the wasm side can query it.
@@ -201,13 +232,8 @@ impl<S: Db> Runtime<S> {
         tx_ctx: TxCtx,
     ) -> Result<Option<Events>> {
         let input = action.to_bytes()?;
-        let events = self.process_chain_tx(
-            *cid,
-            input,
-            *writer,
-            tx_ctx.to_bytes()?,
-            ContractCommit::Action { action, tx_ctx },
-        )?;
+        let events =
+            self.process_chain_tx(*cid, input, *writer, tx_ctx, Some(Commit::Action(action)))?;
         Ok(events)
     }
 
@@ -230,11 +256,8 @@ impl<S: Db> Runtime<S> {
             cid,
             initial_state,
             *writer,
-            tx_ctx.to_bytes()?,
-            ContractCommit::Introduction {
-                introduction,
-                tx_ctx,
-            },
+            tx_ctx,
+            Some(Commit::Introduction(introduction)),
         )?;
         Ok(())
     }
@@ -256,8 +279,8 @@ impl<S: Db> Runtime<S> {
             cid,
             input,
             *writer,
-            tx_ctx.to_bytes()?,
-            ContractCommit::Revocation { revocation, tx_ctx },
+            tx_ctx,
+            Some(Commit::Revocation(revocation)),
         )?;
         Ok(())
     }
@@ -271,9 +294,10 @@ impl<S: Db> Runtime<S> {
         cid: ContractId,
         input: Vec<u8>,
         writer: BorderlessId,
-        tx_ctx_bytes: Vec<u8>,
-        commit: ContractCommit,
+        tx_ctx: TxCtx,
+        commit: Option<Commit>,
     ) -> Result<Option<Events>> {
+        let tx_ctx_bytes = tx_ctx.to_bytes()?;
         let instance = self
             .contract_store
             .get_contract(&cid, &self.engine, &mut self.store, &mut self.linker)?
@@ -283,9 +307,11 @@ impl<S: Db> Runtime<S> {
         let _guard = mtx.lock();
 
         let contract_method = match &commit {
-            ContractCommit::Action { .. } => "process_transaction",
-            ContractCommit::Introduction { .. } => "process_introduction",
-            ContractCommit::Revocation { .. } => "process_revocation",
+            Some(Commit::Action(_)) => "process_transaction",
+            Some(Commit::Introduction(_)) => "process_introduction",
+            Some(Commit::Revocation(_)) => "process_revocation",
+            Some(Commit::Other) => panic!("Commit::Other is reserved for actions"),
+            None => "process_transaction", // NOTE: None is used for dry-runs of transactions
         };
 
         // Prepare registers
@@ -298,26 +324,28 @@ impl<S: Db> Runtime<S> {
             .set_register(REGISTER_WRITER, writer.into_bytes().into());
 
         // Call the actual function on the wasm side
-        self.store.data_mut().begin_mutable_exec(cid)?;
-        match instance
+        self.store
+            .data_mut()
+            .prepare_exec(ActiveEntity::contract_tx(cid, true, tx_ctx))?;
+        let commit = match instance
             .get_typed_func::<(), ()>(&mut self.store, contract_method)
             .and_then(|func| func.call(&mut self.store, ()))
         {
-            Ok(()) => self.store.data_mut().finish_mutable_exec(commit)?,
+            Ok(()) => {
+                // We commit it the way that we are told to
+                commit
+            }
             Err(e) => {
                 warn!("{contract_method} failed with error: {e}");
-                // NOTE: It is okay to abort the execution here with the finish_immutable_exec function,
-                // because we only get here, if the wasm execution has failed. Therefore there are no
-                // logs or actions to be commited to the database. We simply need this line to 'reset' the VmState for the next execution.
-                let logs = self.store.data_mut().finish_immutable_exec()?;
-                for l in logs {
-                    print_log_line(l);
-                }
+                // In this case we do not want to commit, so set it to `None`
+                None
             }
-        }
+        };
+        let output = self.store.data().get_register(REGISTER_OUTPUT);
+        let _log = self.store.data_mut().finish_exec(commit);
 
         // Return output events
-        match self.store.data().get_register(REGISTER_OUTPUT) {
+        match output {
             Some(bytes) => Ok(Some(Events::from_bytes(&bytes)?)),
             None => Ok(None),
         }
@@ -332,31 +360,8 @@ impl<S: Db> Runtime<S> {
         writer: &BorderlessId,
     ) -> Result<()> {
         let input = action.to_bytes()?;
-        let tx_ctx = TxCtx::dummy().to_bytes()?;
-
-        let instance = self
-            .contract_store
-            .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
-            .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
-
-        self.store.data_mut().begin_immutable_exec(*cid)?;
-
-        // Prepare registers
-        self.store.data_mut().set_register(REGISTER_INPUT, input);
-        self.store.data_mut().set_register(REGISTER_TX_CTX, tx_ctx);
-        self.store
-            .data_mut()
-            .set_register(REGISTER_WRITER, writer.into_bytes().into());
-
-        // Call the actual function on the wasm side
-        if let Err(e) = instance
-            .get_typed_func::<(), ()>(&mut self.store, "process_transaction")
-            .and_then(|func| func.call(&mut self.store, ()))
-        {
-            warn!("dry-run of process_transaction failed with error: {e}");
-        }
-        // Finish the execution
-        self.store.data_mut().finish_immutable_exec()?;
+        let tx_ctx = TxCtx::dummy();
+        let _out = self.process_chain_tx(*cid, input, *writer, tx_ctx, None)?;
         Ok(())
     }
 
@@ -364,43 +369,7 @@ impl<S: Db> Runtime<S> {
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(contract_id = %cid, %path), err))]
     pub fn http_get_state(&mut self, cid: &ContractId, path: String) -> Result<(u16, Vec<u8>)> {
-        let instance = self
-            .contract_store
-            .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
-            .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
-
-        self.store.data_mut().begin_immutable_exec(*cid)?;
-
-        self.store
-            .data_mut()
-            .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());
-
-        if let Err(e) = instance
-            .get_typed_func::<(), ()>(&mut self.store, "http_get_state")
-            .and_then(|func| func.call(&mut self.store, ()))
-        {
-            warn!("http_get_state failed with error: {e}");
-        }
-        // Finish the execution
-        let log = self.store.data_mut().finish_immutable_exec()?;
-
-        let status = self
-            .store
-            .data()
-            .get_register(REGISTER_OUTPUT_HTTP_STATUS)
-            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
-        let status = u16::from_be_bytes(status.try_into().unwrap());
-
-        let result = self
-            .store
-            .data()
-            .get_register(REGISTER_OUTPUT_HTTP_RESULT)
-            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
-
-        // Print the log
-        for l in log {
-            logger::print_log_line(l);
-        }
+        let (status, result) = self.process_http_call(cid, path, None, None, "http_get_state")?;
         Ok((status, result))
     }
 
@@ -417,54 +386,14 @@ impl<S: Db> Runtime<S> {
         payload: Vec<u8>,
         writer: &BorderlessId,
     ) -> Result<std::result::Result<CallAction, (u16, String)>> {
-        let instance = self
-            .contract_store
-            .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
-            .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
-
-        self.store.data_mut().begin_immutable_exec(*cid)?;
-
-        self.store
-            .data_mut()
-            .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());
-
-        self.store
-            .data_mut()
-            .set_register(REGISTER_INPUT_HTTP_PAYLOAD, payload);
-
-        self.store
-            .data_mut()
-            .set_register(REGISTER_WRITER, writer.into_bytes().into());
-
-        if let Err(e) = instance
-            .get_typed_func::<(), ()>(&mut self.store, "http_post_action")
-            .and_then(|func| func.call(&mut self.store, ()))
-        {
-            error!("http_post_action failed with error: {e}");
-        }
-        // Finish the execution
-        let log = self.store.data_mut().finish_immutable_exec()?;
-
-        let status = self
-            .store
-            .data()
-            .get_register(REGISTER_OUTPUT_HTTP_STATUS)
-            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
-        let status = u16::from_be_bytes(status.try_into().unwrap());
-
-        let result = self
-            .store
-            .data()
-            .get_register(REGISTER_OUTPUT_HTTP_RESULT)
-            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
-
-        // Print the log
-        for l in log {
-            logger::print_log_line(l);
-        }
-
+        let (status, result) =
+            self.process_http_call(cid, path, Some(payload), Some(writer), "http_post_action")?;
         if status == 200 {
-            let action = CallAction::from_bytes(&result)?;
+            let action =
+                CallAction::from_bytes(&result).map_err(|_| ErrorKind::InvalidRegisterValue {
+                    register: "http-result",
+                    expected_type: "CallAction",
+                })?;
             Ok(Ok(action))
         } else {
             let error = String::from_utf8(result).map_err(|_| ErrorKind::InvalidRegisterValue {
@@ -475,6 +404,67 @@ impl<S: Db> Runtime<S> {
         }
     }
 
+    fn process_http_call(
+        &mut self,
+        cid: &ContractId,
+        path: String,
+        payload: Option<Vec<u8>>,
+        writer: Option<&BorderlessId>,
+        http_method: &'static str,
+    ) -> Result<(u16, Vec<u8>)> {
+        let instance = self
+            .contract_store
+            .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
+            .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
+
+        self.store
+            .data_mut()
+            .prepare_exec(ActiveEntity::contract_http(*cid))?;
+
+        self.store
+            .data_mut()
+            .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());
+
+        if let Some(payload) = payload {
+            self.store
+                .data_mut()
+                .set_register(REGISTER_INPUT_HTTP_PAYLOAD, payload);
+        }
+
+        if let Some(writer) = writer {
+            self.store
+                .data_mut()
+                .set_register(REGISTER_WRITER, writer.into_bytes().into());
+        }
+
+        if let Err(e) = instance
+            .get_typed_func::<(), ()>(&mut self.store, http_method)
+            .and_then(|func| func.call(&mut self.store, ()))
+        {
+            error!("{http_method} failed with error: {e}");
+        }
+        // Get output
+        let status = self.store.data().get_register(REGISTER_OUTPUT_HTTP_STATUS);
+
+        let result = self.store.data().get_register(REGISTER_OUTPUT_HTTP_RESULT);
+
+        // Finish the execution ( and commit nothing )
+        let _log = self.store.data_mut().finish_exec(None)?;
+
+        // Parse status
+        let status = status.ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
+        let status_bytes = status
+            .try_into()
+            .map_err(|_| ErrorKind::InvalidRegisterValue {
+                register: "http-status",
+                expected_type: "u16",
+            })?;
+        let status = u16::from_be_bytes(status_bytes);
+
+        let result = result.ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
+        Ok((status, result))
+    }
+
     /// Returns the symbols of the contract
     pub fn get_symbols(&mut self, cid: &ContractId) -> Result<Option<Symbols>> {
         let instance = self
@@ -482,7 +472,7 @@ impl<S: Db> Runtime<S> {
             .get_contract(cid, &self.engine, &mut self.store, &mut self.linker)?
             .ok_or_else(|| ErrorKind::MissingContract { cid: *cid })?;
 
-        self.store.data_mut().begin_immutable_exec(*cid)?;
+        self.store.data_mut().prepare_exec(ActiveEntity::None)?;
 
         // In case the contract does not export any symbols, just return 'None'
         if let Err(e) = instance
@@ -491,9 +481,10 @@ impl<S: Db> Runtime<S> {
         {
             error!("get_symbols failed with error: {e}");
         }
-        self.store.data_mut().finish_immutable_exec()?;
+        let output = self.store.data().get_register(REGISTER_OUTPUT);
+        self.store.data_mut().finish_exec(None)?;
 
-        let bytes = match self.store.data().get_register(REGISTER_OUTPUT) {
+        let bytes = match output {
             Some(b) => b,
             None => return Ok(None),
         };

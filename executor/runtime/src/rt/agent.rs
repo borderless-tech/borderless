@@ -13,14 +13,13 @@ use parking_lot::Mutex as SyncMutex;
 use tokio::sync::{mpsc, Mutex};
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
 
-use super::vm::AgentCommit;
+use super::vm::{ActiveEntity, Commit};
 use super::{
     code_store::CodeStore,
     vm::{self, VmState},
 };
 use crate::log_shim::*;
 use crate::{
-    db::logger,
     error::{ErrorKind, Result},
     AGENT_SUB_DB,
 };
@@ -170,6 +169,40 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
+    /// Sanity check for introductions
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, err))]
+    pub async fn check_module_and_state(
+        &mut self,
+        module_bytes: Vec<u8>,
+        state: serde_json::Value,
+    ) -> Result<(bool, Vec<String>)> {
+        let module = Module::new(&self.engine, module_bytes)?;
+        check_module(&self.engine, &module)?;
+        let instance = self.linker.instantiate(&mut self.store, &module)?;
+
+        // Prepare registers
+        self.store
+            .data_mut()
+            .set_register(REGISTER_INPUT, state.to_string().into_bytes());
+
+        // Get function
+        let func = instance.get_typed_func::<(), u32>(&mut self.store, "parse_state")?;
+
+        // Prepare execution
+        self.store.data_mut().prepare_exec(ActiveEntity::None)?;
+
+        // Call the actual function on the wasm side
+        let success = match func.call_async(&mut self.store, ()).await {
+            Ok(status) => status == 0,
+            Err(e) => {
+                warn!("parse_state failed with error: {e}");
+                false
+            }
+        };
+        let log = self.store.data_mut().finish_exec(None)?;
+        Ok((success, log.into_iter().map(|l| l.msg).collect()))
+    }
+
     /// Sets the currently active executor
     ///
     /// This writes the [`BorderlessId`] of the executor to the dedicated register, so that the wasm side can query it.
@@ -198,19 +231,18 @@ impl<S: Db> Runtime<S> {
 
         // Call the actual function on the wasm side
         let func = instance.get_typed_func::<(), ()>(&mut self.store, "on_init")?;
-        self.store.data_mut().begin_agent_exec(*aid, false)?;
+        self.store
+            .data_mut()
+            .prepare_exec(ActiveEntity::agent(*aid, false))?;
 
         if let Err(e) = func.call_async(&mut self.store, ()).await {
             warn!("initialize failed with error: {e}");
         }
-        self.store.data_mut().finish_agent_exec(None)?;
+        let output = self.store.data().get_register(REGISTER_OUTPUT);
+        self.store.data_mut().finish_exec(None)?;
 
         // Return output events
-        let bytes = self
-            .store
-            .data()
-            .get_register(REGISTER_OUTPUT)
-            .ok_or_else(|| ErrorKind::MissingRegisterValue("init-output"))?;
+        let bytes = output.ok_or_else(|| ErrorKind::MissingRegisterValue("init-output"))?;
         let init = Init::from_bytes(&bytes)?;
 
         Ok(init)
@@ -218,32 +250,31 @@ impl<S: Db> Runtime<S> {
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub async fn process_ws_msg(&mut self, aid: &AgentId, msg: Vec<u8>) -> Result<Option<Events>> {
-        self.call_mut(aid, msg, "on_ws_msg", AgentCommit::Other)
-            .await
+        self.call_mut(aid, msg, "on_ws_msg", Commit::Other).await
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub async fn on_ws_open(&mut self, aid: &AgentId) -> Result<Option<Events>> {
-        self.call_mut(aid, Vec::new(), "on_ws_open", AgentCommit::Other)
+        self.call_mut(aid, Vec::new(), "on_ws_open", Commit::Other)
             .await
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub async fn on_ws_error(&mut self, aid: &AgentId) -> Result<Option<Events>> {
-        self.call_mut(aid, Vec::new(), "on_ws_error", AgentCommit::Other)
+        self.call_mut(aid, Vec::new(), "on_ws_error", Commit::Other)
             .await
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub async fn on_ws_close(&mut self, aid: &AgentId) -> Result<Option<Events>> {
-        self.call_mut(aid, Vec::new(), "on_ws_close", AgentCommit::Other)
+        self.call_mut(aid, Vec::new(), "on_ws_close", Commit::Other)
             .await
     }
 
     // TODO: If the initial state from the introduction cannot be parsed, the agent should *not* be saved !!
     // Currently, this creates an agent, where decoding the state will constantly explode during runtime !!!
     //
-    // TODO: Calling process introduction on an already introduced agent should generate an error
+    // DONE: Calling process introduction on an already introduced agent should generate an error
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %introduction.id), err))]
     pub async fn process_introduction(&mut self, introduction: Introduction) -> Result<()> {
         let aid = match introduction.id {
@@ -258,7 +289,7 @@ impl<S: Db> Runtime<S> {
                 &aid,
                 initial_state,
                 "process_introduction",
-                AgentCommit::Introduction { introduction },
+                Commit::Introduction(introduction),
             )
             .await?;
         assert!(res.is_none(), "introductions should not write events");
@@ -280,7 +311,7 @@ impl<S: Db> Runtime<S> {
                 &aid,
                 input,
                 "process_revocation",
-                AgentCommit::Revocation { revocation },
+                Commit::Revocation(revocation),
             )
             .await?;
         assert!(res.is_none(), "revocations should not write events");
@@ -299,7 +330,7 @@ impl<S: Db> Runtime<S> {
     ) -> Result<Option<Events>> {
         // Parse action
         let input = action.to_bytes()?;
-        self.call_mut(aid, input, "process_action", AgentCommit::Other)
+        self.call_mut(aid, input, "process_action", Commit::Other)
             .await
     }
 
@@ -309,7 +340,7 @@ impl<S: Db> Runtime<S> {
         aid: &AgentId,
         input: Vec<u8>,
         method: &'static str,
-        commit: AgentCommit,
+        commit: Commit,
     ) -> Result<Option<Events>> {
         let instance = self
             .agent_store
@@ -325,20 +356,22 @@ impl<S: Db> Runtime<S> {
 
         // Call the actual function on the wasm side
         let func = instance.get_typed_func::<(), ()>(&mut self.store, method)?;
-        self.store.data_mut().begin_agent_exec(*aid, true)?;
+        self.store
+            .data_mut()
+            .prepare_exec(ActiveEntity::agent(*aid, true))?;
 
-        let _logs = match func.call_async(&mut self.store, ()).await {
-            Ok(()) => self.store.data_mut().finish_agent_exec(Some(commit))?,
+        let commit = match func.call_async(&mut self.store, ()).await {
+            Ok(()) => Some(commit),
             Err(e) => {
                 warn!("{method} failed with error: {e}");
-                self.store.data_mut().finish_agent_exec(None)?
+                None
             }
         };
-        // Just print the logs here
-        // logs.into_iter().for_each(print_log_line);
+        let output = self.store.data().get_register(REGISTER_OUTPUT);
+        let _logs = self.store.data_mut().finish_exec(commit)?;
 
         // Return output events
-        match self.store.data().get_register(REGISTER_OUTPUT) {
+        match output {
             Some(bytes) => Ok(Some(Events::from_bytes(&bytes)?)),
             None => Ok(None),
         }
@@ -363,31 +396,34 @@ impl<S: Db> Runtime<S> {
         // Get function
         let func = instance.get_typed_func::<(), ()>(&mut self.store, "http_get_state")?;
 
+        // Prepare execution
+        self.store
+            .data_mut()
+            .prepare_exec(ActiveEntity::agent(*aid, false))?;
+
         // Call the function
-        self.store.data_mut().begin_agent_exec(*aid, false)?;
         if let Err(e) = func.call_async(&mut self.store, ()).await {
             warn!("http_get_state failed with error: {e}");
         }
-        // Finish the execution
-        let log = self.store.data_mut().finish_agent_exec(None)?;
+        let status = self.store.data().get_register(REGISTER_OUTPUT_HTTP_STATUS);
+        let result = self.store.data().get_register(REGISTER_OUTPUT_HTTP_RESULT);
 
-        let status = self
-            .store
-            .data()
-            .get_register(REGISTER_OUTPUT_HTTP_STATUS)
-            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
-        let status = u16::from_be_bytes(status.try_into().unwrap());
+        // Finish the execution ( and commit nothing )
+        let _log = self.store.data_mut().finish_exec(None)?;
 
-        let result = self
-            .store
-            .data()
-            .get_register(REGISTER_OUTPUT_HTTP_RESULT)
-            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
+        // Parse status
+        let status = status.ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
+        let status_bytes = status
+            .try_into()
+            .map_err(|_| ErrorKind::InvalidRegisterValue {
+                register: "http-status",
+                expected_type: "u16",
+            })?;
+        let status = u16::from_be_bytes(status_bytes);
 
-        // Print the log
-        for l in log {
-            logger::print_log_line(l);
-        }
+        // Check result
+        let result = result.ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
+
         Ok((status, result))
     }
 
@@ -431,37 +467,36 @@ impl<S: Db> Runtime<S> {
             .data_mut()
             .set_register(REGISTER_WRITER, writer.into_bytes().into());
 
+        // Prepare mutable execution
+        self.store
+            .data_mut()
+            .prepare_exec(ActiveEntity::agent(*aid, true))?;
+
         // Get function
         let func = instance.get_typed_func::<(), ()>(&mut self.store, "http_post_action")?;
 
         // Call the function
-        self.store.data_mut().begin_agent_exec(*aid, true)?;
         if let Err(e) = func.call_async(&mut self.store, ()).await {
             warn!("http_get_state failed with error: {e}");
         }
+        let status = self.store.data().get_register(REGISTER_OUTPUT_HTTP_STATUS);
+        let result = self.store.data().get_register(REGISTER_OUTPUT_HTTP_RESULT);
+
         // Finish the execution
-        let log = self
-            .store
-            .data_mut()
-            .finish_agent_exec(Some(AgentCommit::Other))?;
+        let _log = self.store.data_mut().finish_exec(Some(Commit::Other))?;
 
-        let status = self
-            .store
-            .data()
-            .get_register(REGISTER_OUTPUT_HTTP_STATUS)
-            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
-        let status = u16::from_be_bytes(status.try_into().unwrap());
+        // Parse status
+        let status = status.ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
+        let status_bytes = status
+            .try_into()
+            .map_err(|_| ErrorKind::InvalidRegisterValue {
+                register: "http-status",
+                expected_type: "u16",
+            })?;
+        let status = u16::from_be_bytes(status_bytes);
 
-        let result = self
-            .store
-            .data()
-            .get_register(REGISTER_OUTPUT_HTTP_RESULT)
-            .ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
-
-        // Print the log
-        for l in log {
-            logger::print_log_line(l);
-        }
+        // Check result
+        let result = result.ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
 
         if status == 200 {
             let events = match self.store.data().get_register(REGISTER_OUTPUT) {
@@ -487,18 +522,19 @@ impl<S: Db> Runtime<S> {
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
-        // Get function
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, "get_symbols")?;
+        self.store.data_mut().prepare_exec(ActiveEntity::None)?;
 
-        // Call the function
-        self.store.data_mut().begin_agent_exec(*aid, false)?;
-        if let Err(e) = func.call_async(&mut self.store, ()).await {
-            warn!("http_get_state failed with error: {e}");
+        // In case the contract does not export any symbols, just return 'None'
+        if let Err(e) = instance
+            .get_typed_func::<(), ()>(&mut self.store, "get_symbols")
+            .and_then(|func| func.call(&mut self.store, ()))
+        {
+            error!("get_symbols failed with error: {e}");
         }
-        // Finish the execution
-        self.store.data_mut().finish_agent_exec(None)?;
+        let output = self.store.data().get_register(REGISTER_OUTPUT);
+        self.store.data_mut().finish_exec(None)?;
 
-        let bytes = match self.store.data().get_register(REGISTER_OUTPUT) {
+        let bytes = match output {
             Some(b) => b,
             None => return Ok(None),
         };

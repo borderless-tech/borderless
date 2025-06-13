@@ -1,6 +1,6 @@
 [package]
 name = "borderless-sdk-macros"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Core implementation of all macros related to contracts or software-agents."
 authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]

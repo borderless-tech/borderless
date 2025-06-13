@@ -7,7 +7,7 @@ use borderless::{
     hash::Hash256,
     http::{AgentInfo, ContractInfo},
     pkg::{Source, SourceFlattened, WasmPkg, WasmPkgNoSource},
-    prelude::Id,
+    prelude::{Id, TxCtx},
     AgentId, TxIdentifier,
 };
 use borderless_kv_store::*;
@@ -456,8 +456,8 @@ pub(crate) fn write_revocation<S: Db>(
     db_ptr: &S::Handle,
     txn: &mut <S as Db>::RwTx<'_>,
     revocation: &Revocation,
-    tx_ctx: borderless::contracts::TxCtx,
     timestamp: u64,
+    tx_ctx: Option<TxCtx>,
 ) -> Result<()> {
     let cid = revocation.id;
     // Update metadata field
@@ -466,7 +466,7 @@ pub(crate) fn write_revocation<S: Db>(
     let mut meta = meta.unwrap();
 
     meta.inactive_since = timestamp;
-    meta.tx_ctx_revocation = Some(tx_ctx);
+    meta.tx_ctx_revocation = tx_ctx;
 
     write_system_value::<S, _, _>(
         db_ptr,

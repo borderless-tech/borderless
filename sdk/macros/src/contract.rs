@@ -118,10 +118,8 @@ pub fn parse_module_content(
         }
         #[automatically_derived]
         pub(crate) fn exec_introduction() -> Result<()> {
-            #read_input
             // Parse initial state
-            let initial_state: ::borderless::serialize::Value = ::borderless::serialize::from_slice(&input)?;
-            let state = #as_state::init(initial_state)?;
+            let state = exec_parse_state()?;
             // Commit state
             #as_state::commit(state);
             Ok(())
@@ -131,6 +129,15 @@ pub fn parse_module_content(
             #read_input
             let r = Revocation::from_bytes(&input)?;
             Ok(())
+        }
+
+        #[automatically_derived]
+        pub(crate) fn exec_parse_state() -> Result<#state> {
+            #read_input
+            // Parse initial state for test
+            let initial_state: ::borderless::serialize::Value = ::borderless::serialize::from_slice(&input)?;
+            let state = #as_state::init(initial_state)?;
+            Ok(state)
         }
     };
 
@@ -226,6 +233,22 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
             Err(e) => {
                 ::borderless::error!("process-revocation - execution failed: {e:?}");
                 ::borderless::__private::abort();
+            }
+        }
+    }
+
+    #[no_mangle]
+    #[automatically_derived]
+    pub extern "C" fn parse_state() -> u32 {
+        let result = #derived::exec_parse_state();
+        match result {
+            Ok(_) => {
+                ::borderless::info!("Parsing state: success");
+                0
+            }
+            Err(e) => {
+                ::borderless::error!("Parsing state failed: {e:?}");
+                1
             }
         }
     }

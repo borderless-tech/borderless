@@ -352,7 +352,7 @@ dependencies = [
 
 [[package]]
 name = "borderless-runtime"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ahash 0.8.11",
  "borderless",
@@ -381,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "borderless-sdk-macros"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "convert_case",
  "proc-macro2",

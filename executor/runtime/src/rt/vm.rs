@@ -4,6 +4,7 @@
 //! and the concrete implementation of the ABI host functions, that are linked to the webassembly module by the runtime.
 
 use borderless::__private::registers::*;
+use borderless::common::Id;
 use borderless::{
     __private::storage_keys::StorageKey,
     common::{Introduction, Revocation},
@@ -26,7 +27,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     db::action_log::{ActionLog, ActionRecord},
-    db::controller::{write_introduction, write_revocation, Controller},
+    db::controller::{write_introduction, write_revocation},
     db::logger::Logger,
     error::ErrorKind,
     log_shim::*,
@@ -88,81 +89,96 @@ impl<S: Db> VmState<S> {
         }
     }
 
-    /// Sets an contract as active and marks it as mutable
+    /// Marks the beginning of a new execution
+    ///
+    /// Sets the active entity and removes output artifacts from previous executions.
+    /// Must be called before we can call `finish_exec`.
     ///
     /// # Errors
     ///
-    /// Calling this function while the `VmState` already has an active contract results in an error.
-    pub fn begin_mutable_exec(&mut self, cid: ContractId) -> Result<()> {
+    /// Returns an error if there is still an active entity set.
+    #[must_use = "You must handle the errors of this function"]
+    pub fn prepare_exec(&mut self, active_entity: ActiveEntity) -> Result<()> {
         if self.active.is_some() {
             return Err(Error::msg(
                 "Cannot start a new execution while something else is still active",
             ));
         }
-        if Controller::new(&self.db).contract_revoked(&cid)? {
-            return Err(ErrorKind::RevokedContract { cid }.into());
-        }
 
-        // Clear output register, just in case
-        self.registers.remove(&REGISTER_OUTPUT);
+        // Check output registers in debug mode
+        debug_assert!(self.registers.remove(&REGISTER_OUTPUT).is_none());
+        debug_assert!(self
+            .registers
+            .remove(&REGISTER_OUTPUT_HTTP_RESULT)
+            .is_none());
+        debug_assert!(self
+            .registers
+            .remove(&REGISTER_OUTPUT_HTTP_STATUS)
+            .is_none());
 
-        self.active = ActiveEntity::Contract {
-            cid,
-            db_txns: Some(Vec::new()),
-        };
-        self.log_buffer.clear();
+        // Check log-buffer in debug mode
+        debug_assert!(self.log_buffer.is_empty());
+
+        // Set active entity
+        self.active = active_entity;
         Ok(())
     }
 
-    /// Marks the end of a mutable contract execution.
+    /// Marks the end of an execution
     ///
-    /// Internally, this function does the following things:
-    /// 1. Flush the log-buffer to the database
-    /// 2. Reset the contract-id for the next execution
-    /// 3. Clear the log-buffer
+    /// Depending on the active entity and commit, the storage is either modified or not.
+    /// For `ActiveEntity::None` or commit set to `None`, nothing is stored and instead the log-buffer is returned.
+    ///
+    /// Since the mutability is stored in the `ActiveEntity` (by either setting or not setting `db_txns`),
+    /// you can set commit to `None`, if you want to "abort" a mutable execution (and not commit its state) in case of an error.
+    ///
+    /// Note: This function resets all output registers and the log-buffer,
+    /// so be sure to copy the content from the output buffers *before* you call it.
     ///
     /// # Errors
     ///
-    /// Calling this function while the `VmState` has no active contract results in an error.
-    pub fn finish_mutable_exec(&mut self, commit: ContractCommit) -> Result<()> {
-        let result = self.finish_mut_exec_inner(commit);
-
-        // Reset everything
-        self.active = ActiveEntity::None;
-        self.clear_cursor_registers()?;
-        self.log_buffer.clear();
-
-        result
-    }
-
-    // Inner wrapper, so we can return the result, but also perform the cleanup afterwards in case of an error
-    fn finish_mut_exec_inner(&mut self, commit: ContractCommit) -> Result<()> {
+    /// Calling this function while the `VmState` has a different active entity than
+    /// specified in the commit will result in an error.
+    pub fn finish_exec(&mut self, commit: Option<Commit>) -> Result<Vec<LogLine>> {
+        // Take and reset log-output and active-entity
+        let log_output = std::mem::take(&mut self.log_buffer);
         let active = std::mem::replace(&mut self.active, ActiveEntity::None);
-        let (cid, buf) = match active {
-            ActiveEntity::Contract { cid, db_txns } => {
-                if let Some(db_txns) = db_txns {
-                    (cid, db_txns)
-                } else {
-                    return Err(Error::msg("Contract execution was marked as immutable"));
-                }
-            }
-            ActiveEntity::Agent { .. } => {
-                return Err(Error::msg(
-                    "Cannot finish a contract while a sw-agent is active",
-                ));
-            }
-            ActiveEntity::None => {
-                return Err(Error::msg("No active contract"));
-            }
-        };
-        let now = Instant::now();
+        self.clear_cursor_registers()?;
 
-        // Commit storage buffer
+        // Clear output registers, just in case
+        self.registers.remove(&REGISTER_OUTPUT);
+        self.registers.remove(&REGISTER_OUTPUT_HTTP_RESULT);
+        self.registers.remove(&REGISTER_OUTPUT_HTTP_STATUS);
+
+        // If we should not commit, we just return the log output.
+        let commit = match commit {
+            Some(c) => c,
+            None => return Ok(log_output),
+        };
+
+        // Check active entity
+        let (id, db_txns, tx_ctx) = match active {
+            ActiveEntity::Contract {
+                cid,
+                db_txns,
+                tx_ctx,
+            } => (Id::contract(cid), db_txns, tx_ctx),
+            ActiveEntity::Agent { aid, db_txns } => (Id::agent(aid), db_txns, None),
+            ActiveEntity::None => return Ok(log_output),
+        };
+
+        // Start db-txn to commit log and state
+        let now = Instant::now();
         let mut txn = self.db.begin_rw_txn()?;
-        for op in buf.into_iter() {
+
+        let logger = Logger::new(&self.db, id);
+        logger.flush_lines(&log_output, &self.db_ptr, &mut txn)?;
+
+        // If db_txns is none (immutable execution), we won't iterate here
+        for op in db_txns.unwrap_or_default() {
             // Check, that all keys are user-keys - ignore system-keys.
             if !op.is_userspace() {
-                warn!("Contract tried to write or remove a value with a storage-key that is not in user-space");
+                warn!("Tried to write or remove a value with a storage-key that is not in user-space, id={id}");
                 continue;
             }
             match op {
@@ -181,172 +197,33 @@ impl<S: Db> VmState<S> {
 
         // Commit external item (introduction, action or revocation)
         match commit {
-            ContractCommit::Action { action, tx_ctx } => {
+            Commit::Action(action) => {
+                let cid = id.as_cid().expect("actions are only commited in contracts");
+                let tx_ctx = tx_ctx.expect("actions are only commited in contracts");
                 let action_log = ActionLog::new(&self.db, cid);
                 action_log.commit(&self.db_ptr, &mut txn, &action, tx_ctx)?;
             }
-            ContractCommit::Introduction {
-                mut introduction,
-                tx_ctx,
-            } => {
-                assert_eq!(introduction.id, cid);
+            Commit::Introduction(mut introduction) => {
+                assert_eq!(introduction.id, id);
                 introduction.meta.active_since = timestamp;
-                introduction.meta.tx_ctx_introduction = Some(tx_ctx);
+                introduction.meta.tx_ctx_introduction = tx_ctx;
                 write_introduction::<S>(&self.db_ptr, &mut txn, introduction)?;
             }
-            ContractCommit::Revocation { revocation, tx_ctx } => {
-                assert_eq!(revocation.id, cid);
-                write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, tx_ctx, timestamp)?;
+            Commit::Revocation(revocation) => {
+                assert_eq!(revocation.id, id);
+                write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, timestamp, tx_ctx)?;
             }
+            Commit::Other => { /* nothing to do */ }
         }
 
-        // Flush log
-        let logger = Logger::new(&self.db, cid);
-        logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
         // Commit txn
         txn.commit()?;
-
         let elapsed = now.elapsed();
-        self.log_buffer.clear();
-        debug!("commit-acid-txn: {elapsed:?}");
-        Ok(())
-    }
+        debug!("storage commit: {elapsed:?}");
 
-    /// Sets an contract as active and marks it as immutable
-    ///
-    /// This is used for handling http-requests (as they never modify the state)
-    /// or for performing dry-runs (to check if an action *could* be executed without errors).
-    ///
-    /// # Errors
-    ///
-    /// Calling this function while the `VmState` already has an active contract results in an error.
-    pub fn begin_immutable_exec(&mut self, cid: ContractId) -> Result<()> {
-        if self.active.is_some() {
-            return Err(Error::msg("Cannot overwrite active contract"));
-        }
-        self.active = ActiveEntity::Contract {
-            cid,
-            db_txns: Some(Vec::new()),
-        };
-        // Clear http-output register, just in case
-        self.registers.remove(&REGISTER_OUTPUT_HTTP_STATUS);
-        self.registers.remove(&REGISTER_OUTPUT_HTTP_RESULT);
-        self.log_buffer.clear();
-        Ok(())
-    }
-
-    /// Marks the end of an immutable contract execution.
-    ///
-    /// Can also be called to clear the `VmState` in case a mutable execution produced an error.
-    ///
-    /// Internally, this function does the following things:
-    /// 1. Reset the contract-id for the next execution
-    /// 2. Clear the log-buffer
-    ///
-    /// Please note: No logs are commited to the database.
-    ///
-    /// # Errors
-    ///
-    /// Calling this function while the `VmState` has no active contract results in an error.
-    pub fn finish_immutable_exec(&mut self) -> Result<Vec<LogLine>> {
-        if self.active.is_none() {
-            return Err(Error::msg("Cannot clear non existing contract or sw-agent"));
-        }
-        self.active = ActiveEntity::None;
-        self.clear_cursor_registers()?;
-        let log_output = std::mem::take(&mut self.log_buffer);
-        Ok(log_output)
-    }
-
-    pub fn begin_agent_exec(&mut self, aid: AgentId, mutable: bool) -> Result<()> {
-        if self.active.is_some() {
-            return Err(Error::msg(
-                "Cannot start a new execution while something else is still active",
-            ));
-        }
-        let db_txns = if mutable { Some(Vec::new()) } else { None };
-        self.active = ActiveEntity::Agent { aid, db_txns };
-
-        // Clear output registers
-        if mutable {
-            self.registers.remove(&REGISTER_OUTPUT);
-        } else {
-            self.registers.remove(&REGISTER_OUTPUT_HTTP_STATUS);
-            self.registers.remove(&REGISTER_OUTPUT_HTTP_RESULT);
-        }
-        self.log_buffer.clear();
-        Ok(())
-    }
-
-    pub fn finish_agent_exec(&mut self, commit_state: Option<AgentCommit>) -> Result<Vec<LogLine>> {
-        let active = std::mem::replace(&mut self.active, ActiveEntity::None);
-        let (aid, buf) = match active {
-            ActiveEntity::Contract { .. } => {
-                return Err(Error::msg(
-                    "cannot finish an agent while a contract is still running",
-                ))
-            }
-            ActiveEntity::Agent { aid, db_txns } => {
-                if db_txns.is_none() && commit_state.is_some() {
-                    return Err(Error::msg("Agent execution was marked as immutable"));
-                }
-                (aid, db_txns)
-            }
-            ActiveEntity::None => {
-                return Err(Error::msg("No active sw-agent"));
-            }
-        };
-        if commit_state.is_some() {
-            let mut txn = self.db.begin_rw_txn()?;
-            // Apply storage operations
-            for op in buf.unwrap().into_iter() {
-                // Check, that all keys are user-keys - ignore system-keys.
-                if !op.is_userspace() {
-                    warn!("Agent tried to write or remove a value with a storage-key that is not in user-space");
-                    continue;
-                }
-                match op {
-                    StorageOp::Write { key, value } => txn.write(&self.db_ptr, &key, &value)?,
-                    StorageOp::Remove { key } => txn.delete(&self.db_ptr, &key)?,
-                }
-            }
-
-            // Current timestamp ( milliseconds since epoch )
-            let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("timestamp < 1970")
-                .as_millis()
-                .try_into()
-                .expect("u64 should fit for 584942417 years");
-
-            // Commit external item (introduction, action or revocation)
-            match commit_state.unwrap() {
-                AgentCommit::Other => {
-                    // TODO: I think the best way would be to create a ring-buffer for the actions of an agent ?
-                    // let action_log = ActionLog::new(&self.db, aid);
-                    // action_log.commit(&self.db_ptr, &mut txn, &action, tx_ctx)?;
-                }
-                AgentCommit::Introduction { mut introduction } => {
-                    assert_eq!(introduction.id, aid);
-                    introduction.meta.active_since = timestamp;
-                    introduction.meta.tx_ctx_introduction = None;
-                    write_introduction::<S>(&self.db_ptr, &mut txn, introduction)?;
-                }
-                AgentCommit::Revocation { revocation: _ } => {
-                    // assert_eq!(revocation.contract_id, aid); // TODO
-                    // write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, tx_ctx, timestamp)?;
-                    todo!()
-                }
-            }
-
-            // Flush log
-            let logger = Logger::new(&self.db, aid);
-            logger.flush_lines(&self.log_buffer, &self.db_ptr, &mut txn)?;
-            txn.commit()?;
-        }
-
-        self.clear_cursor_registers()?;
-        let log_output = std::mem::take(&mut self.log_buffer);
+        // Everything should be reset now
+        debug_assert!(self.active.is_none());
+        debug_assert!(self.log_buffer.is_empty());
         Ok(log_output)
     }
 
@@ -1119,27 +996,21 @@ pub mod async_abi {
     }
 }
 
-/// External data that must be commited in the contract
-pub enum ContractCommit {
-    Action {
-        action: CallAction,
-        tx_ctx: TxCtx,
-    },
-    Introduction {
-        introduction: Introduction,
-        tx_ctx: TxCtx,
-    },
-    Revocation {
-        revocation: Revocation,
-        tx_ctx: TxCtx,
-    },
-}
-
-/// External data that must be commited in the agent
-pub enum AgentCommit {
+/// Represents a commit for some mutable execution
+///
+/// A commit instructs the `VmState` to actually save the state changes and the log-buffer.
+/// Depending on what type of package was executed ( contract or agent ), there are some differences
+/// in what is saved to disk. For example: Only contract actions write to the [`ActionLog`],
+/// while introductions generally have their own behaviour, regardless of the package type.
+pub enum Commit {
+    /// commit a contract action
+    Action(CallAction),
+    /// commit a contract or agent introduction
+    Introduction(Introduction),
+    /// commit a contract or agent revocation
+    Revocation(Revocation),
+    /// commit an agent action, ws-msg or schedule
     Other,
-    Introduction { introduction: Introduction },
-    Revocation { revocation: Revocation },
 }
 
 /// Represents an executable entity in the VmState.
@@ -1150,11 +1021,13 @@ pub enum AgentCommit {
 ///
 /// An immutable execution is e.g. required for handling http-requests or performing dry-runs.
 /// In such a case, calls to `storage_write` will be simply ignored.
-enum ActiveEntity {
+pub enum ActiveEntity {
     Contract {
         cid: ContractId,
         // 'None', if immutable
         db_txns: Option<Vec<StorageOp>>,
+        // 'None' for immutable http calls
+        tx_ctx: Option<TxCtx>,
     },
     Agent {
         aid: AgentId,
@@ -1165,15 +1038,41 @@ enum ActiveEntity {
 }
 
 impl ActiveEntity {
-    pub fn is_some(&self) -> bool {
+    pub fn contract_tx(cid: ContractId, mutable: bool, tx_ctx: TxCtx) -> Self {
+        let db_txns = if mutable { Some(Vec::new()) } else { None };
+        ActiveEntity::Contract {
+            cid,
+            db_txns,
+            tx_ctx: Some(tx_ctx),
+        }
+    }
+
+    pub fn contract_http(cid: ContractId) -> Self {
+        ActiveEntity::Contract {
+            cid,
+            db_txns: None,
+            tx_ctx: None,
+        }
+    }
+
+    pub fn agent(aid: AgentId, mutable: bool) -> Self {
+        let db_txns = if mutable { Some(Vec::new()) } else { None };
+        ActiveEntity::Agent { aid, db_txns }
+    }
+
+    pub fn none() -> Self {
+        ActiveEntity::None
+    }
+
+    fn is_some(&self) -> bool {
         !self.is_none()
     }
 
-    pub fn is_none(&self) -> bool {
+    fn is_none(&self) -> bool {
         matches!(self, ActiveEntity::None)
     }
 
-    pub fn is_agent(&self) -> Option<AgentId> {
+    fn is_agent(&self) -> Option<AgentId> {
         match self {
             ActiveEntity::Agent { aid, .. } => Some(*aid),
             _ => None,
@@ -1181,7 +1080,7 @@ impl ActiveEntity {
     }
 
     /// Returns the storage key for the active entity
-    pub fn storage_key(&self, base_key: u64, sub_key: u64) -> Result<StorageKey> {
+    fn storage_key(&self, base_key: u64, sub_key: u64) -> Result<StorageKey> {
         match self {
             ActiveEntity::Contract { cid, .. } => Ok(StorageKey::new(cid, base_key, sub_key)),
             ActiveEntity::Agent { aid, .. } => Ok(StorageKey::new(aid, base_key, sub_key)),
@@ -1190,7 +1089,7 @@ impl ActiveEntity {
     }
 
     /// Returns `true` if the active entity is immutable
-    pub fn is_immutable(&self) -> bool {
+    fn is_immutable(&self) -> bool {
         match self {
             ActiveEntity::Contract { db_txns, .. } | ActiveEntity::Agent { db_txns, .. } => {
                 db_txns.is_none()
@@ -1203,7 +1102,7 @@ impl ActiveEntity {
     ///
     /// Returns an error if there is either no active entity
     /// or if the active entity is immutable.
-    pub fn push_storage(&mut self, op: StorageOp) -> Result<()> {
+    fn push_storage(&mut self, op: StorageOp) -> Result<()> {
         match self {
             ActiveEntity::Contract { db_txns, .. } | ActiveEntity::Agent { db_txns, .. } => {
                 if let Some(db_txns) = db_txns {
@@ -1222,7 +1121,7 @@ impl ActiveEntity {
 ///
 /// All storage operations are commited to the key-value-store
 /// once the contract finished its execution.
-enum StorageOp {
+pub enum StorageOp {
     /// Writes the given value to the storage key
     Write { key: StorageKey, value: Vec<u8> },
     /// Removes the value at the given storage key
