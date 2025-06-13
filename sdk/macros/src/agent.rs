@@ -443,16 +443,15 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
 
     #[no_mangle]
     #[automatically_derived]
-    pub extern "C" fn parse_state() -> u32 {
+    pub extern "C" fn parse_state()  {
         let result = #derived::exec_parse_state();
         match result {
             Ok(_) => {
                 ::borderless::info!("Parsing state: success");
-                0
             }
             Err(e) => {
                 ::borderless::error!("Parsing state failed: {e:?}");
-                1
+                ::borderless::__private::abort();
             }
         }
     }
