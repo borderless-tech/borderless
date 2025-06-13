@@ -1,8 +1,9 @@
-mod author;
-mod capabilities;
-mod git_info;
-mod package;
-mod package_author;
-mod registry;
-mod source;
-mod url_white_list;
+pub mod author;
+pub mod capabilities;
+pub mod git_info;
+pub mod meta;
+pub mod package;
+pub mod package_author;
+pub mod registry;
+pub mod source;
+pub mod url_white_list;

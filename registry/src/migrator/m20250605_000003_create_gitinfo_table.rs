@@ -17,10 +17,10 @@ impl MigrationTrait for CreateGitInfoTable {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(GitInfo::CommitHash).string())
-                    .col(ColumnDef::new(GitInfo::Branch).string())
-                    .col(ColumnDef::new(GitInfo::Repository).string())
+                    .col(ColumnDef::new(GitInfo::CommitHashShort).not_null())
+                    .col(ColumnDef::new(GitInfo::CommitsPastTag).string())
                     .col(ColumnDef::new(GitInfo::Tag).string())
+                    .col(ColumnDef::new(GitInfo::Dirty).not_null().default(false))
                     .to_owned(),
             )
             .await
@@ -36,8 +36,8 @@ impl MigrationTrait for CreateGitInfoTable {
 pub enum GitInfo {
     Table,
     Id,
-    CommitHash,
-    Branch,
-    Repository,
+    CommitHashShort,
+    CommitsPastTag,
     Tag,
+    Dirty,
 }

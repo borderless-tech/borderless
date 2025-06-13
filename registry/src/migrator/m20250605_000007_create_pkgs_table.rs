@@ -1,9 +1,8 @@
-use sea_orm_migration::prelude::*;
-
 use super::{
     m20250605_000004_ceate_capabilities_table::Capabilities,
-    m20250605_000006_create_sources_table::Sources,
+    m20250605_000006_create_sources_table::Sources, m20250605_000009_ceate_meta_table::Meta,
 };
+use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct CreatePackageTable;
@@ -11,6 +10,7 @@ pub struct CreatePackageTable;
 #[async_trait::async_trait]
 impl MigrationTrait for CreatePackageTable {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // Erst die Tabelle erstellen
         manager
             .create_table(
                 Table::create()
@@ -25,12 +25,9 @@ impl MigrationTrait for CreatePackageTable {
                     .col(ColumnDef::new(Packages::Name).string().not_null())
                     .col(ColumnDef::new(Packages::AppName).string())
                     .col(ColumnDef::new(Packages::AppModule).string())
-                    .col(ColumnDef::new(Packages::PkgType).string().not_null()) // 'contract' or 'agent'
-                    .col(ColumnDef::new(Packages::Description).text())
-                    .col(ColumnDef::new(Packages::Documentation).string())
-                    .col(ColumnDef::new(Packages::License).string())
-                    .col(ColumnDef::new(Packages::Repository).string())
+                    .col(ColumnDef::new(Packages::PkgType).string().not_null())
                     .col(ColumnDef::new(Packages::SourceId).integer().not_null())
+                    .col(ColumnDef::new(Packages::MetaId).integer().not_null())
                     .col(ColumnDef::new(Packages::CapabilitiesId).integer())
                     .col(ColumnDef::new(Packages::CreatedAt).timestamp().not_null())
                     .col(ColumnDef::new(Packages::UpdatedAt).timestamp().not_null())
@@ -48,23 +45,63 @@ impl MigrationTrait for CreatePackageTable {
                             .to(Capabilities::Table, Capabilities::Id)
                             .on_delete(ForeignKeyAction::SetNull),
                     )
-                    .index(
-                        Index::create()
-                            .name("idx_packages_name")
-                            .col(Packages::Name),
-                    )
-                    .index(
-                        Index::create()
-                            .name("idx_packages_app")
-                            .col(Packages::AppName)
-                            .col(Packages::AppModule),
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_packages_meta")
+                            .from(Packages::Table, Packages::MetaId)
+                            .to(Meta::Table, Meta::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),
             )
-            .await
+            .await?;
+
+        // Dann die Indizes separat erstellen (besser für SQLite)
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_packages_name")
+                    .table(Packages::Table)
+                    .col(Packages::Name)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_packages_app")
+                    .table(Packages::Table)
+                    .col(Packages::AppName)
+                    .col(Packages::AppModule)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // Indizes löschen
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_packages_app")
+                    .table(Packages::Table)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_packages_name")
+                    .table(Packages::Table)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Tabelle löschen
         manager
             .drop_table(Table::drop().table(Packages::Table).to_owned())
             .await
@@ -79,10 +116,7 @@ pub enum Packages {
     AppName,
     AppModule,
     PkgType,
-    Description,
-    Documentation,
-    License,
-    Repository,
+    MetaId,
     SourceId,
     CapabilitiesId,
     CreatedAt,

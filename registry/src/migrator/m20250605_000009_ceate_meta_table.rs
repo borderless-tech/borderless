@@ -1,30 +1,27 @@
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
-pub struct CreateAuthorsTable;
+pub struct CreateMetaTable;
 
 #[async_trait::async_trait]
-impl MigrationTrait for CreateAuthorsTable {
+impl MigrationTrait for CreateMetaTable {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
             .create_table(
                 Table::create()
-                    .table(Authors::Table)
+                    .table(Meta::Table)
+                    .if_not_exists()
                     .col(
-                        ColumnDef::new(Authors::Id)
+                        ColumnDef::new(Meta::Id)
                             .big_unsigned()
                             .not_null()
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Authors::Name).string().not_null())
-                    .col(ColumnDef::new(Authors::Email).string())
-                    .index(
-                        Index::create()
-                            .name("idx_authors_email")
-                            .col(Authors::Email)
-                            .unique(),
-                    )
+                    .col(ColumnDef::new(Meta::Description).text().null())
+                    .col(ColumnDef::new(Meta::Documentation).text().null())
+                    .col(ColumnDef::new(Meta::License).text().null())
+                    .col(ColumnDef::new(Meta::Repository).text().null())
                     .to_owned(),
             )
             .await
@@ -32,15 +29,17 @@ impl MigrationTrait for CreateAuthorsTable {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(Authors::Table).to_owned())
+            .drop_table(Table::drop().table(Meta::Table).to_owned())
             .await
     }
 }
 
 #[derive(Iden)]
-pub enum Authors {
+pub enum Meta {
     Table,
     Id,
-    Name,
-    Email,
+    Description,
+    Documentation,
+    License,
+    Repository,
 }

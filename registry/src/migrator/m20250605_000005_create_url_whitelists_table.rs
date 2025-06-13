@@ -14,7 +14,7 @@ impl MigrationTrait for CreateUrlWhitelistTable {
                     .table(UrlWhitelist::Table)
                     .col(
                         ColumnDef::new(UrlWhitelist::Id)
-                            .integer()
+                            .big_unsigned()
                             .not_null()
                             .auto_increment()
                             .primary_key(),

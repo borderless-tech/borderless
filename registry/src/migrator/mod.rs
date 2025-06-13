@@ -6,6 +6,7 @@ mod m20250605_000005_create_url_whitelists_table;
 mod m20250605_000006_create_sources_table;
 mod m20250605_000007_create_pkgs_table;
 mod m20250605_000008_create_package_authors_tables;
+mod m20250605_000009_ceate_meta_table;
 
 use sea_orm_migration::prelude::*;
 
@@ -23,6 +24,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250605_000006_create_sources_table::CreateSourcesTable),
             Box::new(m20250605_000007_create_pkgs_table::CreatePackageTable),
             Box::new(m20250605_000008_create_package_authors_tables::CreatePackageAuthorsTable),
+            Box::new(m20250605_000009_ceate_meta_table::CreateMetaTable),
         ]
     }
 }

@@ -1,59 +1,58 @@
 mod db;
-mod migrator;
 mod error;
+mod migrator;
 
 use crate::error::Error;
-use anyhow::{Context, Result};
-use axum::{
-    extract::{Path, State},
-    routing::{get, post},
-    Json, Router,
-};
-use borderless_hash::Hash256;
-use borderless_kv_store::backend::lmdb::Lmdb;
-use borderless_kv_store::{Db, RawRead, RawWrite, RoCursor, RoTx, Tx};
+use anyhow::Result;
+use axum::{extract::State, routing::put, Json, Router};
 use borderless_pkg::WasmPkg;
 use clap::Parser;
+use db::entities::package::ActivePackage;
+use sea_orm::{Database, DatabaseConnection, TransactionTrait};
 use std::path::PathBuf;
-
-const PKG_SUB_DB: &str = "pkg-sub-db";
+use tracing::{debug, error, info, instrument, trace, warn};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Cli {
     /// Path to the database directory (global)
     #[arg(short, long)]
-    db: PathBuf,
+    db: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct AppState {
+    pub db: DatabaseConnection,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("Start Registry Server!");
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+
+    info!("Start Registry Server!");
 
     let args = Cli::parse();
-    let db = Lmdb::new(&args.db, 2).context("failed to open database")?;
+    let db = db::setup_database(&args.db).await?;
+
+    let app = AppState { db };
 
     let app = Router::new()
-        .route("/pkg", get(list_pkgs))
-        .route("/pkg/add", post(add_pkg))
-        .route("/pkg/{hash}", get(get_pkg));
+        .route("/api/v0/publish", put(publish))
+        .with_state(app);
 
+    info!("Start API Service");
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
     axum::serve(listener, app).await.unwrap();
     Ok(())
 }
 
-// GET /pkg
-pub async fn list_pkgs() -> Result<Json<Vec<String>>, Error> {
-    todo!()
-}
-
-// POST /pkg/add/
-pub async fn add_pkg(Json(pkg): Json<WasmPkg>) -> Result<(), Error> {
-    todo!()
-}
-
-// GET /pkg/:hash
-pub async fn get_pkg(Path(name): Path<String>) -> Result<Json<WasmPkg>, Error> {
-    todo!()
+// PUT publish wasm package in registry
+#[instrument]
+pub async fn publish(State(state): State<AppState>, Json(pkg): Json<WasmPkg>) -> Result<(), Error> {
+    let txn = state.db.begin().await?;
+    ActivePackage::from_model(&txn, pkg).await?;
+    txn.commit().await?;
+    Ok(())
 }

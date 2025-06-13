@@ -3,7 +3,6 @@ use sea_orm_migration::prelude::*;
 use super::{
     m20250605_000002_create_registries_table::Registries,
     m20250605_000003_create_gitinfo_table::GitInfo,
-    m20250605_000004_ceate_capabilities_table::Capabilities,
 };
 
 #[derive(DeriveMigrationName)]

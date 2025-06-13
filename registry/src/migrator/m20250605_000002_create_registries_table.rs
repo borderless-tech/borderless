@@ -12,12 +12,12 @@ impl MigrationTrait for CreateRegistriesTable {
                     .table(Registries::Table)
                     .col(
                         ColumnDef::new(Registries::Id)
-                            .integer()
+                            .big_unsigned()
                             .not_null()
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Registries::RegistryType).string()) // Optional, defaults to OCI
+                    .col(ColumnDef::new(Registries::RegistryType).string())
                     .col(ColumnDef::new(Registries::Hostname).string().not_null())
                     .col(ColumnDef::new(Registries::Namespace).string().not_null())
                     .index(

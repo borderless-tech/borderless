@@ -10,7 +10,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitInfo {
     pub tag: Option<String>,
-    pub commits_past_tag: Option<usize>,
+    pub commits_past_tag: Option<u64>,
     pub commit_hash_short: String,
     pub dirty: bool,
 }
@@ -18,7 +18,7 @@ pub struct GitInfo {
 impl GitInfo {
     pub fn new<T: Into<String>>(
         tag: Option<T>,
-        commits_past_tag: Option<usize>,
+        commits_past_tag: Option<u64>,
         commit_hash_short: T,
         dirty: bool,
     ) -> Self {
@@ -89,7 +89,7 @@ impl FromStr for GitInfo {
                     return Err("Commits-past-tag portion is empty".into());
                 }
                 // Parse commits count
-                let commits_num: usize = commits_part.parse().map_err(|e: ParseIntError| {
+                let commits_num: u64 = commits_part.parse().map_err(|e: ParseIntError| {
                     format!("Invalid commits-past-tag `{}`: {}", commits_part, e)
                 })?;
 

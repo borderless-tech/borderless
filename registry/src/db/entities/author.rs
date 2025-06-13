@@ -1,16 +1,20 @@
-use sea_orm::entity::prelude::*;
+use sea_orm::{
+    entity::prelude::*,
+    ActiveValue::{NotSet, Set},
+    DatabaseTransaction,
+};
 
-pub type Author = Model;
+use crate::error::Error;
+
 pub type ActiveAuthor = ActiveModel;
-pub type EntityAuthor = Entity;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "authors")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: i64,
+    pub id: u64,
     pub name: String,
-    pub email: String,
+    pub email: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -19,9 +23,15 @@ pub enum Relation {
     PackageAuthors,
 }
 
+impl Related<super::package_author::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PackageAuthors.def()
+    }
+}
+
 impl Related<super::package::Entity> for Entity {
     fn to() -> RelationDef {
-        super::package_author::Relation::Packages.def()
+        super::package_author::Relation::Meta.def()
     }
 
     fn via() -> Option<RelationDef> {
@@ -30,3 +40,19 @@ impl Related<super::package::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
+
+impl ActiveAuthor {
+    pub async fn from_model(
+        txn: &DatabaseTransaction,
+        author: borderless_pkg::Author,
+    ) -> Result<u64, Error> {
+        let author = ActiveAuthor {
+            id: NotSet,
+            name: Set(author.name),
+            email: Set(author.email),
+        };
+
+        let author_result = ActiveAuthor::insert(author, txn).await?;
+        Ok(author_result.id)
+    }
+}

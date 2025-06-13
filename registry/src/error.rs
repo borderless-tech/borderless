@@ -9,10 +9,14 @@ pub enum Error {
     Bincode(#[from] bincode::Error),
     #[error("Storage error - {0}")]
     Storage(#[from] borderless_kv_store::Error),
-    #[error("Duplicated Key: {0}")]
+    #[error("Duplicated Key - {0}")]
     Dublicated(Hash256),
-    #[error("No entry in storage for key: {0}")]
+    #[error("No entry in storage for key - {0}")]
     NoPkg(Hash256),
+    #[error("Database error - {0}")]
+    Database(#[from] sea_orm::error::DbErr),
+    #[error("Invalid source type")]
+    InvalidSource,
 }
 
 impl IntoResponse for Error {
@@ -22,6 +26,8 @@ impl IntoResponse for Error {
             Error::Storage(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             Error::Dublicated(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             Error::NoPkg(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            Error::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            Error::InvalidSource => (StatusCode::NO_CONTENT, self.to_string()),
         };
 
         let body = Json(json!({

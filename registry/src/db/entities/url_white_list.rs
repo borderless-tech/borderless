@@ -1,15 +1,19 @@
-use sea_orm::entity::prelude::*;
+use sea_orm::{
+    entity::prelude::*,
+    ActiveValue::{NotSet, Set},
+    DatabaseTransaction,
+};
 
-pub type UrlWhitelist = Model;
+use crate::error::Error;
+
 pub type ActiveUrlWhitelist = ActiveModel;
-pub type EntityUrlWhitelist = Entity;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "url_whitelist")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: i32,
-    pub capability_id: i32,
+    pub id: u64,
+    pub capability_id: u64,
     pub url: String,
 }
 
@@ -32,3 +36,20 @@ impl Related<super::capabilities::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
+
+impl ActiveUrlWhitelist {
+    pub async fn from_id_and_url(
+        txn: &DatabaseTransaction,
+        capability_id: u64,
+        url: String,
+    ) -> Result<u64, Error> {
+        let url_whitelist = ActiveUrlWhitelist {
+            id: NotSet,
+            capability_id: Set(capability_id),
+            url: Set(url),
+        };
+
+        let url_result = ActiveUrlWhitelist::insert(url_whitelist, txn).await?;
+        Ok(url_result.id)
+    }
+}

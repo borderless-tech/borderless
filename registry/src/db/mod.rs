@@ -1,27 +1,49 @@
-mod entities;
+pub mod entities;
 
-use sea_orm::{Database, DatabaseConnection, DbErr};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr};
 use sea_orm_migration::prelude::*;
 
 use crate::migrator::Migrator;
 
-async fn setup_database(db_url: &str, db_name: &str) -> Result<DatabaseConnection, DbErr> {
-    let db = Database::connect(db_url).await?;
-    Ok(db)
-}
+use tracing::{debug, error, info, instrument, trace, warn, Span};
 
-async fn apply_migrations(conn: &DatabaseConnection) -> Result<(), DbErr> {
-    let schema_manager = SchemaManager::new(conn);
-    Migrator::up(conn, None).await?;
+#[instrument(err)]
+pub async fn setup_database(db_url: &str) -> Result<DatabaseConnection, DbErr> {
+    let mut opt = ConnectOptions::new("sqlite::memory:");
 
+    // Turn this on for detailed database loging
+    opt.sqlx_logging(false);
+    let db = Database::connect(opt).await?;
+
+    let migrations = Migrator::migrations();
+    for (index, _migration) in migrations.iter().enumerate() {
+        let step = (index + 1) as u32;
+        match Migrator::up(&db, Some(step)).await {
+            Ok(_) => {}
+            Err(e) => {
+                error!("❌ FAILED at migration step {}", step);
+                debug!("Error: {}", e);
+
+                if let Some(failed_migration) = migrations.get(index) {
+                    error!("Failed migration name: {}", failed_migration.name());
+                }
+
+                return Err(e.into());
+            }
+        }
+    }
+
+    info!("Check database schema!");
+    let schema_manager = SchemaManager::new(&db);
     assert!(schema_manager.has_table("authors").await?);
     assert!(schema_manager.has_table("registries").await?);
     assert!(schema_manager.has_table("git_info").await?);
     assert!(schema_manager.has_table("capabilities").await?);
-    assert!(schema_manager.has_table("url_white_list").await?);
+    assert!(schema_manager.has_table("url_whitelist").await?);
     assert!(schema_manager.has_table("sources").await?);
     assert!(schema_manager.has_table("packages").await?);
+    assert!(schema_manager.has_table("meta").await?);
     assert!(schema_manager.has_table("package_authors").await?);
 
-    Ok(())
+    Ok(db)
 }

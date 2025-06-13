@@ -4,6 +4,8 @@
 //! However, since it is not very handy to directly work with the compiled modules, we defined a package format,
 //! that bundles the `.wasm` module together with some meta information about the package.
 //!
+use std::str::FromStr;
+
 use borderless_hash::Hash256;
 use git_info::GitInfo;
 use serde::{Deserialize, Serialize};
@@ -223,6 +225,26 @@ impl PkgMeta {
 pub enum PkgType {
     Contract,
     Agent,
+}
+
+impl ToString for PkgType {
+    fn to_string(&self) -> String {
+        match self {
+            PkgType::Contract => return "contract".to_string(),
+            PkgType::Agent => return "agent".to_string(),
+        }
+    }
+}
+
+impl FromStr for PkgType {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "contract" => Ok(PkgType::Contract),
+            "agent" => Ok(PkgType::Agent),
+            _ => Err(format!("Invalid package type: {}", s).into()),
+        }
+    }
 }
 
 /// Capabilities of a SW-Agent
