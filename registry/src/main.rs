@@ -1,6 +1,7 @@
 mod db;
 mod error;
 mod migrator;
+mod models;
 
 use crate::error::Error;
 use anyhow::Result;
@@ -8,8 +9,7 @@ use axum::{extract::State, routing::put, Json, Router};
 use borderless_pkg::WasmPkg;
 use clap::Parser;
 use db::entities::package::ActivePackage;
-use sea_orm::{Database, DatabaseConnection, TransactionTrait};
-use std::path::PathBuf;
+use sea_orm::{DatabaseConnection, TransactionTrait};
 use tracing::{debug, error, info, instrument, trace, warn};
 
 #[derive(Parser, Debug)]
@@ -55,4 +55,16 @@ pub async fn publish(State(state): State<AppState>, Json(pkg): Json<WasmPkg>) ->
     ActivePackage::from_model(&txn, pkg).await?;
     txn.commit().await?;
     Ok(())
+}
+
+// GET search a package
+#[instrument]
+pub async fn search(State(state): State<AppState>) -> Result<(), Error> {
+    todo!()
+}
+
+// GET download a pkg by hash
+#[instrument]
+pub async fn download(State(state): State<AppState>) -> Result<(), Error> {
+    todo!()
 }
