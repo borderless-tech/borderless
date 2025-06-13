@@ -199,14 +199,11 @@ impl<S: Db> Runtime<S> {
         // Call the actual function on the wasm side
         self.store.data_mut().prepare_exec(ActiveEntity::None)?;
         let success = match instance
-            .get_typed_func::<(), u32>(&mut self.store, "parse_state")
+            .get_typed_func::<(), ()>(&mut self.store, "parse_state")
             .and_then(|func| func.call(&mut self.store, ()))
         {
-            Ok(status) => status == 0,
-            Err(e) => {
-                warn!("parse_state failed with error: {e}");
-                false
-            }
+            Ok(()) => true,
+            Err(_e) => false,
         };
         let log = self.store.data_mut().finish_exec(None)?;
         Ok((success, log.into_iter().map(|l| l.msg).collect()))
@@ -544,6 +541,7 @@ fn check_module(engine: &Engine, module: &Module) -> Result<()> {
         "process_revocation",
         "http_get_state",
         "http_post_action",
+        "parse_state",
         "get_symbols",
     ];
     for func in functions {
@@ -576,6 +574,7 @@ mod tests {
   (export "process_revocation" (func $placeholder))
   (export "http_get_state" (func $placeholder))
   (export "http_post_action" (func $placeholder))
+  (export "parse_state" (func $placeholder))
   (export "get_symbols" (func $placeholder))
 )
 "#;
@@ -609,6 +608,7 @@ mod tests {
             "process_revocation",
             "http_get_state",
             "http_post_action",
+            "parse_state",
             "get_symbols",
         ];
         for func in functions {
