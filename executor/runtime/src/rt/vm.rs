@@ -1143,3 +1143,80 @@ impl StorageOp {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use backend::lmdb::Lmdb;
+    use tempfile::{tempdir, TempDir};
+
+    use super::*;
+
+    fn dummy_vm_state() -> (VmState<Lmdb>, TempDir) {
+        let tmp_dir = tempdir().expect("failed to create tmp directory for testing");
+        let db = Lmdb::new(tmp_dir.path(), 2).expect("failed to create lmdb");
+        let db_ptr = db
+            .create_sub_db("dummy-sub-db")
+            .expect("failed to create sub-db");
+        let state = VmState::new(db, db_ptr);
+        (state, tmp_dir)
+    }
+
+    #[test]
+    fn finish_none() {
+        let (mut state, _tmp_dir) = dummy_vm_state();
+        let res = state.finish_exec(None);
+        assert!(res.is_ok());
+        assert!(res.unwrap().is_empty(), "no logs should have been written");
+    }
+
+    #[test]
+    fn finish_resets_everything() {
+        let (mut state, _tmp_dir) = dummy_vm_state();
+        let registers = [
+            REGISTER_OUTPUT,
+            REGISTER_CURSOR + 1,
+            REGISTER_OUTPUT_HTTP_RESULT,
+            REGISTER_OUTPUT_HTTP_STATUS,
+        ];
+        for r in registers {
+            state.set_register(r, vec![1, 2, 3, 4]);
+        }
+        let _res = state.finish_exec(None);
+        for r in registers {
+            assert!(state.get_register(r).is_none(), "registers must be cleared");
+        }
+        assert!(
+            matches!(state.active, ActiveEntity::None),
+            "active item must be reset"
+        );
+    }
+
+    #[test]
+    fn no_storage_key_on_inactive() {
+        let (state, _tmp_dir) = dummy_vm_state();
+        let res = state.get_storage_key(0, 0);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn storage_key_prefix_matches_active() {
+        let (mut state, _tmp_dir) = dummy_vm_state();
+        // Check that storage-key-prefix matches contract-id
+        let cid = ContractId::generate();
+        state.active = ActiveEntity::contract_http(cid);
+        let res = state.get_storage_key(0, 0);
+        assert!(res.is_ok());
+        let key_cid = res.unwrap().contract_id();
+        assert!(key_cid.is_some());
+        assert_eq!(key_cid.unwrap(), cid);
+
+        // ...same with agent-id
+        let aid = AgentId::generate();
+        state.active = ActiveEntity::agent(aid, false);
+        let res = state.get_storage_key(0, 0);
+        assert!(res.is_ok());
+        let key_aid = res.unwrap().agent_id();
+        assert!(key_aid.is_some());
+        assert_eq!(key_aid.unwrap(), aid);
+    }
+}
