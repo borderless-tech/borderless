@@ -30,22 +30,8 @@ impl OciIdentifier {
         }
     }
 
-    /// Prüft ob es ein Docker Hub Official Image ist
     pub fn is_official(&self) -> bool {
         self.registry == "registry.borderless-technologies.com" && self.namespace == "library"
-    }
-
-    /// Gibt den kurzen Namen zurück (ohne Registry bei Docker Hub)
-    pub fn short_name(&self) -> String {
-        if self.registry == "registry.borderless-technologies.com" {
-            if self.namespace == "library" {
-                format!("{}:{}", self.repository, self.tag)
-            } else {
-                format!("{}/{}:{}", self.namespace, self.repository, self.tag)
-            }
-        } else {
-            self.to_string()
-        }
     }
 }
 

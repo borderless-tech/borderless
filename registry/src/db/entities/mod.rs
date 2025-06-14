@@ -1,6 +1,7 @@
 pub mod author;
 pub mod capabilities;
 pub mod git_info;
+pub mod index;
 pub mod meta;
 pub mod package;
 pub mod package_author;

@@ -3,17 +3,22 @@ mod error;
 mod migrator;
 mod models;
 
+use std::future::{ready, Future};
+
 use crate::error::Error;
 use anyhow::Result;
 use axum::{
-    extract::{Path, State},
+    extract::{FromRequestParts, Path, State},
+    http::request::Parts,
     routing::put,
     Json, Router,
 };
 use borderless_pkg::WasmPkg;
 use clap::Parser;
 use db::entities::package::ActivePackage;
+use models::OciIdentifier;
 use sea_orm::{DatabaseConnection, TransactionTrait};
+use std::str::FromStr;
 use tracing::{info, instrument};
 
 #[derive(Parser, Debug)]
@@ -56,14 +61,22 @@ async fn main() -> Result<()> {
 #[instrument]
 pub async fn publish(State(state): State<AppState>, Json(pkg): Json<WasmPkg>) -> Result<(), Error> {
     let txn = state.db.begin().await?;
-    ActivePackage::from_model(&txn, pkg).await?;
+
+    // add pkg to database
+    let pkg_model = ActivePackage::from_model(&txn, pkg).await?;
+    // let pkg_result = ActivePackage::insert(pkg_model, txn).await?;
+
+    // add entry to regsistry index
     txn.commit().await?;
     Ok(())
 }
 
 // GET search a package
 #[instrument]
-pub async fn search(State(state): State<AppState>, Path(path): Path<String>) -> Result<(), Error> {
+pub async fn search(
+    State(state): State<AppState>,
+    OciExtractor(oci): OciExtractor,
+) -> Result<(), Error> {
     todo!()
 }
 
@@ -71,4 +84,27 @@ pub async fn search(State(state): State<AppState>, Path(path): Path<String>) -> 
 #[instrument]
 pub async fn download(State(state): State<AppState>) -> Result<(), Error> {
     todo!()
+}
+
+#[derive(Debug, Clone)]
+pub struct OciExtractor(pub OciIdentifier);
+
+impl<S> FromRequestParts<S> for OciIdentifier
+where
+    S: Send + Sync,
+{
+    type Rejection = Error;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let uri = parts.uri.path().to_string();
+
+        if let Some(oci_part) = uri.strip_prefix("/images/") {
+            let decoded = urlencoding::decode(oci_part).map_err(|_| Error::InvalidSource)?;
+            let oci = OciIdentifier::from_str(&decoded).map_err(|_| Error::InvalidSource)?;
+
+            Ok(oci)
+        } else {
+            Err(Error::InvalidSource)
+        }
+    }
 }

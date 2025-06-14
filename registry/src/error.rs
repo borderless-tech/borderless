@@ -17,6 +17,8 @@ pub enum Error {
     Database(#[from] sea_orm::error::DbErr),
     #[error("Invalid source type")]
     InvalidSource,
+    #[error("Url encoding error")]
+    UrlEncoding,
 }
 
 impl IntoResponse for Error {
@@ -28,6 +30,7 @@ impl IntoResponse for Error {
             Error::NoPkg(_) => (StatusCode::NOT_FOUND, self.to_string()),
             Error::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             Error::InvalidSource => (StatusCode::NO_CONTENT, self.to_string()),
+            Error::UrlEncoding => (StatusCode::BAD_REQUEST, self.to_string()),
         };
 
         let body = Json(json!({
