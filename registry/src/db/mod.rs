@@ -5,7 +5,7 @@ use sea_orm_migration::prelude::*;
 
 use crate::migrator::Migrator;
 
-use tracing::{debug, error, info, instrument, trace, warn, Span};
+use tracing::{debug, error, info, instrument};
 
 #[instrument(err)]
 pub async fn setup_database(db_url: &str) -> Result<DatabaseConnection, DbErr> {

@@ -5,12 +5,16 @@ mod models;
 
 use crate::error::Error;
 use anyhow::Result;
-use axum::{extract::State, routing::put, Json, Router};
+use axum::{
+    extract::{Path, State},
+    routing::put,
+    Json, Router,
+};
 use borderless_pkg::WasmPkg;
 use clap::Parser;
 use db::entities::package::ActivePackage;
 use sea_orm::{DatabaseConnection, TransactionTrait};
-use tracing::{debug, error, info, instrument, trace, warn};
+use tracing::{info, instrument};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -59,7 +63,7 @@ pub async fn publish(State(state): State<AppState>, Json(pkg): Json<WasmPkg>) ->
 
 // GET search a package
 #[instrument]
-pub async fn search(State(state): State<AppState>) -> Result<(), Error> {
+pub async fn search(State(state): State<AppState>, Path(path): Path<String>) -> Result<(), Error> {
     todo!()
 }
 

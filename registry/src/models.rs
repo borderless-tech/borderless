@@ -19,6 +19,34 @@ impl OciIdentifier {
             tag,
         }
     }
+
+    /// Erstellt einen OCI Identifier mit Defaults
+    pub fn simple(repository: &str) -> Self {
+        Self {
+            registry: "registry.borderless-technologies.com".to_string(),
+            namespace: "library".to_string(),
+            repository: repository.to_string(),
+            tag: "latest".to_string(),
+        }
+    }
+
+    /// Prüft ob es ein Docker Hub Official Image ist
+    pub fn is_official(&self) -> bool {
+        self.registry == "registry.borderless-technologies.com" && self.namespace == "library"
+    }
+
+    /// Gibt den kurzen Namen zurück (ohne Registry bei Docker Hub)
+    pub fn short_name(&self) -> String {
+        if self.registry == "registry.borderless-technologies.com" {
+            if self.namespace == "library" {
+                format!("{}:{}", self.repository, self.tag)
+            } else {
+                format!("{}/{}:{}", self.namespace, self.repository, self.tag)
+            }
+        } else {
+            self.to_string()
+        }
+    }
 }
 
 impl fmt::Display for OciIdentifier {
@@ -66,7 +94,7 @@ impl FromStr for OciIdentifier {
             1 => {
                 // Nur Repository: "nginx"
                 (
-                    "docker.io".to_string(),
+                    "registry.borderless-technologies.com".to_string(),
                     "library".to_string(),
                     parts[0].to_string(),
                 )
@@ -79,7 +107,7 @@ impl FromStr for OciIdentifier {
                 } else {
                     // User/Namespace: "myuser/app"
                     (
-                        "docker.io".to_string(),
+                        "registry.borderless-technologies.com".to_string(),
                         parts[0].to_string(),
                         parts[1].to_string(),
                     )
@@ -104,20 +132,15 @@ impl FromStr for OciIdentifier {
             return Err(OciParseError::InvalidRepository);
         }
 
-        // Namespace validieren (wenn nicht leer)
-        if !namespace.is_empty() && !is_valid_namespace(&namespace) {
-            return Err(OciParseError::InvalidNamespace);
-        }
-
         // Tag validieren
         if !is_valid_tag(tag) {
             return Err(OciParseError::InvalidTag);
         }
 
         Ok(OciIdentifier {
-            registry,
-            namespace,
-            repository,
+            registry: registry.to_string(),
+            namespace: namespace.to_string(),
+            repository: repository.to_string(),
             tag: tag.to_string(),
         })
     }
@@ -147,7 +170,6 @@ impl<'de> Deserialize<'de> for OciIdentifier {
 pub enum OciParseError {
     Empty,
     InvalidRepository,
-    InvalidNamespace,
     InvalidTag,
     InvalidFormat,
 }
@@ -157,7 +179,6 @@ impl fmt::Display for OciParseError {
         match self {
             OciParseError::Empty => write!(f, "OCI identifier cannot be empty"),
             OciParseError::InvalidRepository => write!(f, "Invalid repository name"),
-            OciParseError::InvalidNamespace => write!(f, "Invalid namespace"),
             OciParseError::InvalidTag => write!(f, "Invalid tag"),
             OciParseError::InvalidFormat => write!(f, "Invalid OCI identifier format"),
         }
@@ -177,20 +198,6 @@ fn is_valid_repository_name(name: &str) -> bool {
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_' || c == '.')
         && name.chars().next().unwrap().is_ascii_alphanumeric()
         && name.chars().last().unwrap().is_ascii_alphanumeric()
-}
-
-fn is_valid_namespace(namespace: &str) -> bool {
-    if namespace.is_empty() {
-        return true; // Leerer Namespace ist erlaubt
-    }
-
-    // Namespace kann Pfad-Segmente enthalten, jedes Segment muss valide sein
-    for segment in namespace.split('/') {
-        if !is_valid_repository_name(segment) {
-            return false;
-        }
-    }
-    true
 }
 
 fn is_valid_tag(tag: &str) -> bool {
@@ -213,7 +220,7 @@ mod tests {
     #[test]
     fn test_parse_simple() {
         let oci: OciIdentifier = "nginx".parse().unwrap();
-        assert_eq!(oci.registry, "docker.io");
+        assert_eq!(oci.registry, "registry.borderless-technologies.com");
         assert_eq!(oci.namespace, "library");
         assert_eq!(oci.repository, "nginx");
         assert_eq!(oci.tag, "latest");
@@ -229,7 +236,7 @@ mod tests {
     #[test]
     fn test_parse_with_namespace() {
         let oci: OciIdentifier = "myuser/nginx:latest".parse().unwrap();
-        assert_eq!(oci.registry, "docker.io");
+        assert_eq!(oci.registry, "registry.borderless-technologies.com");
         assert_eq!(oci.namespace, "myuser");
         assert_eq!(oci.repository, "nginx");
         assert_eq!(oci.tag, "latest");
