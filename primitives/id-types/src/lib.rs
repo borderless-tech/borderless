@@ -77,6 +77,17 @@ macro_rules! impl_uuid {
             }
         }
 
+        impl<'de> serde::Deserialize<'de> for $type {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                // NOTE: We delegate to the From<uuid> here
+                let uuid = uuid::Uuid::deserialize(deserializer)?;
+                Ok($type::from(uuid))
+            }
+        }
+
         impl From<u128> for $type {
             fn from(value: u128) -> Self {
                 let mut bytes = value.to_be_bytes();
@@ -177,7 +188,7 @@ macro_rules! impl_uuid {
 ///
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash)]
 pub struct AgentId(uuid::Uuid);
 impl_uuid!(AgentId, 0xaf, 0xa0);
 
@@ -197,7 +208,7 @@ impl_uuid!(AgentId, 0xaf, 0xa0);
 ///
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash)]
 pub struct BorderlessId(uuid::Uuid);
 impl_uuid!(BorderlessId, 0xbf, 0xb0);
 
@@ -217,7 +228,7 @@ impl_uuid!(BorderlessId, 0xbf, 0xb0);
 ///
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash)]
 pub struct ContractId(uuid::Uuid);
 impl_uuid!(ContractId, 0xcf, 0xc0);
 
@@ -237,7 +248,7 @@ impl_uuid!(ContractId, 0xcf, 0xc0);
 ///
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash)]
 pub struct Did(uuid::Uuid);
 impl_uuid!(Did, 0xdf, 0xd0);
 
@@ -257,7 +268,7 @@ impl_uuid!(Did, 0xdf, 0xd0);
 ///
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash)]
 pub struct ExternalId(uuid::Uuid);
 impl_uuid!(ExternalId, 0xef, 0xe0);
 // TODO: Add tests for external ID and prefix checks
@@ -499,6 +510,7 @@ impl Display for TxIdentifier {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::de::DeserializeOwned;
     use uuid::Uuid;
 
     #[test]
@@ -835,6 +847,28 @@ mod tests {
             let bid_1 = BorderlessId::generate();
             let bid_2 = BorderlessId::generate();
             assert_eq!(bid_1.merge_compact(&bid_2), bid_2.merge_compact(&bid_1));
+        }
+    }
+
+    #[test]
+    fn serde_conversion_is_ensured() {
+        fn check_id<T: DeserializeOwned + From<Uuid> + Into<Uuid> + std::fmt::Debug + Eq>(
+            base_id: Uuid,
+        ) {
+            let json_id = serde_json::to_string(&base_id).unwrap();
+            let result: Result<T, _> = serde_json::from_str(&json_id);
+            assert!(result.is_ok(), "{}", result.unwrap_err());
+            let bid = result.unwrap();
+            assert_eq!(bid, T::from(base_id));
+            assert_ne!(bid.into(), base_id);
+        }
+        for _ in 0..100_000 {
+            let base_id = Uuid::new_v4();
+            check_id::<AgentId>(base_id);
+            check_id::<BorderlessId>(base_id);
+            check_id::<ContractId>(base_id);
+            check_id::<Did>(base_id);
+            check_id::<ExternalId>(base_id);
         }
     }
 }
