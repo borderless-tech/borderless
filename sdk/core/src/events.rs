@@ -133,16 +133,14 @@ impl Events {
         self.contracts.is_empty() && self.local.is_empty()
     }
 
-    /// Decodes the `Events` with [`postcard`]
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, postcard::Error> {
-        // TODO: Postcard or json ?
-        postcard::from_bytes(bytes)
+    /// Decodes the `Events` with [`serde_json`]
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
     }
 
-    /// Encodes the `Events` with [`postcard`]
-    pub fn to_bytes(&self) -> Result<Vec<u8>, postcard::Error> {
-        // TODO: Postcard or json ?
-        postcard::to_allocvec(self)
+    /// Encodes the `Events` with [`serde_json`]
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
     }
 }
 
