@@ -1,0 +1,7 @@
+[agent]
+name = "flipper-agent"
+app_name   = "test-suite"
+app_module = "flipper"
+
+[meta]
+authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]

@@ -1,0 +1,12 @@
+[agent]
+name = "hello-agent"
+app_name   = "test-suite"
+app_module = "ws-test"
+
+[capabilities]
+network = true
+websocket = true
+url_whitelist = ["localhost"]
+
+[meta]
+authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]

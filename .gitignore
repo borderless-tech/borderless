@@ -2,5 +2,4 @@
 .direnv
 tarpaulin-report.html
 *.json
-Manifest.toml
 expanded.rs
