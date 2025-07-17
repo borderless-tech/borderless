@@ -478,8 +478,10 @@ impl<S: Db> Runtime<S> {
         }
         let status = self.store.data().get_register(REGISTER_OUTPUT_HTTP_STATUS);
         let result = self.store.data().get_register(REGISTER_OUTPUT_HTTP_RESULT);
+        let output = self.store.data().get_register(REGISTER_OUTPUT);
 
         // Finish the execution
+        // NOTE: This will clear all the registers !
         let _log = self.store.data_mut().finish_exec(Some(Commit::Other))?;
 
         // Parse status
@@ -496,7 +498,7 @@ impl<S: Db> Runtime<S> {
         let result = result.ok_or_else(|| ErrorKind::MissingRegisterValue("http-result"))?;
 
         if status == 200 {
-            let events = match self.store.data().get_register(REGISTER_OUTPUT) {
+            let events = match output {
                 Some(b) => Events::from_bytes(&b)?,
                 None => Events::default(),
             };
