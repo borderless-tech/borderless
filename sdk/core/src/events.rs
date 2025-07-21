@@ -102,9 +102,17 @@ pub struct CallBuilder<ID> {
 }
 
 impl CallBuilder<ContractId> {
-    pub fn with_value<T: serde::Serialize>(self, value: T) -> Result<ContractCall, crate::Error> {
-        let value = serde_json::to_value(value).map_err(|e| {
-            crate::Error::msg(format!("failed to convert value for method-call: {e}"))
+    pub fn with_value(self, value: serde_json::Value) -> ContractCall {
+        let action = CallAction::by_method(self.name, value);
+        ContractCall {
+            contract_id: self.id,
+            action,
+        }
+    }
+
+    pub fn with_args<T: serde::Serialize>(self, args: T) -> Result<ContractCall, crate::Error> {
+        let value = serde_json::to_value(args).map_err(|e| {
+            crate::Error::msg(format!("failed to convert args for method-call: {e}"))
         })?;
         let action = CallAction::by_method(self.name, value);
         Ok(ContractCall {
@@ -115,9 +123,17 @@ impl CallBuilder<ContractId> {
 }
 
 impl CallBuilder<AgentId> {
-    pub fn with_value<T: serde::Serialize>(self, value: T) -> Result<AgentCall, crate::Error> {
-        let value = serde_json::to_value(value).map_err(|e| {
-            crate::Error::msg(format!("failed to convert value for method-call: {e}"))
+    pub fn with_value(self, value: serde_json::Value) -> AgentCall {
+        let action = CallAction::by_method(self.name, value);
+        AgentCall {
+            agent_id: self.id,
+            action,
+        }
+    }
+
+    pub fn with_args<T: serde::Serialize>(self, args: T) -> Result<AgentCall, crate::Error> {
+        let value = serde_json::to_value(args).map_err(|e| {
+            crate::Error::msg(format!("failed to convert args for method-call: {e}"))
         })?;
         let action = CallAction::by_method(self.name, value);
         Ok(AgentCall {

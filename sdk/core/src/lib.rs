@@ -9,6 +9,7 @@ pub use anyhow::{anyhow as new_error, ensure, Context, Error, Result};
 pub mod serialize {
     pub use serde_json::from_slice;
     pub use serde_json::from_value;
+    pub use serde_json::json;
     pub use serde_json::to_value;
     pub use serde_json::Error;
     pub use serde_json::Value;
@@ -36,11 +37,13 @@ pub use borderless_hash as hash;
 pub use borderless_pkg as pkg;
 
 pub mod prelude {
-    pub use super::CallMethod;
     pub use crate::agents::*;
     pub use crate::common::*;
     pub use crate::contracts::*;
     pub use crate::events::*;
+    pub use crate::serialize::json;
+    pub use crate::serialize::json as value;
+    pub use crate::CallMethod;
     pub use crate::{ensure, new_error, Context, Error, Result};
     pub use borderless_sdk_macros::*;
 }
