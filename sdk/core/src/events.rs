@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fmt::Display, str::FromStr};
 
-use crate::{debug, error, NamedSink};
+use crate::{common::Id, debug, error, NamedSink};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -93,6 +93,37 @@ impl CallAction {
     /// Serialized the `CallAction` into JSON-Bytes
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(&self)
+    }
+}
+
+pub struct CallBuilder<ID> {
+    pub(crate) id: ID,
+    pub(crate) name: String,
+}
+
+impl CallBuilder<ContractId> {
+    pub fn with_value<T: serde::Serialize>(self, value: T) -> Result<ContractCall, crate::Error> {
+        let value = serde_json::to_value(value).map_err(|e| {
+            crate::Error::msg(format!("failed to convert value for method-call: {e}"))
+        })?;
+        let action = CallAction::by_method(self.name, value);
+        Ok(ContractCall {
+            contract_id: self.id,
+            action,
+        })
+    }
+}
+
+impl CallBuilder<AgentId> {
+    pub fn with_value<T: serde::Serialize>(self, value: T) -> Result<AgentCall, crate::Error> {
+        let value = serde_json::to_value(value).map_err(|e| {
+            crate::Error::msg(format!("failed to convert value for method-call: {e}"))
+        })?;
+        let action = CallAction::by_method(self.name, value);
+        Ok(AgentCall {
+            agent_id: self.id,
+            action,
+        })
     }
 }
 
@@ -247,6 +278,7 @@ impl ActionOutput {
     }
 }
 
+// TODO: Maybe we rename this trait to "ActionOutput" and remove the concrete type
 /// Trait that indicates that a return type can be used as an output of an action function.
 ///
 /// Note: This trait converts `()`, `ActionOutput`, `Result<(), E>` and `Result<ActionOutput, E>` into [`Events`].
@@ -279,52 +311,53 @@ where
 impl private::Sealed for ActionOutput {}
 impl ActionOutEvent for ActionOutput {
     fn convert_out_events(self) -> crate::Result<Events> {
-        let caller = crate::contracts::env::executor();
-        let sinks = crate::contracts::env::sinks();
+        //let caller = crate::contracts::env::executor();
+        //let sinks = crate::contracts::env::sinks();
 
-        let mut contracts = Vec::new();
-        let mut local = Vec::new();
+        //let mut contracts = Vec::new();
+        //let mut local = Vec::new();
 
-        // TODO: There is an edge-case here; we currently have no solution,
-        // if multiple participants in a contract have access to the same sink !
-        //
-        // Idea: Find these places and do a pseudo-random (but deterministic) choice.
-        // Or we could solve this from the outside; somehow..
-        for (sink, action) in self.actions {
-            match sink {
-                SinkType::Named(alias) => {
-                    if let Some(sink) = sinks.iter().find(|s| s.has_alias(&alias)) {
-                        if !sink.has_access(caller) {
-                            debug!("caller {caller} does not have access to sink {alias}");
-                            continue;
-                        }
-                        match sink {
-                            Sink::Contract { contract_id, .. } => {
-                                // TODO
-                                contracts.push(ContractCall {
-                                    contract_id: *contract_id,
-                                    action,
-                                })
-                            }
-                            Sink::Agent { agent_id, .. } => local.push(AgentCall {
-                                agent_id: *agent_id,
-                                action,
-                            }),
-                        }
-                    } else {
-                        // TODO: Should this be an error or should we just log the error here ?
-                        return Err(anyhow!("Failed to find sink '{alias}', which is referenced in the action output"));
-                    }
-                }
-                SinkType::Agent(agent_id) => local.push(AgentCall { agent_id, action }),
-                // TODO: The edge-case also applies here I guess ??
-                SinkType::Contract(contract_id) => contracts.push(ContractCall {
-                    contract_id,
-                    action,
-                }),
-            }
-        }
-        Ok(Events { contracts, local })
+        //// TODO: There is an edge-case here; we currently have no solution,
+        //// if multiple participants in a contract have access to the same sink !
+        ////
+        //// Idea: Find these places and do a pseudo-random (but deterministic) choice.
+        //// Or we could solve this from the outside; somehow..
+        //for (sink, action) in self.actions {
+        //    match sink {
+        //        SinkType::Named(alias) => {
+        //            if let Some(sink) = sinks.iter().find(|s| s.has_alias(&alias)) {
+        //                if !sink.has_access(caller) {
+        //                    debug!("caller {caller} does not have access to sink {alias}");
+        //                    continue;
+        //                }
+        //                match sink {
+        //                    Sink::Contract { contract_id, .. } => {
+        //                        // TODO
+        //                        contracts.push(ContractCall {
+        //                            contract_id: *contract_id,
+        //                            action,
+        //                        })
+        //                    }
+        //                    Sink::Agent { agent_id, .. } => local.push(AgentCall {
+        //                        agent_id: *agent_id,
+        //                        action,
+        //                    }),
+        //                }
+        //            } else {
+        //                // TODO: Should this be an error or should we just log the error here ?
+        //                return Err(anyhow!("Failed to find sink '{alias}', which is referenced in the action output"));
+        //            }
+        //        }
+        //        SinkType::Agent(agent_id) => local.push(AgentCall { agent_id, action }),
+        //        // TODO: The edge-case also applies here I guess ??
+        //        SinkType::Contract(contract_id) => contracts.push(ContractCall {
+        //            contract_id,
+        //            action,
+        //        }),
+        //    }
+        //}
+        //Ok(Events { contracts, local })
+        todo!("re-implement this with the new sink design")
     }
 }
 
@@ -343,67 +376,47 @@ where
 }
 
 /// An event Sink for either a contract or sw-agent
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Sink {
-    Contract {
-        contract_id: ContractId,
-        alias: String,
-        restrict_to_users: Vec<BorderlessId>,
-    },
-    Agent {
-        agent_id: AgentId,
-        alias: String,
-        owner: BorderlessId,
-    },
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Sink {
+    /// Contract-ID of the sink
+    pub contract_id: ContractId,
+    /// Alias for the sink
+    ///
+    /// Sinks can be accessed by their alias, allowing an easier lookup.
+    pub alias: String,
+    /// Participant-Alias of the writer
+    ///
+    /// All transactions for this `Sink` will be written by this writer.
+    pub writer: String,
 }
 
 impl Sink {
-    /// Creates a new Sink for a software-agent
-    pub fn agent(agent_id: AgentId, alias: String, owner: BorderlessId) -> Sink {
-        Sink::Agent {
-            agent_id,
-            alias: alias.to_ascii_uppercase(),
-            owner,
-        }
-    }
-
     /// Creates a new Sink for a SmartContract
-    pub fn contract(
-        contract_id: ContractId,
-        alias: String,
-        restrict_to_users: Vec<BorderlessId>,
-    ) -> Sink {
-        Sink::Contract {
+    pub fn new(contract_id: ContractId, alias: String, writer: String) -> Sink {
+        Sink {
             contract_id,
-            alias: alias.to_ascii_uppercase(),
-            restrict_to_users,
+            alias,
+            writer,
         }
     }
 
-    /// Checks weather or not the given user has access to this sink
-    pub fn has_access(&self, user: BorderlessId) -> bool {
-        match self {
-            Sink::Agent { owner, .. } => *owner == user,
-            Sink::Contract {
-                restrict_to_users, ..
-            } => {
-                // If the vector is empty, everyone has access
-                restrict_to_users.is_empty() || restrict_to_users.iter().any(|u| *u == user)
-            }
-        }
-    }
+    ///// Checks weather or not the given user has access to this sink
+    //pub fn has_access(&self, user: BorderlessId) -> bool {
+    //    match self {
+    //        Sink::Agent { owner, .. } => *owner == user,
+    //        Sink::Contract {
+    //            restrict_to_users, ..
+    //        } => {
+    //            // If the vector is empty, everyone has access
+    //            restrict_to_users.is_empty() || restrict_to_users.iter().any(|u| *u == user)
+    //        }
+    //    }
+    //}
 
+    /// Checks the alias of the sink against some string
+    ///
+    /// Note: The casing is ignored here, as it should be in all alias lookups.
     pub fn has_alias(&self, alias: impl AsRef<str>) -> bool {
-        let own_alias = match self {
-            Sink::Agent { alias, .. } | Sink::Contract { alias, .. } => alias,
-        };
-        alias.as_ref().eq_ignore_ascii_case(own_alias)
-    }
-
-    pub fn is_process(&self) -> bool {
-        match self {
-            Sink::Agent { .. } => true,
-            Sink::Contract { .. } => false,
-        }
+        alias.as_ref().eq_ignore_ascii_case(&self.alias)
     }
 }

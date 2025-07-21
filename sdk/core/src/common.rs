@@ -137,7 +137,6 @@ pub struct Participant {
     pub id: BorderlessId,
     pub alias: String,
     /// Mapping between users and roles (only relevant for contracts)
-    #[serde(Default)]
     pub roles: Vec<String>,
 }
 // { "borderless-id": "4bec7f8e-5074-49a5-9b94-620fb13f12c0", "alias": null, roles": [ "Flipper" ]},
