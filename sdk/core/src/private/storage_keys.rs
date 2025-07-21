@@ -104,13 +104,8 @@ pub const META_SUB_KEY_CONTRACT_ID: u64 = 0;
 
 /// Sub-Key to store the list of participants
 ///
-/// Expected data-model: `Vec<BorderlessId>`
+/// Expected data-model: `Vec<Participant>`
 pub const META_SUB_KEY_PARTICIPANTS: u64 = 1;
-
-/// Sub-Key to store the list of roles
-///
-/// Expected data-model: `Vec<Role>`
-pub const META_SUB_KEY_ROLES: u64 = 2;
 
 /// Sub-Key to store the list of available sinks
 ///
