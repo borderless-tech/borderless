@@ -191,6 +191,42 @@ impl Events {
     }
 }
 
+impl From<ContractCall> for Events {
+    fn from(value: ContractCall) -> Self {
+        Events {
+            contracts: vec![value],
+            local: Vec::new(),
+        }
+    }
+}
+
+impl From<AgentCall> for Events {
+    fn from(value: AgentCall) -> Self {
+        Events {
+            contracts: Vec::new(),
+            local: vec![value],
+        }
+    }
+}
+
+impl From<Vec<ContractCall>> for Events {
+    fn from(value: Vec<ContractCall>) -> Self {
+        Events {
+            contracts: value,
+            local: Vec::new(),
+        }
+    }
+}
+
+impl From<Vec<AgentCall>> for Events {
+    fn from(value: Vec<AgentCall>) -> Self {
+        Events {
+            contracts: Vec::new(),
+            local: value,
+        }
+    }
+}
+
 /// Specifies the Sink-Type of an `ActionOutput`.
 ///
 /// A sink can be either a named sink, that gets referenced by its `sink_alias`.
@@ -221,6 +257,7 @@ impl Display for SinkType {
 
 /// Output events of a contract's action
 #[derive(Default)]
+#[deprecated]
 pub struct ActionOutput {
     actions: Vec<(SinkType, CallAction)>,
 }
@@ -323,6 +360,15 @@ where
         self.map_err(|e| crate::Error::msg(e))?.convert_out_events()
     }
 }
+
+// TODO We have to implement this on a bunch of different types:
+// Events
+// ContractCall
+// Vec<ContractCall>
+// AgentCall
+// Vec<AgentCall>
+//
+// .. and their crate::Result<T> equivalents
 
 impl private::Sealed for ActionOutput {}
 impl ActionOutEvent for ActionOutput {
