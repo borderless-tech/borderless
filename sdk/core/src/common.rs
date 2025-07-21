@@ -136,13 +136,15 @@ impl From<AgentId> for Id {
 //
 // But that's maybe something for later.
 //
-// pub struct Participant {
-//     pub borderless_id: BorderlessId,
-//     pub alias: String,
-//     pub roles: Vec<String>,
-//     pub sinks: Vec<String>,
-// }
-// { "borderless-id": "4bec7f8e-5074-49a5-9b94-620fb13f12c0", "alias": null, roles": [ "Flipper" ], "sinks": [ "OTHERFLIPPER" ] },
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Participant {
+    pub id: BorderlessId,
+    pub alias: String,
+    /// Mapping between users and roles (only relevant for contracts)
+    #[serde(Default)]
+    pub roles: Vec<String>,
+}
+// { "borderless-id": "4bec7f8e-5074-49a5-9b94-620fb13f12c0", "alias": null, roles": [ "Flipper" ]},
 
 /*
  * Ok, spitballing here:
@@ -167,18 +169,12 @@ pub struct Introduction {
 
     /// List of participants
     #[serde(default)]
-    pub participants: Vec<BorderlessId>,
+    pub participants: Vec<Participant>,
 
     /// Initial state as JSON value
     ///
     /// This will be parsed by the implementors of the contract or agent
     pub initial_state: Value,
-
-    /// Mapping between users and roles.
-    ///
-    /// Only relevant for contracts
-    #[serde(default)]
-    pub roles: Vec<Role>,
 
     /// List of available sinks
     #[serde(default)]
