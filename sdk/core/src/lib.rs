@@ -42,6 +42,7 @@ pub mod prelude {
     pub use crate::contracts::*;
     pub use crate::events::*;
     pub use crate::serialize::json;
+    /// Re-Export of `serde_json::json` macro as `value!`
     pub use crate::serialize::json as value;
     pub use crate::CallMethod;
     pub use crate::{ensure, new_error, Context, Error, Result};
