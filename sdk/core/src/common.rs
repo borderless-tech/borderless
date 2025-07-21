@@ -8,7 +8,7 @@ use serde_json::Value;
 pub use borderless_pkg as pkg;
 
 use crate::{
-    contracts::{Role, TxCtx},
+    contracts::TxCtx,
     events::Sink,
     BorderlessId, ContractId,
 };
