@@ -1,3 +1,4 @@
+use anyhow::Context;
 use borderless_id_types::{BlockIdentifier, TxIdentifier};
 
 use crate::{
@@ -32,8 +33,14 @@ pub fn sinks() -> Vec<Sink> {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS).expect("sinks not in metadata")
 }
 
-pub fn sink(alias: impl AsRef<str>) -> Option<ContractId> {
-    todo!()
+/// Returns the contract-id of a sink based on its alias
+pub fn sink(alias: impl AsRef<str>) -> crate::Result<ContractId> {
+    // Search through all sinks
+    sinks()
+        .into_iter()
+        .find(|s| s.has_alias(alias.as_ref()))
+        .map(|s| s.contract_id)
+        .with_context(|| format!("failed to find sink with alias '{}'", alias.as_ref()))
 }
 
 /// Returns the [`Description`] of a contract
