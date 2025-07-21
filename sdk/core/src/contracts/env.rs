@@ -32,6 +32,10 @@ pub fn sinks() -> Vec<Sink> {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS).expect("sinks not in metadata")
 }
 
+pub fn sink(alias: impl AsRef<str>) -> Option<ContractId> {
+    todo!()
+}
+
 /// Returns the [`Description`] of a contract
 pub fn desc() -> Description {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_DESC).expect("description not in metadata")
