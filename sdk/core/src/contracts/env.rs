@@ -1,5 +1,7 @@
 use borderless_id_types::{BlockIdentifier, TxIdentifier};
 
+use super::{BlockCtx, Role, Sink, TxCtx};
+use crate::common::Participant;
 use crate::{
     BorderlessId, ContractId,
     __private::{
@@ -10,21 +12,19 @@ use crate::{
     common::{Description, Metadata},
 };
 
-use super::{BlockCtx, Role, Sink, TxCtx};
-
 /// Returns the contract-id of the current contract
 pub fn contract_id() -> ContractId {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_CONTRACT_ID).expect("contract-id not in metadata")
 }
 
 /// Returns the contract participants
-pub fn participants() -> Vec<BorderlessId> {
+pub fn participants() -> Vec<Participant> {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS).expect("participants not in metadata")
 }
 
 /// Returns the roles that are assigned in this contract
 pub fn roles() -> Vec<Role> {
-    read_field(BASE_KEY_METADATA, META_SUB_KEY_ROLES).expect("roles not in metadata")
+    todo!("Do we need this function?")
 }
 
 /// Returns the available sinks of this contract

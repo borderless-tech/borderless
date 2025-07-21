@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Display, str::FromStr};
 
 use borderless_id_types::{AgentId, Uuid};
-use borderless_pkg::WasmPkg;
+use borderless_pkg::{PkgType, WasmPkg};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -137,7 +137,7 @@ pub struct Participant {
     pub id: BorderlessId,
     pub alias: String,
     /// Mapping between users and roles (only relevant for contracts)
-    #[serde(Default)]
+    #[serde(default)]
     pub roles: Vec<String>,
 }
 // { "borderless-id": "4bec7f8e-5074-49a5-9b94-620fb13f12c0", "alias": null, roles": [ "Flipper" ]},
@@ -229,19 +229,12 @@ pub struct IntroductionDto {
     /// List of participants
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub participants: Vec<BorderlessId>,
+    pub participants: Vec<Participant>,
 
     /// Initial state as JSON value
     ///
     /// This will be parsed by the implementors of the contract or agent
     pub initial_state: Value,
-
-    /// Mapping between users and roles.
-    ///
-    /// Only relevant for contracts
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub roles: Vec<Role>,
 
     /// List of available sinks
     #[serde(default)]
@@ -255,7 +248,25 @@ pub struct IntroductionDto {
     pub package: WasmPkg,
 }
 
-// TODO: Implement conversion from DTO to Introduction
+impl From<IntroductionDto> for Introduction {
+    fn from(value: IntroductionDto) -> Self {
+        // Generate a new ID if not specified
+        let id = value.id.unwrap_or_else(|| match value.package.pkg_type {
+            PkgType::Contract => Id::from(ContractId::generate()),
+            PkgType::Agent => Id::from(AgentId::generate()),
+        });
+
+        Self {
+            id,
+            participants: value.participants,
+            initial_state: value.initial_state,
+            sinks: value.sinks,
+            desc: value.desc,
+            meta: Default::default(),
+            package: value.package,
+        }
+    }
+}
 
 /// Contract revocation
 #[derive(Debug, Clone, Serialize, Deserialize)]
