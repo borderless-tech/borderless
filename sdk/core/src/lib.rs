@@ -65,10 +65,11 @@ pub trait NamedSink {
     fn into_action(self) -> (&'static str, events::CallAction);
 }
 
-pub trait CallMethod: Sized {
+pub trait CallMethod: Sized + private_trait::Sealed {
     fn call_method(&self, method_name: &str) -> events::CallBuilder<Self>;
 }
 
+impl private_trait::Sealed for ContractId {}
 impl CallMethod for ContractId {
     fn call_method(&self, method_name: &str) -> events::CallBuilder<Self> {
         events::CallBuilder {
@@ -78,6 +79,7 @@ impl CallMethod for ContractId {
     }
 }
 
+impl private_trait::Sealed for AgentId {}
 impl CallMethod for AgentId {
     fn call_method(&self, method_name: &str) -> events::CallBuilder<Self> {
         events::CallBuilder {
@@ -85,6 +87,10 @@ impl CallMethod for AgentId {
             name: method_name.to_string(),
         }
     }
+}
+
+mod private_trait {
+    pub trait Sealed {}
 }
 
 pub mod time {
