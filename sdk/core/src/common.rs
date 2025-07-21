@@ -132,10 +132,6 @@ impl From<AgentId> for Id {
     }
 }
 
-// NOTE: We could re-write the participant logic like this
-//
-// But that's maybe something for later.
-//
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Participant {
     pub id: BorderlessId,
