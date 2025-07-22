@@ -20,11 +20,6 @@ pub mod flipper {
 
     use self::actions::Actions;
 
-    #[derive(NamedSink)]
-    pub enum Sinks {
-        Flipper(Actions),
-    }
-
     impl Flipper {
         #[action]
         fn flip_switch(&mut self) {
@@ -42,7 +37,7 @@ pub mod flipper {
         }
 
         #[action(web_api = true, roles = "Flipper")]
-        pub fn set_other(&self, switch: bool) -> Result<ActionOutput> {
+        pub fn set_other(&self, switch: bool) -> Result<ContractCall> {
             let call = env::sink("otherflipper")?
                 .call_method("set_switch")
                 .with_value(value! { switch })
