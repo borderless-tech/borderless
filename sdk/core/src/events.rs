@@ -390,7 +390,7 @@ impl Display for SinkType {
 ///
 /// Note: This trait converts `()`, `ActionOutput`, `Result<(), E>` and `Result<ActionOutput, E>` into [`Events`].
 /// The implementation of `ActionOutput` also checks, if the writer actually has access to a sink.
-pub trait ActionOutput: private::Sealed {
+pub trait ActionOutput: Sealed {
     fn convert_out_events(self) -> crate::Result<Events>;
 }
 
@@ -398,17 +398,17 @@ mod private {
     pub trait Sealed {}
 }
 
-impl private::Sealed for () {}
+impl Sealed for () {}
 impl ActionOutput for () {
     fn convert_out_events(self) -> crate::Result<Events> {
         Ok(Events::default())
     }
 }
 
-impl<E> private::Sealed for Result<(), E> where E: std::fmt::Display + Send + Sync + 'static {}
+impl<E> Sealed for Result<(), E> where E: Display + Send + Sync + 'static {}
 impl<E> ActionOutput for Result<(), E>
 where
-    E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static,
+    E: Display + std::fmt::Debug + Send + Sync + 'static,
 {
     fn convert_out_events(self) -> crate::Result<Events> {
         self.map_err(|e| crate::Error::msg(e))?.convert_out_events()
