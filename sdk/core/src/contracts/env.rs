@@ -23,6 +23,14 @@ pub fn participants() -> Vec<Participant> {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS).expect("participants not in metadata")
 }
 
+pub fn participant(alias: impl AsRef<str>) -> crate::Result<BorderlessId> {
+    participants()
+        .into_iter()
+        .find(|p| p.alias.eq_ignore_ascii_case(alias.as_ref()))
+        .map(|p| p.id)
+        .with_context(|| format!("failed to find participant with alias '{}'", alias.as_ref()))
+}
+
 /// Returns the available sinks of this contract
 pub fn sinks() -> Vec<Sink> {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS).expect("sinks not in metadata")
