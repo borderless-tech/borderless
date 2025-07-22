@@ -419,8 +419,6 @@ where
 // Events
 // ContractCall
 // Vec<ContractCall>
-// AgentCall
-// Vec<AgentCall>
 //
 // .. and their crate::Result<T> equivalents
 
