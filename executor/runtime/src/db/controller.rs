@@ -1,7 +1,13 @@
+use super::{
+    action_log::{ActionLog, ActionRecord, RelTxAction},
+    logger::Logger,
+};
+use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB};
+use borderless::common::Participant;
 use borderless::{
     common::{Description, Metadata, Revocation},
     contracts::Info,
-    BorderlessId, ContractId,
+    ContractId,
     __private::storage_keys::*,
     events::Sink,
     hash::Hash256,
@@ -12,12 +18,6 @@ use borderless::{
 };
 use borderless_kv_store::*;
 use serde::de::DeserializeOwned;
-
-use super::{
-    action_log::{ActionLog, ActionRecord, RelTxAction},
-    logger::Logger,
-};
-use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB};
 
 /// Model-controller to retrieve information about a contract from the key-value storage.
 pub struct Controller<'a, S: Db> {
@@ -40,7 +40,7 @@ impl<'a, S: Db> Controller<'a, S> {
     }
 
     /// List of contract-participants
-    pub fn contract_participants(&self, cid: &ContractId) -> Result<Option<Vec<BorderlessId>>> {
+    pub fn contract_participants(&self, cid: &ContractId) -> Result<Option<Vec<Participant>>> {
         self.read_value(
             &Id::contract(*cid),
             BASE_KEY_METADATA,
@@ -112,13 +112,11 @@ impl<'a, S: Db> Controller<'a, S> {
     pub fn contract_info(&self, cid: &ContractId) -> Result<Option<Info>> {
         let id = Id::contract(*cid);
         let participants = self.read_value(&id, BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS)?;
-        let roles = self.read_value(&id, BASE_KEY_METADATA, META_SUB_KEY_ROLES)?;
         let sinks = self.read_value(&id, BASE_KEY_METADATA, META_SUB_KEY_SINKS)?;
-        match (participants, roles, sinks) {
-            (Some(participants), Some(roles), Some(sinks)) => Ok(Some(Info {
+        match (participants, sinks) {
+            (Some(participants), Some(sinks)) => Ok(Some(Info {
                 contract_id: *cid,
                 participants,
-                roles,
                 sinks,
             })),
             _ => Ok(None),
@@ -372,16 +370,6 @@ pub(crate) fn write_introduction<S: Db>(
         BASE_KEY_METADATA,
         META_SUB_KEY_PARTICIPANTS,
         &introduction.participants,
-    )?;
-
-    // Write roles list
-    write_system_value::<S, _, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_ROLES,
-        &introduction.roles,
     )?;
 
     // Write sink list
