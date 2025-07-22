@@ -23,11 +23,6 @@ pub fn participants() -> Vec<Participant> {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS).expect("participants not in metadata")
 }
 
-/// Returns the roles that are assigned in this contract
-pub fn roles() -> Vec<Role> {
-    todo!("Do we need this function?")
-}
-
 /// Returns the available sinks of this contract
 pub fn sinks() -> Vec<Sink> {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS).expect("sinks not in metadata")
@@ -68,10 +63,13 @@ pub(crate) fn executor() -> BorderlessId {
 /// Returns the roles that are assigned to the writer of the current transaction
 pub fn writer_roles() -> Vec<String> {
     let writer = writer();
-    roles()
+    let participants = participants();
+
+    participants
         .into_iter()
-        .filter(|r| r.participant_id == writer)
-        .map(|r| r.role)
+        .filter(|p| p.id == writer)
+        .map(|p| p.roles)
+        .flatten()
         .collect()
 }
 
