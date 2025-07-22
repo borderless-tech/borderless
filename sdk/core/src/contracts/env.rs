@@ -1,7 +1,7 @@
 use anyhow::Context;
 use borderless_id_types::{BlockIdentifier, TxIdentifier};
 
-use super::{BlockCtx, Role, Sink, TxCtx};
+use super::{BlockCtx, Sink, TxCtx};
 use crate::common::Participant;
 use crate::{
     BorderlessId, ContractId,

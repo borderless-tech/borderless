@@ -6,7 +6,6 @@ use std::{fmt::Display, str::FromStr};
 
 use crate::events::private::Sealed;
 use crate::prelude::env;
-use crate::{common::Id, debug, error, NamedSink};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -150,25 +149,13 @@ impl CallBuilder<Init> {
     }
 }
 
-impl<ID> CallBuilder<WithAction> {
+impl CallBuilder<WithAction> {
     pub fn with_writer(
         self,
         writer_alias: impl AsRef<str>,
     ) -> Result<CallBuilder<WithAction>, crate::Error> {
         // Check if a participant with the provided alias exists
-        let writer_id = env::participant(writer_alias)?;
-
-        // Check that the writer actually has access to the required sink
-        env::sinks()
-            .into_iter()
-            .find(|s| s.writer.eq_ignore_ascii_case(writer_alias.as_ref()))
-            .with_context(|| {
-                format!(
-                    "No sink has the provided writer '{}'",
-                    writer_alias.as_ref()
-                )
-            })?;
-
+        let writer_id = env::participant(writer_alias.as_ref())?;
         Ok(CallBuilder {
             id: self.id,
             name: self.name,
@@ -179,8 +166,34 @@ impl<ID> CallBuilder<WithAction> {
     }
 
     pub fn build(self) -> Result<ContractCall, crate::Error> {
-        // TODO: Check that this writer actually has access to the required sink
-        todo!()
+        // Fetch the sinks related to the contract
+        let mut sinks: Vec<Sink> = env::sinks()
+            .into_iter()
+            .filter(|s| s.contract_id == self.id)
+            .collect();
+
+        // Retain the sinks with our writer
+        if let Some(call_writer) = self.writer {
+            sinks.retain(|s: &Sink| {
+                let alias = s.writer.clone();
+                let sink_writer = env::participant(alias).expect("Writer must exist");
+                call_writer == sink_writer
+            });
+        }
+
+        let writer = match sinks.len() {
+            0 => return Err(anyhow!("No sink with specified contract and writer found")),
+            1 => {
+                let sink = sinks.pop().unwrap();
+                env::participant(sink.writer)?
+            }
+            _ => return Err(anyhow!("The writer has multiple sinks")),
+        };
+
+        Ok(ContractCall {
+            contract_id: self.id,
+            action: self.action.unwrap(),
+        })
     }
 }
 
