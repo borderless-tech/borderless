@@ -192,6 +192,7 @@ impl CallBuilder<WithAction> {
         Ok(ContractCall {
             contract_id: self.id,
             action: self.action.unwrap(),
+            writer,
         })
     }
 }
@@ -201,7 +202,7 @@ impl CallBuilder<WithAction> {
 pub struct ContractCall {
     pub contract_id: ContractId,
     pub action: CallAction,
-    // pub writer: BorderlessId,
+    pub writer: BorderlessId,
 }
 
 /// An outgoing event for another agent
