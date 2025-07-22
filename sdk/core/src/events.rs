@@ -441,6 +441,13 @@ where
     }
 }
 
+impl Sealed for Vec<ContractCall> {}
+impl ActionOutput for Vec<ContractCall> {
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        Ok(Events::from(self))
+    }
+}
+
 /// An event Sink for a smart-contract
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sink {
