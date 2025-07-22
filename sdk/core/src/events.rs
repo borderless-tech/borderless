@@ -98,7 +98,7 @@ impl CallAction {
     }
 }
 
-struct Init;
+pub(crate) struct Init;
 struct WithAction;
 
 /// Builder to create a new `ContractCall` or `AgentCall`
@@ -111,28 +111,41 @@ pub struct CallBuilder<ID, STATE> {
 }
 
 impl<ID> CallBuilder<ID, Init> {
-    pub fn with_value(self, value: serde_json::Value) -> Self<ID, Init> {
+    pub fn new(id: ID, method_name: &str) -> CallBuilder<ID, Init> {
+        CallBuilder {
+            id,
+            name: method_name.to_string(),
+            writer: None,
+            action: None,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn with_value(self, value: Value) -> CallBuilder<ID, WithAction> {
         let action = CallAction::by_method(&self.name, value);
-        Self {
+        CallBuilder {
             id: self.id,
             name: self.name,
             writer: None,
             action: Some(action),
-            _marker: std::marker::PhantomData::default(),
+            _marker: std::marker::PhantomData,
         }
     }
 
-    pub fn with_args<T: serde::Serialize>(self, args: T) -> Result<Self<ID, Init>, crate::Error> {
+    pub fn with_args<T: serde::Serialize>(
+        self,
+        args: T,
+    ) -> Result<CallBuilder<ID, WithAction>, crate::Error> {
         let value = serde_json::to_value(args).map_err(|e| {
             crate::Error::msg(format!("failed to convert args for method-call: {e}"))
         })?;
         let action = CallAction::by_method(&self.name, value);
-        Ok(Self {
+        Ok(CallBuilder {
             id: self.id,
             name: self.name,
             writer: None,
             action: Some(action),
-            _marker: std::marker::PhantomData::default(),
+            _marker: std::marker::PhantomData,
         })
     }
 }
@@ -141,7 +154,7 @@ impl<ID> CallBuilder<ID, WithAction> {
     pub fn with_writer(
         self,
         writer_alias: impl AsRef<str>,
-    ) -> Result<Self<ID, WithAction>, crate::Error> {
+    ) -> Result<CallBuilder<ID, WithAction>, crate::Error> {
         let writer_id = env::participants()
             .into_iter()
             .find(|p| p.alias.eq_ignore_ascii_case(writer_alias.as_ref()))
@@ -153,12 +166,12 @@ impl<ID> CallBuilder<ID, WithAction> {
                 )
             })?;
         // TODO: Check that this writer actually has access to the required sink
-        Ok(Self {
+        Ok(CallBuilder {
             id: self.id,
             name: self.name,
             writer: Some(writer_id),
             action: self.action,
-            _marker: std::marker::PhantomData,
+            _marker: std::marker::PhantomData::default(),
         })
     }
 

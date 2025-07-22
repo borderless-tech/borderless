@@ -53,6 +53,8 @@ pub mod common;
 pub mod events;
 pub mod http;
 
+use crate::events::Init;
+
 /// Trait that must be implemented on the `Sink` enum inside a contract module.
 ///
 /// Implementing this trait ensures, that you can split the sink into a static string
@@ -67,26 +69,20 @@ pub trait NamedSink {
 }
 
 pub trait CallMethod: Sized + private_trait::Sealed {
-    fn call_method(&self, method_name: &str) -> events::CallBuilder<Self>;
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<Self, Init>;
 }
 
 impl private_trait::Sealed for ContractId {}
 impl CallMethod for ContractId {
-    fn call_method(&self, method_name: &str) -> events::CallBuilder<Self> {
-        events::CallBuilder {
-            id: *self,
-            name: method_name.to_string(),
-        }
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<Self, Init> {
+        events::CallBuilder::new(*self, method_name)
     }
 }
 
 impl private_trait::Sealed for AgentId {}
 impl CallMethod for AgentId {
-    fn call_method(&self, method_name: &str) -> events::CallBuilder<Self> {
-        events::CallBuilder {
-            id: *self,
-            name: method_name.to_string(),
-        }
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<Self, Init> {
+        events::CallBuilder::new(*self, method_name)
     }
 }
 
