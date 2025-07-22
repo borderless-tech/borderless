@@ -7,7 +7,6 @@ mod action;
 mod agent;
 mod contract;
 mod schedule;
-mod sink;
 mod state;
 mod utils;
 
@@ -143,18 +142,6 @@ pub fn agent(attrs: TokenStream, input: TokenStream) -> TokenStream {
 pub fn derive_contract_state(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input);
     let output = state::impl_state(input);
-
-    match output {
-        syn::Result::Ok(token_stream) => token_stream,
-        syn::Result::Err(err) => err.to_compile_error(),
-    }
-    .into()
-}
-
-#[proc_macro_derive(NamedSink)]
-pub fn derive_named_sink(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input);
-    let output = sink::impl_named_sink(input);
 
     match output {
         syn::Result::Ok(token_stream) => token_stream,
