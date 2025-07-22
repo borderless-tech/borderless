@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use borderless_id_types::{AgentId, BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -427,26 +427,7 @@ where
 impl Sealed for ContractCall {}
 impl ActionOutput for ContractCall {
     fn convert_out_events(self) -> crate::Result<Events> {
-        let caller = crate::contracts::env::executor();
-        let participants = crate::contracts::env::participants();
-        let sinks = crate::contracts::env::sinks();
-
-        let sink = sinks
-            .into_iter()
-            .find(|s| s.contract_id == self.contract_id)
-            .context("No sink points to the contract")?;
-
-        let writer = participants
-            .into_iter()
-            .find(|p| p.alias == sink.writer)
-            .context("Sink writer not found")?;
-
-        // Only the sink's writer is allowed to trigger the action
-        if caller == writer.id {
-            Ok(Events::from(self))
-        } else {
-            Ok(Events::default())
-        }
+        Ok(Events::from(self))
     }
 }
 
