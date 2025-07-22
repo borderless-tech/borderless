@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fmt::Display, str::FromStr};
 
-use crate::{common::Id, debug, error, NamedSink};
 use crate::events::private::Sealed;
+use crate::{common::Id, debug, error, NamedSink};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -371,14 +371,17 @@ where
 // .. and their crate::Result<T> equivalents
 
 impl Sealed for ContractCall {}
-
 impl ActionOutput for ContractCall {
     fn convert_out_events(self) -> crate::Result<Events> {
         //let caller = crate::contracts::env::executor();
         //let sinks = crate::contracts::env::sinks();
 
-        let mut contracts = Vec::new();
-        let mut local = Vec::new();
+        //let mut contracts = Vec::new();
+        //let mut local = Vec::new();
+
+        //contracts.push()
+
+        let cid = self.contract_id;
 
         //// TODO: There is an edge-case here; we currently have no solution,
         //// if multiple participants in a contract have access to the same sink !
@@ -464,19 +467,6 @@ impl Sink {
             writer,
         }
     }
-
-    ///// Checks weather or not the given user has access to this sink
-    //pub fn has_access(&self, user: BorderlessId) -> bool {
-    //    match self {
-    //        Sink::Agent { owner, .. } => *owner == user,
-    //        Sink::Contract {
-    //            restrict_to_users, ..
-    //        } => {
-    //            // If the vector is empty, everyone has access
-    //            restrict_to_users.is_empty() || restrict_to_users.iter().any(|u| *u == user)
-    //        }
-    //    }
-    //}
 
     /// Checks the alias of the sink against some string
     ///
