@@ -155,6 +155,7 @@ impl<ID> CallBuilder<ID, WithAction> {
         self,
         writer_alias: impl AsRef<str>,
     ) -> Result<CallBuilder<ID, WithAction>, crate::Error> {
+        // Check if a participant with the provided alias exists
         let writer_id = env::participants()
             .into_iter()
             .find(|p| p.alias.eq_ignore_ascii_case(writer_alias.as_ref()))
@@ -165,7 +166,17 @@ impl<ID> CallBuilder<ID, WithAction> {
                     writer_alias.as_ref()
                 )
             })?;
-        // TODO: Check that this writer actually has access to the required sink
+        // Check that the writer actually has access to the required sink
+        env::sinks()
+            .into_iter()
+            .find(|s| s.writer.eq_ignore_ascii_case(writer_alias.as_ref()))
+            .with_context(|| {
+                format!(
+                    "No sink has the provided writer '{}'",
+                    writer_alias.as_ref()
+                )
+            })?;
+
         Ok(CallBuilder {
             id: self.id,
             name: self.name,
