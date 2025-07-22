@@ -1,10 +1,11 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use borderless_id_types::{AgentId, BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fmt::Display, str::FromStr};
 
 use crate::events::private::Sealed;
+use crate::prelude::env;
 use crate::{common::Id, debug, error, NamedSink};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,50 +98,82 @@ impl CallAction {
     }
 }
 
-pub struct CallBuilder<ID> {
+struct Init;
+struct WithAction;
+
+/// Builder to create a new `ContractCall` or `AgentCall`
+pub struct CallBuilder<ID, STATE> {
     pub(crate) id: ID,
     pub(crate) name: String,
+    pub(crate) writer: Option<BorderlessId>,
+    pub(crate) action: Option<CallAction>,
+    _marker: std::marker::PhantomData<STATE>,
 }
 
-impl CallBuilder<ContractId> {
-    pub fn with_value(self, value: serde_json::Value) -> ContractCall {
-        let action = CallAction::by_method(self.name, value);
-        ContractCall {
-            contract_id: self.id,
-            action,
+impl<ID> CallBuilder<ID, Init> {
+    pub fn with_value(self, value: serde_json::Value) -> CallBuilder<ID, WithAction> {
+        let action = CallAction::by_method(&self.name, value);
+        Self {
+            id: self.id,
+            name: self.name,
+            writer: self.writer,
+            action: Some(action),
+            _marker: std::marker::PhantomData::default(),
         }
     }
 
-    pub fn with_args<T: serde::Serialize>(self, args: T) -> Result<ContractCall, crate::Error> {
+    pub fn with_args<T: serde::Serialize>(
+        self,
+        args: T,
+    ) -> Result<CallBuilder<ID, WithAction>, crate::Error> {
         let value = serde_json::to_value(args).map_err(|e| {
             crate::Error::msg(format!("failed to convert args for method-call: {e}"))
         })?;
-        let action = CallAction::by_method(self.name, value);
-        Ok(ContractCall {
-            contract_id: self.id,
-            action,
+        let action = CallAction::by_method(&self.name, value);
+        Ok(Self {
+            id: self.id,
+            name: self.name,
+            writer: self.writer,
+            action: Some(action),
+            _marker: std::marker::PhantomData::default(),
         })
     }
 }
 
-impl CallBuilder<AgentId> {
-    pub fn with_value(self, value: serde_json::Value) -> AgentCall {
-        let action = CallAction::by_method(self.name, value);
-        AgentCall {
-            agent_id: self.id,
-            action,
-        }
-    }
-
-    pub fn with_args<T: serde::Serialize>(self, args: T) -> Result<AgentCall, crate::Error> {
-        let value = serde_json::to_value(args).map_err(|e| {
-            crate::Error::msg(format!("failed to convert args for method-call: {e}"))
-        })?;
-        let action = CallAction::by_method(self.name, value);
-        Ok(AgentCall {
-            agent_id: self.id,
-            action,
+impl<ID> CallBuilder<ID, WithAction> {
+    pub fn with_writer(self, writer_alias: impl AsRef<str>) -> Result<Self, crate::Error> {
+        let writer_id = env::participants()
+            .into_iter()
+            .find(|p| p.alias.eq_ignore_ascii_case(writer_alias.as_ref()))
+            .map(|p| p.id)
+            .with_context(|| {
+                format!(
+                    "failed to find participant with alias '{}'",
+                    writer_alias.as_ref()
+                )
+            })?;
+        // TODO: Check that this writer actually has access to the required sink
+        Ok(Self {
+            id: self.id,
+            name: self.name,
+            writer: Some(writer_id),
+            action: self.action,
+            _marker: std::marker::PhantomData,
         })
+    }
+}
+
+impl CallBuilder<ContractId, WithAction> {
+    pub fn build(self) -> Result<ContractCall, crate::Error> {
+        // TODO: Check if writer is NONE - search through sinks, and find the correct one
+        // TODO: Check that this writer actually has access to the required sink
+        todo!()
+    }
+}
+
+impl CallBuilder<AgentId, WithAction> {
+    pub fn build(self) -> Result<ContractCall, crate::Error> {
+        todo!()
     }
 }
 
@@ -149,6 +182,7 @@ impl CallBuilder<AgentId> {
 pub struct ContractCall {
     pub contract_id: ContractId,
     pub action: CallAction,
+    //pub writer_id: BorderlessId,
 }
 
 /// An outgoing event for another agent

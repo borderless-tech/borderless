@@ -1,8 +1,7 @@
 #[borderless::contract]
 pub mod flipper {
-    use borderless::{Result, *};
-    use collections::lazyvec::LazyVec;
-    use events::ActionOutput;
+    use borderless::prelude::*;
+    use borderless::{collections::lazyvec::LazyVec, ContractId};
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
@@ -44,9 +43,16 @@ pub mod flipper {
 
         #[action(web_api = true, roles = "Flipper")]
         pub fn set_other(&self, switch: bool) -> Result<ActionOutput> {
-            let mut out = ActionOutput::default();
-            out.add_event(Sinks::Flipper(Actions::SetSwitch { switch }));
-            Ok(out)
+            let call = env::sink("otherflipper")?
+                .call_method("set_switch")
+                .with_value(value! { switch })
+                .with_writer("flipper")
+                .build()?;
+
+            // Or emit messages:
+            let msg = message("/foo/baa").with_value(value! { switch });
+
+            todo!()
         }
     }
 }
