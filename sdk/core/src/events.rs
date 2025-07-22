@@ -5,6 +5,7 @@ use serde_json::Value;
 use std::{fmt::Display, str::FromStr};
 
 use crate::{common::Id, debug, error, NamedSink};
+use crate::events::private::Sealed;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -331,88 +332,11 @@ impl Display for SinkType {
     }
 }
 
-/// Output events of a contract's action
-#[derive(Default)]
-#[deprecated]
-pub struct ActionOutput {
-    actions: Vec<(SinkType, CallAction)>,
-}
-
-impl ActionOutput {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn add_event<T: NamedSink>(&mut self, target: T) {
-        let (sink_name, action) = target.into_action();
-        self.actions
-            .push((SinkType::Named(sink_name.to_string()), action));
-    }
-
-    /// Adds a generic event to the output - with dynamic dispatch of the output sinks.
-    ///
-    /// In contrast to [`ActionOutput::add_event`] the event type must only implement `TryInto<CallAction>`,
-    /// since the user directly tells us towards which sink the event should be send.
-    /// This is only necessary, if the `Sink` has been added after the contract was instantiated.
-    pub fn add_event_dynamic<S, IntoAction>(&mut self, sink_alias: S, action: IntoAction)
-    where
-        S: AsRef<str>,
-        IntoAction: TryInto<CallAction>,
-        <IntoAction as TryInto<CallAction>>::Error: std::fmt::Display,
-    {
-        let alias = sink_alias.as_ref().to_string();
-        let action = match action.try_into() {
-            Ok(a) => a,
-            Err(e) => {
-                error!("critical error while converting action for dynamic sink '{alias}': {e}");
-                crate::__private::abort();
-            }
-        };
-        self.actions.push((SinkType::Named(alias), action))
-    }
-
-    pub fn add_event_for_contract<IntoAction>(
-        &mut self,
-        contract_id: ContractId,
-        action: IntoAction,
-    ) where
-        IntoAction: TryInto<CallAction>,
-        <IntoAction as TryInto<CallAction>>::Error: std::fmt::Display,
-    {
-        let action = match action.try_into() {
-            Ok(a) => a,
-            Err(e) => {
-                error!(
-                    "critical error while converting action for dynamic sink '{contract_id}': {e}"
-                );
-                crate::__private::abort();
-            }
-        };
-        self.actions.push((SinkType::Contract(contract_id), action))
-    }
-
-    pub fn add_event_for_process<IntoAction>(&mut self, agent_id: AgentId, action: IntoAction)
-    where
-        IntoAction: TryInto<CallAction>,
-        <IntoAction as TryInto<CallAction>>::Error: std::fmt::Display,
-    {
-        let action = match action.try_into() {
-            Ok(a) => a,
-            Err(e) => {
-                error!("critical error while converting action for dynamic sink '{agent_id}': {e}");
-                crate::__private::abort();
-            }
-        };
-        self.actions.push((SinkType::Agent(agent_id), action))
-    }
-}
-
-// TODO: Maybe we rename this trait to "ActionOutput" and remove the concrete type
 /// Trait that indicates that a return type can be used as an output of an action function.
 ///
 /// Note: This trait converts `()`, `ActionOutput`, `Result<(), E>` and `Result<ActionOutput, E>` into [`Events`].
 /// The implementation of `ActionOutput` also checks, if the writer actually has access to a sink.
-pub trait ActionOutEvent: private::Sealed {
+pub trait ActionOutput: private::Sealed {
     fn convert_out_events(self) -> crate::Result<Events>;
 }
 
@@ -421,14 +345,14 @@ mod private {
 }
 
 impl private::Sealed for () {}
-impl ActionOutEvent for () {
+impl ActionOutput for () {
     fn convert_out_events(self) -> crate::Result<Events> {
         Ok(Events::default())
     }
 }
 
 impl<E> private::Sealed for Result<(), E> where E: std::fmt::Display + Send + Sync + 'static {}
-impl<E> ActionOutEvent for Result<(), E>
+impl<E> ActionOutput for Result<(), E>
 where
     E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static,
 {
@@ -446,14 +370,15 @@ where
 //
 // .. and their crate::Result<T> equivalents
 
-impl private::Sealed for ActionOutput {}
-impl ActionOutEvent for ActionOutput {
+impl Sealed for ContractCall {}
+
+impl ActionOutput for ContractCall {
     fn convert_out_events(self) -> crate::Result<Events> {
         //let caller = crate::contracts::env::executor();
         //let sinks = crate::contracts::env::sinks();
 
-        //let mut contracts = Vec::new();
-        //let mut local = Vec::new();
+        let mut contracts = Vec::new();
+        let mut local = Vec::new();
 
         //// TODO: There is an edge-case here; we currently have no solution,
         //// if multiple participants in a contract have access to the same sink !
@@ -499,6 +424,7 @@ impl ActionOutEvent for ActionOutput {
     }
 }
 
+/*
 impl<E> private::Sealed for Result<ActionOutput, E> where
     E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static
 {
@@ -512,6 +438,7 @@ where
         inner.convert_out_events()
     }
 }
+ */
 
 /// An event Sink for either a contract or sw-agent
 #[derive(Debug, Clone, Serialize, Deserialize)]
