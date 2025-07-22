@@ -1,11 +1,10 @@
+use crate::events::private::Sealed;
+use crate::prelude::env;
 use anyhow::anyhow;
 use borderless_id_types::{AgentId, BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{fmt::Display, str::FromStr};
-
-use crate::events::private::Sealed;
-use crate::prelude::env;
+use std::{fmt::Debug, fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -408,7 +407,7 @@ impl ActionOutput for () {
 impl<E> Sealed for Result<(), E> where E: Display + Send + Sync + 'static {}
 impl<E> ActionOutput for Result<(), E>
 where
-    E: Display + std::fmt::Debug + Send + Sync + 'static,
+    E: Display + Debug + Send + Sync + 'static,
 {
     fn convert_out_events(self) -> crate::Result<Events> {
         self.map_err(|e| crate::Error::msg(e))?.convert_out_events()
@@ -417,8 +416,6 @@ where
 
 // TODO We have to implement this on a bunch of different types:
 // Events
-// ContractCall
-// Vec<ContractCall>
 //
 // .. and their crate::Result<T> equivalents
 
@@ -429,8 +426,7 @@ impl ActionOutput for ContractCall {
     }
 }
 
-impl<E> Sealed for Result<ContractCall, E> where E: Display + std::fmt::Debug + Send + Sync + 'static
-{}
+impl<E> Sealed for Result<ContractCall, E> where E: Display + Debug + Send + Sync + 'static {}
 impl<E> ActionOutput for Result<ContractCall, E>
 where
     E: Display + std::fmt::Debug + Send + Sync + 'static,
@@ -448,6 +444,16 @@ impl ActionOutput for Vec<ContractCall> {
     }
 }
 
+impl<E> Sealed for Result<Vec<ContractCall>, E> where E: Display + Debug + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<Vec<ContractCall>, E>
+where
+    E: Display + Debug + Send + Sync + 'static,
+{
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        let inner = self.map_err(|e| crate::Error::msg(e))?;
+        inner.convert_out_events()
+    }
+}
 /// An event Sink for a smart-contract
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sink {
