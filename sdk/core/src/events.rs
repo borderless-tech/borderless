@@ -376,13 +376,6 @@ impl ActionOutput for ContractCall {
         //let caller = crate::contracts::env::executor();
         //let sinks = crate::contracts::env::sinks();
 
-        //let mut contracts = Vec::new();
-        //let mut local = Vec::new();
-
-        //contracts.push()
-
-        let cid = self.contract_id;
-
         //// TODO: There is an edge-case here; we currently have no solution,
         //// if multiple participants in a contract have access to the same sink !
         ////
@@ -443,7 +436,7 @@ where
 }
  */
 
-/// An event Sink for either a contract or sw-agent
+/// An event Sink for a smart-contract
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sink {
     /// Contract-ID of the sink
