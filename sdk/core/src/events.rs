@@ -429,21 +429,17 @@ impl ActionOutput for ContractCall {
     }
 }
 
-/*
-impl<E> private::Sealed for Result<ActionOutput, E> where
-    E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static
-{
-}
-impl<E> ActionOutEvent for Result<ActionOutput, E>
+impl<E> Sealed for Result<ContractCall, E> where E: Display + std::fmt::Debug + Send + Sync + 'static
+{}
+impl<E> ActionOutput for Result<ContractCall, E>
 where
-    E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static,
+    E: Display + std::fmt::Debug + Send + Sync + 'static,
 {
     fn convert_out_events(self) -> crate::Result<Events> {
         let inner = self.map_err(|e| crate::Error::msg(e))?;
         inner.convert_out_events()
     }
 }
- */
 
 /// An event Sink for a smart-contract
 #[derive(Debug, Clone, Serialize, Deserialize)]
