@@ -111,21 +111,18 @@ pub struct CallBuilder<ID, STATE> {
 }
 
 impl<ID> CallBuilder<ID, Init> {
-    pub fn with_value(self, value: serde_json::Value) -> CallBuilder<ID, WithAction> {
+    pub fn with_value(self, value: serde_json::Value) -> Self<ID, Init> {
         let action = CallAction::by_method(&self.name, value);
         Self {
             id: self.id,
             name: self.name,
-            writer: self.writer,
+            writer: None,
             action: Some(action),
             _marker: std::marker::PhantomData::default(),
         }
     }
 
-    pub fn with_args<T: serde::Serialize>(
-        self,
-        args: T,
-    ) -> Result<CallBuilder<ID, WithAction>, crate::Error> {
+    pub fn with_args<T: serde::Serialize>(self, args: T) -> Result<Self<ID, Init>, crate::Error> {
         let value = serde_json::to_value(args).map_err(|e| {
             crate::Error::msg(format!("failed to convert args for method-call: {e}"))
         })?;
@@ -133,7 +130,7 @@ impl<ID> CallBuilder<ID, Init> {
         Ok(Self {
             id: self.id,
             name: self.name,
-            writer: self.writer,
+            writer: None,
             action: Some(action),
             _marker: std::marker::PhantomData::default(),
         })
@@ -141,7 +138,10 @@ impl<ID> CallBuilder<ID, Init> {
 }
 
 impl<ID> CallBuilder<ID, WithAction> {
-    pub fn with_writer(self, writer_alias: impl AsRef<str>) -> Result<Self, crate::Error> {
+    pub fn with_writer(
+        self,
+        writer_alias: impl AsRef<str>,
+    ) -> Result<Self<ID, WithAction>, crate::Error> {
         let writer_id = env::participants()
             .into_iter()
             .find(|p| p.alias.eq_ignore_ascii_case(writer_alias.as_ref()))
@@ -161,18 +161,10 @@ impl<ID> CallBuilder<ID, WithAction> {
             _marker: std::marker::PhantomData,
         })
     }
-}
 
-impl CallBuilder<ContractId, WithAction> {
     pub fn build(self) -> Result<ContractCall, crate::Error> {
         // TODO: Check if writer is NONE - search through sinks, and find the correct one
         // TODO: Check that this writer actually has access to the required sink
-        todo!()
-    }
-}
-
-impl CallBuilder<AgentId, WithAction> {
-    pub fn build(self) -> Result<ContractCall, crate::Error> {
         todo!()
     }
 }
@@ -182,7 +174,7 @@ impl CallBuilder<AgentId, WithAction> {
 pub struct ContractCall {
     pub contract_id: ContractId,
     pub action: CallAction,
-    //pub writer_id: BorderlessId,
+    // pub writer: BorderlessId,
 }
 
 /// An outgoing event for another agent
