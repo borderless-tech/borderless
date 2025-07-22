@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use borderless_id_types::{AgentId, BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -373,50 +373,26 @@ where
 impl Sealed for ContractCall {}
 impl ActionOutput for ContractCall {
     fn convert_out_events(self) -> crate::Result<Events> {
-        //let caller = crate::contracts::env::executor();
-        //let sinks = crate::contracts::env::sinks();
+        let caller = crate::contracts::env::executor();
+        let participants = crate::contracts::env::participants();
+        let sinks = crate::contracts::env::sinks();
 
-        //// TODO: There is an edge-case here; we currently have no solution,
-        //// if multiple participants in a contract have access to the same sink !
-        ////
-        //// Idea: Find these places and do a pseudo-random (but deterministic) choice.
-        //// Or we could solve this from the outside; somehow..
-        //for (sink, action) in self.actions {
-        //    match sink {
-        //        SinkType::Named(alias) => {
-        //            if let Some(sink) = sinks.iter().find(|s| s.has_alias(&alias)) {
-        //                if !sink.has_access(caller) {
-        //                    debug!("caller {caller} does not have access to sink {alias}");
-        //                    continue;
-        //                }
-        //                match sink {
-        //                    Sink::Contract { contract_id, .. } => {
-        //                        // TODO
-        //                        contracts.push(ContractCall {
-        //                            contract_id: *contract_id,
-        //                            action,
-        //                        })
-        //                    }
-        //                    Sink::Agent { agent_id, .. } => local.push(AgentCall {
-        //                        agent_id: *agent_id,
-        //                        action,
-        //                    }),
-        //                }
-        //            } else {
-        //                // TODO: Should this be an error or should we just log the error here ?
-        //                return Err(anyhow!("Failed to find sink '{alias}', which is referenced in the action output"));
-        //            }
-        //        }
-        //        SinkType::Agent(agent_id) => local.push(AgentCall { agent_id, action }),
-        //        // TODO: The edge-case also applies here I guess ??
-        //        SinkType::Contract(contract_id) => contracts.push(ContractCall {
-        //            contract_id,
-        //            action,
-        //        }),
-        //    }
-        //}
-        //Ok(Events { contracts, local })
-        todo!("re-implement this with the new sink design")
+        let sink = sinks
+            .into_iter()
+            .find(|s| s.contract_id == self.contract_id)
+            .context("No sink points to the contract")?;
+
+        let writer = participants
+            .into_iter()
+            .find(|p| p.alias == sink.writer)
+            .context("Sink writer not found")?;
+
+        // Only the sink's writer is allowed to trigger the action
+        if caller == writer.id {
+            Ok(Events::from(self))
+        } else {
+            Ok(Events::default())
+        }
     }
 }
 
