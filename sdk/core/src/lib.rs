@@ -69,20 +69,20 @@ pub trait NamedSink {
 }
 
 pub trait CallMethod: Sized + private_trait::Sealed {
-    fn call_method(&self, method_name: &str) -> events::CallBuilder<Self, Init>;
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<Init>;
 }
 
 impl private_trait::Sealed for ContractId {}
 impl CallMethod for ContractId {
-    fn call_method(&self, method_name: &str) -> events::CallBuilder<Self, Init> {
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<Init> {
         events::CallBuilder::new(*self, method_name)
     }
 }
 
 impl private_trait::Sealed for AgentId {}
 impl CallMethod for AgentId {
-    fn call_method(&self, method_name: &str) -> events::CallBuilder<Self, Init> {
-        events::CallBuilder::new(*self, method_name)
+    fn call_method(&self, _method_name: &str) -> events::CallBuilder<Init> {
+        todo!("Remove this")
     }
 }
 

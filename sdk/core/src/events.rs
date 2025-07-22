@@ -101,17 +101,17 @@ impl CallAction {
 pub(crate) struct Init;
 struct WithAction;
 
-/// Builder to create a new `ContractCall` or `AgentCall`
-pub struct CallBuilder<ID, STATE> {
-    pub(crate) id: ID,
+/// Builder to create a new `ContractCall`
+pub struct CallBuilder<STATE> {
+    pub(crate) id: ContractId,
     pub(crate) name: String,
     pub(crate) writer: Option<BorderlessId>,
     pub(crate) action: Option<CallAction>,
     _marker: std::marker::PhantomData<STATE>,
 }
 
-impl<ID> CallBuilder<ID, Init> {
-    pub fn new(id: ID, method_name: &str) -> CallBuilder<ID, Init> {
+impl CallBuilder<Init> {
+    pub fn new(id: ContractId, method_name: &str) -> CallBuilder<Init> {
         CallBuilder {
             id,
             name: method_name.to_string(),
@@ -121,7 +121,7 @@ impl<ID> CallBuilder<ID, Init> {
         }
     }
 
-    pub fn with_value(self, value: Value) -> CallBuilder<ID, WithAction> {
+    pub fn with_value(self, value: Value) -> CallBuilder<WithAction> {
         let action = CallAction::by_method(&self.name, value);
         CallBuilder {
             id: self.id,
@@ -135,7 +135,7 @@ impl<ID> CallBuilder<ID, Init> {
     pub fn with_args<T: serde::Serialize>(
         self,
         args: T,
-    ) -> Result<CallBuilder<ID, WithAction>, crate::Error> {
+    ) -> Result<CallBuilder<WithAction>, crate::Error> {
         let value = serde_json::to_value(args).map_err(|e| {
             crate::Error::msg(format!("failed to convert args for method-call: {e}"))
         })?;
@@ -150,22 +150,14 @@ impl<ID> CallBuilder<ID, Init> {
     }
 }
 
-impl<ID> CallBuilder<ID, WithAction> {
+impl<ID> CallBuilder<WithAction> {
     pub fn with_writer(
         self,
         writer_alias: impl AsRef<str>,
-    ) -> Result<CallBuilder<ID, WithAction>, crate::Error> {
+    ) -> Result<CallBuilder<WithAction>, crate::Error> {
         // Check if a participant with the provided alias exists
-        let writer_id = env::participants()
-            .into_iter()
-            .find(|p| p.alias.eq_ignore_ascii_case(writer_alias.as_ref()))
-            .map(|p| p.id)
-            .with_context(|| {
-                format!(
-                    "failed to find participant with alias '{}'",
-                    writer_alias.as_ref()
-                )
-            })?;
+        let writer_id = env::participant(writer_alias)?;
+
         // Check that the writer actually has access to the required sink
         env::sinks()
             .into_iter()
@@ -187,7 +179,6 @@ impl<ID> CallBuilder<ID, WithAction> {
     }
 
     pub fn build(self) -> Result<ContractCall, crate::Error> {
-        // TODO: Check if writer is NONE - search through sinks, and find the correct one
         // TODO: Check that this writer actually has access to the required sink
         todo!()
     }
