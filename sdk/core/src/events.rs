@@ -180,6 +180,7 @@ impl CallBuilder<CBWithAction> {
             });
         }
 
+        // Ensure there is a single match when looking for a sink
         let writer = match sinks.len() {
             0 => return Err(anyhow!("No sink with specified contract and writer found")),
             1 => {
@@ -189,9 +190,15 @@ impl CallBuilder<CBWithAction> {
             _ => return Err(anyhow!("The writer has multiple sinks")),
         };
 
+        // Invariant: 'action' should be set by the state transition
+        let action = match self.action {
+            None => return Err(anyhow!("Action must be specified")),
+            Some(action) => action,
+        };
+
         Ok(ContractCall {
             contract_id: self.id,
-            action: self.action.unwrap(),
+            action,
             writer,
         })
     }
