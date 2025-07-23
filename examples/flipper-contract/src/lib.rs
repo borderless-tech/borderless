@@ -1,7 +1,7 @@
 #[borderless::contract]
 pub mod flipper {
+    use borderless::collections::lazyvec::LazyVec;
     use borderless::prelude::*;
-    use borderless::{collections::lazyvec::LazyVec, ContractId};
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
@@ -17,8 +17,6 @@ pub mod flipper {
         counter: u32,
         history: LazyVec<History>,
     }
-
-    use self::actions::Actions;
 
     impl Flipper {
         #[action]

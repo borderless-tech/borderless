@@ -5,7 +5,6 @@ pub mod hello {
         agents::{WebsocketHandler, WsConfig},
         *,
     };
-    use events::ActionOutput;
 
     #[derive(State)]
     pub struct Hello {

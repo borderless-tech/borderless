@@ -2,10 +2,8 @@ mod contract_actions;
 
 #[borderless::agent]
 pub mod cc_agent {
-    use super::contract_actions::Actions as ContractActions;
     use borderless::events::Events;
     use borderless::*;
-    use events::ActionOutput;
     use serde::{Deserialize, Serialize};
 
     // --- This is the code that the user writes

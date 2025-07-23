@@ -9,7 +9,6 @@ mod agent_actions;
 pub mod cc_contract {
     use borderless::events::Events;
     use borderless::*;
-    use events::ActionOutput;
     use serde::{Deserialize, Serialize};
 
     // --- This is the code that the user writes
