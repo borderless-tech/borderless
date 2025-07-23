@@ -419,6 +419,23 @@ where
 // Events
 //
 // .. and their crate::Result<T> equivalents
+impl Sealed for Events {}
+impl ActionOutput for Events {
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        Ok(self)
+    }
+}
+
+impl<E> Sealed for Result<Events, E> where E: Display + Debug + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<Events, E>
+where
+    E: Display + Debug + Send + Sync + 'static,
+{
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        let inner = self.map_err(|e| crate::Error::msg(e))?;
+        inner.convert_out_events()
+    }
+}
 
 impl Sealed for ContractCall {}
 impl ActionOutput for ContractCall {
