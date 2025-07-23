@@ -93,7 +93,7 @@ impl ActionFn {
             quote! {
                 #access_check
                 let result = #state_ident::#fn_ident(#mut_state);
-                <#return_type as ::borderless::events::ActionOutEvent>::convert_out_events(result)
+                <#return_type as ::borderless::events::ActionOutput>::convert_out_events(result)
             }
         } else {
             let arg_idents = self.args.iter().map(|a| a.0.clone());
@@ -101,7 +101,7 @@ impl ActionFn {
                 #access_check
                 let args: __derived::#args_ident = ::borderless::serialize::from_value(action.params)?;
                 let result = #state_ident::#fn_ident(#mut_state, #(args.#arg_idents),*);
-                <#return_type as ::borderless::events::ActionOutEvent>::convert_out_events(result)
+                <#return_type as ::borderless::events::ActionOutput>::convert_out_events(result)
             }
         }
     }
