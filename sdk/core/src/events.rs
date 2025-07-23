@@ -96,8 +96,8 @@ impl CallAction {
     }
 }
 
-pub struct Init;
-pub struct WithAction;
+pub struct CBInit;
+pub struct CBWithAction;
 
 /// Builder to create a new `ContractCall`
 pub struct CallBuilder<STATE> {
@@ -108,8 +108,8 @@ pub struct CallBuilder<STATE> {
     _marker: std::marker::PhantomData<STATE>,
 }
 
-impl CallBuilder<Init> {
-    pub fn new(id: ContractId, method_name: &str) -> CallBuilder<Init> {
+impl CallBuilder<CBInit> {
+    pub fn new(id: ContractId, method_name: &str) -> CallBuilder<CBInit> {
         CallBuilder {
             id,
             name: method_name.to_string(),
@@ -119,7 +119,7 @@ impl CallBuilder<Init> {
         }
     }
 
-    pub fn with_value(self, value: Value) -> CallBuilder<WithAction> {
+    pub fn with_value(self, value: Value) -> CallBuilder<CBWithAction> {
         let action = CallAction::by_method(&self.name, value);
         CallBuilder {
             id: self.id,
@@ -133,7 +133,7 @@ impl CallBuilder<Init> {
     pub fn with_args<T: serde::Serialize>(
         self,
         args: T,
-    ) -> Result<CallBuilder<WithAction>, crate::Error> {
+    ) -> Result<CallBuilder<CBWithAction>, crate::Error> {
         let value = serde_json::to_value(args).map_err(|e| {
             crate::Error::msg(format!("failed to convert args for method-call: {e}"))
         })?;
@@ -148,11 +148,11 @@ impl CallBuilder<Init> {
     }
 }
 
-impl CallBuilder<WithAction> {
+impl CallBuilder<CBWithAction> {
     pub fn with_writer(
         self,
         writer_alias: impl AsRef<str>,
-    ) -> Result<CallBuilder<WithAction>, crate::Error> {
+    ) -> Result<CallBuilder<CBWithAction>, crate::Error> {
         // Check if a participant with the provided alias exists
         let writer_id = env::participant(writer_alias.as_ref())?;
         Ok(CallBuilder {

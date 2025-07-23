@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::events::Events;
 use crate::{
     __private::send_ws_msg,
-    events::{ActionOutput, CallAction, MethodOrId},
+    events::Events,
+    events::{CallAction, MethodOrId},
 };
 
 /// Schedules are functions that are executed periodically.

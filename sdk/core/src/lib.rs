@@ -53,22 +53,22 @@ pub mod common;
 pub mod events;
 pub mod http;
 
-use crate::events::Init;
+use crate::events::CBInit;
 
 pub trait CallMethod: Sized + private_trait::Sealed {
-    fn call_method(&self, method_name: &str) -> events::CallBuilder<Init>;
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<CBInit>;
 }
 
 impl private_trait::Sealed for ContractId {}
 impl CallMethod for ContractId {
-    fn call_method(&self, method_name: &str) -> events::CallBuilder<Init> {
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<CBInit> {
         events::CallBuilder::new(*self, method_name)
     }
 }
 
 impl private_trait::Sealed for AgentId {}
 impl CallMethod for AgentId {
-    fn call_method(&self, _method_name: &str) -> events::CallBuilder<Init> {
+    fn call_method(&self, _method_name: &str) -> events::CallBuilder<CBInit> {
         todo!("Remove this")
     }
 }
