@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Display, str::FromStr};
 
 use borderless_id_types::{AgentId, Uuid};
-use borderless_pkg::{PkgType, WasmPkg};
+use borderless_pkg::WasmPkg;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -246,14 +246,11 @@ pub struct IntroductionDto {
 
 impl From<IntroductionDto> for Introduction {
     fn from(value: IntroductionDto) -> Self {
-        // Generate a new ID if not specified
-        let id = value.id.unwrap_or_else(|| match value.package.pkg_type {
-            PkgType::Contract => Id::from(ContractId::generate()),
-            PkgType::Agent => Id::from(AgentId::generate()),
-        });
-
+        // Precondition: the caller must populate the value
+        // as the WASM side cannot generate IDs randomly
+        assert!(value.id.is_some());
         Self {
-            id,
+            id: value.id.unwrap(),
             participants: value.participants,
             initial_state: value.initial_state,
             sinks: value.sinks,
