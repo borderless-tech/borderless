@@ -96,8 +96,8 @@ impl CallAction {
     }
 }
 
-pub(crate) struct Init;
-struct WithAction;
+pub struct Init;
+pub struct WithAction;
 
 /// Builder to create a new `ContractCall`
 pub struct CallBuilder<STATE> {
