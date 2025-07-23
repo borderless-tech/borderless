@@ -1,5 +1,6 @@
 #[borderless::agent]
 pub mod flipper {
+    use borderless::events::Events;
     use borderless::{Result, *};
     use collections::lazyvec::LazyVec;
     use events::ActionOutput;
@@ -21,11 +22,6 @@ pub mod flipper {
 
     use self::actions::Actions;
 
-    #[derive(NamedSink)]
-    pub enum Sinks {
-        Flipper(Actions),
-    }
-
     impl Flipper {
         #[action]
         fn flip_switch(&mut self) {
@@ -43,10 +39,8 @@ pub mod flipper {
         }
 
         #[action]
-        pub fn set_other(&self, switch: bool) -> Result<ActionOutput> {
-            let mut out = ActionOutput::default();
-            out.add_event(Sinks::Flipper(Actions::SetSwitch { switch }));
-            Ok(out)
+        pub fn set_other(&self, _switch: bool) -> Result<Events> {
+            todo!("Implement message system")
         }
     }
 }

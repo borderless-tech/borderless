@@ -1,5 +1,6 @@
 #[borderless::agent(websocket = true)]
 pub mod hello {
+    use borderless::events::Events;
     use borderless::{
         agents::{WebsocketHandler, WsConfig},
         *,
@@ -41,11 +42,8 @@ pub mod hello {
             }
         }
 
-        fn on_message(&mut self, msg: Vec<u8>) -> Result<Option<ActionOutput>, Self::Err> {
-            let msg = String::from_utf8(msg).map_err(|e| e.to_string())?;
-            self.cnt_ws += 1;
-            info!("- received ws-msg no {}: {msg}", self.cnt_ws);
-            Ok(None)
+        fn on_message(&mut self, _msg: Vec<u8>) -> Result<Option<Events>, Self::Err> {
+            todo!("Implement messages system")
         }
     }
 }
