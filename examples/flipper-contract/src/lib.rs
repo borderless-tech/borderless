@@ -36,10 +36,10 @@ pub mod flipper {
 
         #[action(web_api = true, roles = "Flipper")]
         pub fn set_other(&self, switch: bool) -> Result<ContractCall> {
-            let call = env::sink("otherflipper")?
+            let call = env::sink("flipper")?
                 .call_method("set_switch")
-                .with_value(value! { switch })
-                .with_writer("flipper")?
+                .with_value(value!({ "switch": switch }))
+                .with_writer("alpha")?
                 .build()?;
 
             // Or emit messages:
