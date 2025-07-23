@@ -447,7 +447,7 @@ impl ActionOutput for ContractCall {
 impl<E> Sealed for Result<ContractCall, E> where E: Display + Debug + Send + Sync + 'static {}
 impl<E> ActionOutput for Result<ContractCall, E>
 where
-    E: Display + std::fmt::Debug + Send + Sync + 'static,
+    E: Display + Debug + Send + Sync + 'static,
 {
     fn convert_out_events(self) -> crate::Result<Events> {
         let inner = self.map_err(|e| crate::Error::msg(e))?;
