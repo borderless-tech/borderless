@@ -34,6 +34,9 @@ pub struct ActionFn {
 }
 
 impl ActionFn {
+    /// Generates an enum field for the Actions-Enum
+    ///
+    /// An action like `fn set_switch(&mut self, switch: bool)` would become `SetSwitch { switch: bool }`
     pub fn gen_field(&self) -> TokenStream2 {
         let fields = self.args.iter().map(|a| a.0.clone());
         let types = self.args.iter().map(|a| a.1.clone());
@@ -43,6 +46,16 @@ impl ActionFn {
         }
     }
 
+    /// Generates the match block for the Actions-Enum
+    ///
+    /// An action like `fn set_switch(&mut self, switch: bool)` would become:
+    /// ```no_compile
+    /// Actions::SetSwitch { switch } => {
+    ///     let args = SetSwitchArgs { switch };
+    ///     let args_value = to_value(&args);
+    ///     CallAction::by_method("set_switch", args_value)
+    /// }
+    /// ```
     pub fn gen_field_match(&self) -> TokenStream2 {
         let fields: Vec<_> = self.args.iter().map(|a| a.0.clone()).collect();
         let field_ident = self.field_ident();
@@ -57,6 +70,9 @@ impl ActionFn {
         }
     }
 
+    /// Generates the arguments struct from the action
+    ///
+    /// An action like `fn set_switch(&mut self, switch: bool)` would generate `pub(crate) __SetSwitchArgs { switch: bool }`
     pub fn gen_type_tokens(&self) -> TokenStream2 {
         let args_ident = self.args_ident();
         let fields = self.args.iter().map(|a| a.0.clone());
@@ -158,10 +174,16 @@ impl ActionFn {
         }
     }
 
+    /// Returns the identifier for the generated arguments struct of the action
+    ///
+    /// An action like `fn set_switch(&mut self, switch: bool)` would generate `__SetSwitchArgs { switch: bool }`
     fn args_ident(&self) -> Ident {
         format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal))
     }
 
+    /// Returns the identifier for the enum fields
+    ///
+    /// Converts from snake_case to PascalCase
     fn field_ident(&self) -> Ident {
         format_ident!("{}", self.ident.to_string().to_case(Case::Pascal))
     }
