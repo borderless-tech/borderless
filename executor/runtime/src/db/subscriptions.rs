@@ -61,11 +61,15 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
             if !key.starts_with(topic_prefix) {
                 break;
             }
+            // TODO Read subscriber from key
             // Parse AgentId from encoded bytes
             let s = std::str::from_utf8(value).with_context(|| "Deserialization failed")?;
-            let agent = AgentId::from_str(s).with_context(|| "AgentId deserialization error")?;
+            let publisher =
+                AgentId::from_str(s).with_context(|| "AgentId deserialization error")?;
+
+            // TODO If publisher match, then add subscriber to vector
             // Push subscriber to vector
-            subscribers.push(agent);
+            //subscribers.push(agent);
         }
         Ok(subscribers)
     }
