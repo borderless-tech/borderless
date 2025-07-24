@@ -1,12 +1,10 @@
-use anyhow::{anyhow, Context};
+use crate::events::private::Sealed;
+use crate::prelude::env;
+use anyhow::anyhow;
 use borderless_id_types::{AgentId, BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{fmt::Display, str::FromStr};
-
-use crate::events::private::Sealed;
-use crate::prelude::env;
-use crate::{common::Id, debug, error, NamedSink};
+use std::{fmt::Debug, fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -98,82 +96,111 @@ impl CallAction {
     }
 }
 
-struct Init;
-struct WithAction;
+pub struct CBInit;
+pub struct CBWithAction;
 
-/// Builder to create a new `ContractCall` or `AgentCall`
-pub struct CallBuilder<ID, STATE> {
-    pub(crate) id: ID,
+/// Builder to create a new `ContractCall`
+pub struct CallBuilder<STATE> {
+    pub(crate) id: ContractId,
     pub(crate) name: String,
     pub(crate) writer: Option<BorderlessId>,
     pub(crate) action: Option<CallAction>,
     _marker: std::marker::PhantomData<STATE>,
 }
 
-impl<ID> CallBuilder<ID, Init> {
-    pub fn with_value(self, value: serde_json::Value) -> CallBuilder<ID, WithAction> {
+impl CallBuilder<CBInit> {
+    pub fn new(id: ContractId, method_name: &str) -> CallBuilder<CBInit> {
+        CallBuilder {
+            id,
+            name: method_name.to_string(),
+            writer: None,
+            action: None,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn with_value(self, value: Value) -> CallBuilder<CBWithAction> {
         let action = CallAction::by_method(&self.name, value);
-        Self {
+        CallBuilder {
             id: self.id,
             name: self.name,
-            writer: self.writer,
+            writer: None,
             action: Some(action),
-            _marker: std::marker::PhantomData::default(),
+            _marker: std::marker::PhantomData,
         }
     }
 
     pub fn with_args<T: serde::Serialize>(
         self,
         args: T,
-    ) -> Result<CallBuilder<ID, WithAction>, crate::Error> {
+    ) -> Result<CallBuilder<CBWithAction>, crate::Error> {
         let value = serde_json::to_value(args).map_err(|e| {
             crate::Error::msg(format!("failed to convert args for method-call: {e}"))
         })?;
         let action = CallAction::by_method(&self.name, value);
-        Ok(Self {
+        Ok(CallBuilder {
             id: self.id,
             name: self.name,
-            writer: self.writer,
+            writer: None,
             action: Some(action),
-            _marker: std::marker::PhantomData::default(),
-        })
-    }
-}
-
-impl<ID> CallBuilder<ID, WithAction> {
-    pub fn with_writer(self, writer_alias: impl AsRef<str>) -> Result<Self, crate::Error> {
-        let writer_id = env::participants()
-            .into_iter()
-            .find(|p| p.alias.eq_ignore_ascii_case(writer_alias.as_ref()))
-            .map(|p| p.id)
-            .with_context(|| {
-                format!(
-                    "failed to find participant with alias '{}'",
-                    writer_alias.as_ref()
-                )
-            })?;
-        // TODO: Check that this writer actually has access to the required sink
-        Ok(Self {
-            id: self.id,
-            name: self.name,
-            writer: Some(writer_id),
-            action: self.action,
             _marker: std::marker::PhantomData,
         })
     }
 }
 
-impl CallBuilder<ContractId, WithAction> {
-    pub fn build(self) -> Result<ContractCall, crate::Error> {
-        // TODO: Check if writer is NONE - search through sinks, and find the correct one
-        // TODO: Check that this writer actually has access to the required sink
-        todo!()
+impl CallBuilder<CBWithAction> {
+    pub fn with_writer(
+        self,
+        writer_alias: impl AsRef<str>,
+    ) -> Result<CallBuilder<CBWithAction>, crate::Error> {
+        // Check if a participant with the provided alias exists
+        let writer_id = env::participant(writer_alias.as_ref())?;
+        Ok(CallBuilder {
+            id: self.id,
+            name: self.name,
+            writer: Some(writer_id),
+            action: self.action,
+            _marker: std::marker::PhantomData::default(),
+        })
     }
-}
 
-impl CallBuilder<AgentId, WithAction> {
     pub fn build(self) -> Result<ContractCall, crate::Error> {
-        todo!()
+        // Fetch the sinks related to the contract
+        let mut sinks: Vec<Sink> = env::sinks()
+            .into_iter()
+            .filter(|s| s.contract_id == self.id)
+            .collect();
+
+        // Retain the sinks with our writer
+        if let Some(call_writer) = self.writer {
+            sinks.retain(|s: &Sink| {
+                let alias = s.writer.clone();
+                let sink_writer = env::participant(alias).expect("Writer must exist");
+                call_writer == sink_writer
+            });
+        }
+
+        // Ensure there is a single match when looking for a sink
+        let writer = match sinks.len() {
+            0 => return Err(anyhow!("No sink with specified contract and writer found")),
+            1 => {
+                let sink = sinks.pop().unwrap();
+                env::participant(sink.writer)?
+            }
+            _ => return Err(anyhow!("The writer has multiple sinks")),
+        };
+
+        // Invariant: 'action' should be set by the state transition
+        let action = match self.action {
+            None => return Err(anyhow!("Action must be specified")),
+            Some(action) => action,
+        };
+
+        Ok(ContractCall {
+            contract_id: self.id,
+            action,
+            writer,
+        })
     }
 }
 
@@ -182,7 +209,7 @@ impl CallBuilder<AgentId, WithAction> {
 pub struct ContractCall {
     pub contract_id: ContractId,
     pub action: CallAction,
-    //pub writer_id: BorderlessId,
+    pub writer: BorderlessId,
 }
 
 /// An outgoing event for another agent
@@ -370,7 +397,7 @@ impl Display for SinkType {
 ///
 /// Note: This trait converts `()`, `ActionOutput`, `Result<(), E>` and `Result<ActionOutput, E>` into [`Events`].
 /// The implementation of `ActionOutput` also checks, if the writer actually has access to a sink.
-pub trait ActionOutput: private::Sealed {
+pub trait ActionOutput: Sealed {
     fn convert_out_events(self) -> crate::Result<Events>;
 }
 
@@ -378,17 +405,17 @@ mod private {
     pub trait Sealed {}
 }
 
-impl private::Sealed for () {}
+impl Sealed for () {}
 impl ActionOutput for () {
     fn convert_out_events(self) -> crate::Result<Events> {
         Ok(Events::default())
     }
 }
 
-impl<E> private::Sealed for Result<(), E> where E: std::fmt::Display + Send + Sync + 'static {}
+impl<E> Sealed for Result<(), E> where E: Display + Send + Sync + 'static {}
 impl<E> ActionOutput for Result<(), E>
 where
-    E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static,
+    E: Display + Debug + Send + Sync + 'static,
 {
     fn convert_out_events(self) -> crate::Result<Events> {
         self.map_err(|e| crate::Error::msg(e))?.convert_out_events()
@@ -397,55 +424,61 @@ where
 
 // TODO We have to implement this on a bunch of different types:
 // Events
-// ContractCall
-// Vec<ContractCall>
-// AgentCall
-// Vec<AgentCall>
 //
 // .. and their crate::Result<T> equivalents
+impl Sealed for Events {}
+impl ActionOutput for Events {
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        Ok(self)
+    }
+}
+
+impl<E> Sealed for Result<Events, E> where E: Display + Debug + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<Events, E>
+where
+    E: Display + Debug + Send + Sync + 'static,
+{
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        let inner = self.map_err(|e| crate::Error::msg(e))?;
+        inner.convert_out_events()
+    }
+}
 
 impl Sealed for ContractCall {}
 impl ActionOutput for ContractCall {
     fn convert_out_events(self) -> crate::Result<Events> {
-        let caller = crate::contracts::env::executor();
-        let participants = crate::contracts::env::participants();
-        let sinks = crate::contracts::env::sinks();
-
-        let sink = sinks
-            .into_iter()
-            .find(|s| s.contract_id == self.contract_id)
-            .context("No sink points to the contract")?;
-
-        let writer = participants
-            .into_iter()
-            .find(|p| p.alias == sink.writer)
-            .context("Sink writer not found")?;
-
-        // Only the sink's writer is allowed to trigger the action
-        if caller == writer.id {
-            Ok(Events::from(self))
-        } else {
-            Ok(Events::default())
-        }
+        Ok(Events::from(self))
     }
 }
 
-/*
-impl<E> private::Sealed for Result<ActionOutput, E> where
-    E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static
-{
-}
-impl<E> ActionOutEvent for Result<ActionOutput, E>
+impl<E> Sealed for Result<ContractCall, E> where E: Display + Debug + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<ContractCall, E>
 where
-    E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static,
+    E: Display + Debug + Send + Sync + 'static,
 {
     fn convert_out_events(self) -> crate::Result<Events> {
         let inner = self.map_err(|e| crate::Error::msg(e))?;
         inner.convert_out_events()
     }
 }
- */
 
+impl Sealed for Vec<ContractCall> {}
+impl ActionOutput for Vec<ContractCall> {
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        Ok(Events::from(self))
+    }
+}
+
+impl<E> Sealed for Result<Vec<ContractCall>, E> where E: Display + Debug + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<Vec<ContractCall>, E>
+where
+    E: Display + Debug + Send + Sync + 'static,
+{
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        let inner = self.map_err(|e| crate::Error::msg(e))?;
+        inner.convert_out_events()
+    }
+}
 /// An event Sink for a smart-contract
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sink {

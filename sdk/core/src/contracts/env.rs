@@ -1,7 +1,7 @@
 use anyhow::Context;
 use borderless_id_types::{BlockIdentifier, TxIdentifier};
 
-use super::{BlockCtx, Role, Sink, TxCtx};
+use super::{BlockCtx, Sink, TxCtx};
 use crate::common::Participant;
 use crate::{
     BorderlessId, ContractId,
@@ -21,6 +21,14 @@ pub fn contract_id() -> ContractId {
 /// Returns the contract participants
 pub fn participants() -> Vec<Participant> {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS).expect("participants not in metadata")
+}
+
+pub fn participant(alias: impl AsRef<str>) -> crate::Result<BorderlessId> {
+    participants()
+        .into_iter()
+        .find(|p| p.alias.eq_ignore_ascii_case(alias.as_ref()))
+        .map(|p| p.id)
+        .with_context(|| format!("failed to find participant with alias '{}'", alias.as_ref()))
 }
 
 /// Returns the available sinks of this contract

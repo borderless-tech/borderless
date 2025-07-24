@@ -1,7 +1,7 @@
 #[borderless::contract]
 pub mod flipper {
+    use borderless::collections::lazyvec::LazyVec;
     use borderless::prelude::*;
-    use borderless::{collections::lazyvec::LazyVec, ContractId};
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
@@ -16,13 +16,6 @@ pub mod flipper {
         switch: bool,
         counter: u32,
         history: LazyVec<History>,
-    }
-
-    use self::actions::Actions;
-
-    #[derive(NamedSink)]
-    pub enum Sinks {
-        Flipper(Actions),
     }
 
     impl Flipper {
@@ -42,17 +35,16 @@ pub mod flipper {
         }
 
         #[action(web_api = true, roles = "Flipper")]
-        pub fn set_other(&self, switch: bool) -> Result<ActionOutput> {
-            let call = env::sink("otherflipper")?
+        pub fn set_other(&self, switch: bool) -> Result<ContractCall> {
+            let call = env::sink("flipper")?
                 .call_method("set_switch")
-                .with_value(value! { switch })
-                .with_writer("flipper")
+                .with_value(value!({ "switch": switch }))
+                .with_writer("alpha")?
                 .build()?;
 
             // Or emit messages:
-            let msg = message("/foo/baa").with_value(value! { switch });
-
-            todo!()
+            //let msg = message("/foo/baa").with_value(value! { switch });
+            Ok(call)
         }
     }
 }

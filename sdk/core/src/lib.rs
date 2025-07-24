@@ -17,7 +17,7 @@ pub mod serialize {
 
 // Directly export macros, so that the user can write:
 // #[borderless::contract], #[borderless::agent] and #[borderless::action]
-pub use borderless_sdk_macros::{action, agent, contract, schedule, NamedSink, State};
+pub use borderless_sdk_macros::{action, agent, contract, schedule, State};
 
 /// This module is **not** part of the public API.
 /// It exists, because the procedural macros and some internal implementations (like the contract runtime) rely on it.
@@ -53,40 +53,23 @@ pub mod common;
 pub mod events;
 pub mod http;
 
-/// Trait that must be implemented on the `Sink` enum inside a contract module.
-///
-/// Implementing this trait ensures, that you can split the sink into a static string
-/// (which represents the 'alias'-string we use to match sinks) and a CallAction object,
-/// which will be used to generate the output transaction.
-#[deprecated]
-pub trait NamedSink {
-    /// Splits the sink into its alias and the encoded CallAction object.
-    ///
-    /// Errors while converting the action should be converted into a wasm trap.
-    fn into_action(self) -> (&'static str, events::CallAction);
-}
+use crate::events::CBInit;
 
 pub trait CallMethod: Sized + private_trait::Sealed {
-    fn call_method(&self, method_name: &str) -> events::CallBuilder<Self>;
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<CBInit>;
 }
 
 impl private_trait::Sealed for ContractId {}
 impl CallMethod for ContractId {
-    fn call_method(&self, method_name: &str) -> events::CallBuilder<Self> {
-        events::CallBuilder {
-            id: *self,
-            name: method_name.to_string(),
-        }
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<CBInit> {
+        events::CallBuilder::new(*self, method_name)
     }
 }
 
 impl private_trait::Sealed for AgentId {}
 impl CallMethod for AgentId {
-    fn call_method(&self, method_name: &str) -> events::CallBuilder<Self> {
-        events::CallBuilder {
-            id: *self,
-            name: method_name.to_string(),
-        }
+    fn call_method(&self, _method_name: &str) -> events::CallBuilder<CBInit> {
+        todo!("Remove this")
     }
 }
 

@@ -7,20 +7,14 @@ mod agent_actions;
 
 #[borderless::contract]
 pub mod cc_contract {
-    use super::agent_actions::Actions as ProcActions;
+    use borderless::events::Events;
     use borderless::*;
-    use events::ActionOutput;
     use serde::{Deserialize, Serialize};
 
     // --- This is the code that the user writes
     #[derive(State, Serialize, Deserialize, PartialEq, Eq, Debug)]
     pub struct CC {
         pub number: u32,
-    }
-
-    #[derive(NamedSink)]
-    pub enum Sinks {
-        NextProcess(ProcActions),
     }
 
     impl CC {
@@ -32,13 +26,8 @@ pub mod cc_contract {
 
         /// Starts calling the process
         #[action(web_api = true)]
-        pub fn call_next(&mut self) -> Result<ActionOutput> {
-            // Use own number + 1 and call the process to call the next process
-            let mut out = ActionOutput::default();
-            out.add_event(Sinks::NextProcess(ProcActions::IncreaseProcess {
-                number: self.number + 1,
-            }));
-            Ok(out)
+        pub fn call_next(&mut self) -> Result<Events> {
+            todo!("Use new contract sink concept")
         }
     }
 }
