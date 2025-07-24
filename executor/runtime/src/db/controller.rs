@@ -1,6 +1,7 @@
 use super::{
     action_log::{ActionLog, ActionRecord, RelTxAction},
     logger::Logger,
+    subscriptions::SubscriptionHandler,
 };
 use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB};
 use borderless::common::Participant;
@@ -39,9 +40,9 @@ impl<'a, S: Db> Controller<'a, S> {
         Logger::new(self.db, id)
     }
 
-    //pub fn messages(&self) -> SubscriptionHandler<'a, S> {
-    //    ...
-    //}
+    pub fn messages(&self) -> SubscriptionHandler<'a, S> {
+        SubscriptionHandler::new(self.db)
+    }
 
     /// List of contract-participants
     pub fn contract_participants(&self, cid: &ContractId) -> Result<Option<Vec<Participant>>> {
