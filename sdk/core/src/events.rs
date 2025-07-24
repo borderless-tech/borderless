@@ -277,6 +277,8 @@ pub struct Message {
 /// - `/My-Topic`
 /// - `MY-TOPIC`
 pub fn message(topic: impl AsRef<str>) -> MsgBuilder {
+    // TODO: Do we automatically prepend the contract-id or agent-id of the emitter ?
+    // -> I think it might be smart to do it here (or in the .build() function)
     MsgBuilder {
         topic: topic.as_ref().to_string(),
     }

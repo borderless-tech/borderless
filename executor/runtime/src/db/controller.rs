@@ -39,6 +39,10 @@ impl<'a, S: Db> Controller<'a, S> {
         Logger::new(self.db, id)
     }
 
+    //pub fn messages(&self) -> SubscriptionHandler<'a, S> {
+    //    ...
+    //}
+
     /// List of contract-participants
     pub fn contract_participants(&self, cid: &ContractId) -> Result<Option<Vec<Participant>>> {
         self.read_value(
