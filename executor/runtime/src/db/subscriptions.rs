@@ -1,11 +1,35 @@
+use crate::SUBSCRIPTION_REL_SUB_DB;
+use anyhow::Result;
+use borderless::common::Id;
+use borderless::AgentId;
+use borderless_kv_store::{Db, RawWrite, Tx};
+use wasmtime::component::__internal::anyhow;
+
 pub struct SubscriptionHandler<'a, S: Db> {
     db: &'a S,
 }
 
-impl SubscriptionHandler {
-    pub fn subscribe(subscriber: AgentId, publisher: Id, unprefixed_topic: String) {
-        let topic = format!("/{publisher}/{unprefixed_topic}"); // TODO: Handle lowercase + trailing slash etc.
-        todo!()
+impl<'a, S: Db> SubscriptionHandler<'a, S> {
+    pub fn new(db: &'a S) -> Self {
+        Self { db }
+    }
+    pub fn subscribe(&self, subscriber: AgentId, publisher: Id, topic: String) -> Result<()> {
+        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
+        let mut txn = self.db.begin_rw_txn()?;
+
+        // Current DB relationship = topic | receiver => publisher
+        // TODO: Handle lowercase + trailing slash etc.
+        let subscriber = subscriber.to_string().to_ascii_lowercase();
+        let publisher = match publisher {
+            Id::Contract { contract_id } => contract_id.to_string().to_ascii_lowercase(),
+            Id::Agent { agent_id } => agent_id.to_string().to_ascii_lowercase(),
+        };
+
+        let key = format!("{publisher}{topic}");
+
+        txn.write(&db_ptr, &key, &subscriber)?;
+        txn.commit()?;
+        Ok(())
     }
 
     pub fn unsubscribe(unsubscriber: AgentId, publisher: Id, unprefixed_topic: String) {
