@@ -1,9 +1,9 @@
+use crate::Result;
 use crate::SUBSCRIPTION_REL_SUB_DB;
-use anyhow::Result;
 use borderless::common::Id;
-use borderless::AgentId;
-use borderless_kv_store::{Db, RawWrite, Tx};
-use wasmtime::component::__internal::anyhow;
+use borderless::{AgentId, Context};
+use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx, Tx};
+use std::str::FromStr;
 
 pub struct SubscriptionHandler<'a, S: Db> {
     db: &'a S,
@@ -17,31 +17,28 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let mut txn = self.db.begin_rw_txn()?;
 
-        // Current DB relationship = topic | receiver => publisher
+        // Current DB relationship = topic | subscriber => publisher
         // TODO: Handle lowercase + trailing slash etc.
         let subscriber = subscriber.to_string().to_ascii_lowercase();
         let publisher = match publisher {
             Id::Contract { contract_id } => contract_id.to_string().to_ascii_lowercase(),
             Id::Agent { agent_id } => agent_id.to_string().to_ascii_lowercase(),
         };
-        let key = format!("{publisher}{topic}");
+        let key = format!("{topic}{subscriber}");
 
         // Apply changes to DB
-        txn.write(&db_ptr, &key, &subscriber)?;
+        txn.write(&db_ptr, &key, &publisher)?;
         txn.commit()?;
         Ok(())
     }
 
-    pub fn unsubscribe(&self, publisher: Id, topic: String) -> Result<()> {
+    pub fn unsubscribe(&self, subscriber: AgentId, topic: String) -> Result<()> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let mut txn = self.db.begin_rw_txn()?;
 
         // TODO Create auxiliary function DRY?
-        let publisher = match publisher {
-            Id::Contract { contract_id } => contract_id.to_string().to_ascii_lowercase(),
-            Id::Agent { agent_id } => agent_id.to_string().to_ascii_lowercase(),
-        };
-        let key = format!("{publisher}{topic}");
+        let subscriber = subscriber.to_string().to_ascii_lowercase();
+        let key = format!("{topic}{subscriber}");
 
         // Apply changes to DB
         txn.delete(&db_ptr, &key)?;
@@ -49,8 +46,28 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         Ok(())
     }
 
-    pub fn get_subscribers_of_topic(topic: String) -> Vec<AgentId> {
-        todo!()
+    pub fn get_topic_subscribers(&self, publisher: String, topic: String) -> Result<Vec<AgentId>> {
+        // Access to DB
+        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
+        let txn = self.db.begin_ro_txn()?;
+        let mut cursor = txn.ro_cursor(&db_ptr)?;
+
+        let mut subscribers = Vec::new();
+        // TODO Get Sized bytes
+        let topic_prefix = topic.as_bytes();
+
+        for (key, value) in cursor.iter_from(topic_prefix) {
+            // Stop iterating when prefix no longer matches
+            if !key.starts_with(topic_prefix) {
+                break;
+            }
+            // Parse AgentId from encoded bytes
+            let s = std::str::from_utf8(value).with_context(|| "Deserialization failed")?;
+            let agent = AgentId::from_str(s).with_context(|| "AgentId deserialization error")?;
+            // Push subscriber to vector
+            subscribers.push(agent);
+        }
+        Ok(subscribers)
     }
 
     pub fn get_subscribers(id: Id) -> Vec<(AgentId, String /* topic-string */)> {
