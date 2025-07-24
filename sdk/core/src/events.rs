@@ -247,47 +247,6 @@ pub struct AgentCall {
     pub action: CallAction,
 }
 
-// TODO: Maybe this is a 'better' abstraction ?
-//
-// -> What I don't like here: This would place the subscribe / unsubscribe logic to the Events / Output.
-// As we designed it, we said: "Events are handled by the outside". Which is fine, since we cannot rely on the Runtime,
-// to dispatch outgoing events into other contracts.
-// However; if the runtime is not capable of handling the subscriptions either, this could lead to cumbersome logic...
-// The main problem: Contracts and Agents cannot modify state outside of their namespace.
-// For the subscriptions, it might be nice to handle them in one central place, and not on a per-contract/agent level,
-// because then we e.g. could not query "how many agents are subscribed to that contract",
-// we could only go through each agent and query "what contracts are you subscribed to".
-//
-// So I think the way to go is really via a "central" system in the database; for which we can write an own type (similar to ActionLog or Logger).
-//
-// ... Nevermind; maybe I am being stupid here - I *can* make the logic use arbitrary storage; I just forbid this using the storage keys.
-// But since the VmState has access to the DB; in principal I might be able to model this out....
-//
-// So fuck this enum; let's add two ABI functions for the agents (subscibe, unsubscribe);
-// for the messages we do it as we modelled it below (using the output events);
-// and then we can add something like a "handle_msgs" hook in the Runtime to e.g. automatically recursively call other agents
-// with the messages or so...
-//
-// pub enum MsgEvent {
-//     Subscribe {
-//         id: Id,
-//         topic: String,
-//         method: String,
-//     },
-//     Unsubscribe {
-//         id: Id,
-//         topic: String,
-//     },
-//     Message {
-//         topic: String,
-//         value: Value,
-//     },
-// }
-//
-//
-// Agent-A -> Contract-B
-//    |           |
-
 /// An outgoing message that clients or agents can subscribe to
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -305,7 +264,7 @@ pub struct Message {
 ///    .with_value(value!({ "switch": false }));
 /// ```
 ///
-/// Note: All topics are prepended with `/{contract-id}` (or `/{agent-id}`),
+/// Note: All topics are prefixed with `/{contract-id}` (or `/{agent-id}`),
 /// so your topic `my-topic` would become e.g. `/cc963345-4cd9-8f30-b215-2cdffee3d189/my-topic`.
 /// This way we distinguish identical topic names for different contracts or agents.
 /// Trailing slashes are ignored, so `/my-topic` and `my-topic` would result in an identical topic string.
