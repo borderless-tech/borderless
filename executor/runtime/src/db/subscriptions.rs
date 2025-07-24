@@ -24,16 +24,29 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
             Id::Contract { contract_id } => contract_id.to_string().to_ascii_lowercase(),
             Id::Agent { agent_id } => agent_id.to_string().to_ascii_lowercase(),
         };
-
         let key = format!("{publisher}{topic}");
 
+        // Apply changes to DB
         txn.write(&db_ptr, &key, &subscriber)?;
         txn.commit()?;
         Ok(())
     }
 
-    pub fn unsubscribe(unsubscriber: AgentId, publisher: Id, unprefixed_topic: String) {
-        todo!()
+    pub fn unsubscribe(&self, publisher: Id, topic: String) -> Result<()> {
+        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
+        let mut txn = self.db.begin_rw_txn()?;
+
+        // TODO Create auxiliary function DRY?
+        let publisher = match publisher {
+            Id::Contract { contract_id } => contract_id.to_string().to_ascii_lowercase(),
+            Id::Agent { agent_id } => agent_id.to_string().to_ascii_lowercase(),
+        };
+        let key = format!("{publisher}{topic}");
+
+        // Apply changes to DB
+        txn.delete(&db_ptr, &key)?;
+        txn.commit()?;
+        Ok(())
     }
 
     pub fn get_subscribers_of_topic(topic: String) -> Vec<AgentId> {
