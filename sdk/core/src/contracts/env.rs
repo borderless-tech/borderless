@@ -7,7 +7,7 @@ use crate::{
     BorderlessId, ContractId,
     __private::{
         read_field, read_register,
-        registers::{REGISTER_BLOCK_CTX, REGISTER_EXECUTOR, REGISTER_TX_CTX, REGISTER_WRITER},
+        registers::{REGISTER_BLOCK_CTX, REGISTER_TX_CTX, REGISTER_WRITER},
         storage_keys::*,
     },
     common::{Description, Metadata},
@@ -36,14 +36,18 @@ pub fn sinks() -> Vec<Sink> {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS).expect("sinks not in metadata")
 }
 
-/// Returns the contract-id of a sink based on its alias
-pub fn sink(alias: impl AsRef<str>) -> crate::Result<ContractId> {
+/// Returns the sink based on its alias
+pub fn sink(alias: impl AsRef<str>) -> crate::Result<Sink> {
     // Search through all sinks
     sinks()
         .into_iter()
         .find(|s| s.has_alias(alias.as_ref()))
-        .map(|s| s.contract_id)
         .with_context(|| format!("failed to find sink with alias '{}'", alias.as_ref()))
+}
+
+/// Returns the contract-id of a sink based on its alias
+pub fn sink_id(alias: impl AsRef<str>) -> crate::Result<ContractId> {
+    sink(alias).map(|s| s.contract_id)
 }
 
 /// Returns the [`Description`] of a contract
@@ -62,11 +66,11 @@ pub fn writer() -> BorderlessId {
     BorderlessId::from_bytes(bytes.try_into().expect("caller must be a borderless-id"))
 }
 
-/// Returns the writer of the current transaction
-pub(crate) fn executor() -> BorderlessId {
-    let bytes = read_register(REGISTER_EXECUTOR).expect("executor not present");
-    BorderlessId::from_bytes(bytes.try_into().expect("executor must be a borderless-id"))
-}
+///// Returns the writer of the current transaction
+//pub(crate) fn executor() -> BorderlessId {
+//    let bytes = read_register(REGISTER_EXECUTOR).expect("executor not present");
+//    BorderlessId::from_bytes(bytes.try_into().expect("executor must be a borderless-id"))
+//}
 
 /// Returns the roles that are assigned to the writer of the current transaction
 pub fn writer_roles() -> Vec<String> {

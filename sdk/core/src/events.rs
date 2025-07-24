@@ -109,7 +109,7 @@ pub struct CallBuilder<STATE> {
 }
 
 impl CallBuilder<CBInit> {
-    pub fn new(id: ContractId, method_name: &str) -> CallBuilder<CBInit> {
+    pub(crate) fn new(id: ContractId, method_name: &str) -> CallBuilder<CBInit> {
         CallBuilder {
             id,
             name: method_name.to_string(),
@@ -119,6 +119,22 @@ impl CallBuilder<CBInit> {
         }
     }
 
+    pub(crate) fn new_with_writer(
+        id: ContractId,
+        method_name: &str,
+        writer: &str,
+    ) -> CallBuilder<CBInit> {
+        let writer = env::participant(writer).expect("sink contains unknown writer");
+        CallBuilder {
+            id,
+            name: method_name.to_string(),
+            writer: Some(writer),
+            action: None,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Specify the arguments of the action directly as a json-value
     pub fn with_value(self, value: Value) -> CallBuilder<CBWithAction> {
         let action = CallAction::by_method(&self.name, value);
         CallBuilder {
@@ -130,6 +146,9 @@ impl CallBuilder<CBInit> {
         }
     }
 
+    /// Specify the arguments of the action
+    ///
+    /// In contrast to `with_value`, this function expects a serializable object to build the json value.
     pub fn with_args<T: serde::Serialize>(
         self,
         args: T,
@@ -149,6 +168,9 @@ impl CallBuilder<CBInit> {
 }
 
 impl CallBuilder<CBWithAction> {
+    /// Specify the writer of the transaction by their alias
+    ///
+    /// Returns an error, if no participant exists with that alias.
     pub fn with_writer(
         self,
         writer_alias: impl AsRef<str>,
@@ -164,47 +186,53 @@ impl CallBuilder<CBWithAction> {
         })
     }
 
+    /// Builds the `ContractCall`
     pub fn build(self) -> Result<ContractCall, crate::Error> {
+        debug_assert!(self.action.is_some(), "invariant: action must be set");
+
+        // NOTE: If we have specified a writer, we don't want to check the existing sinks,
+        // as the user seems to know what he/she is doing (calling an action based on contract-id + writer-id):
+        if let Some(writer) = self.writer {
+            return Ok(ContractCall {
+                contract_id: self.id,
+                action: self.action.unwrap(),
+                writer,
+            });
+        }
+        // --- Proceed as normal, without a writer
+
         // Fetch the sinks related to the contract
         let mut sinks: Vec<Sink> = env::sinks()
             .into_iter()
             .filter(|s| s.contract_id == self.id)
             .collect();
 
-        // Retain the sinks with our writer
-        if let Some(call_writer) = self.writer {
-            sinks.retain(|s: &Sink| {
-                let alias = s.writer.clone();
-                let sink_writer = env::participant(alias).expect("Writer must exist");
-                call_writer == sink_writer
-            });
-        }
-
         // Ensure there is a single match when looking for a sink
         let writer = match sinks.len() {
-            0 => return Err(anyhow!("No sink with specified contract and writer found")),
+            0 => return Err(anyhow!("Found no sink related to contract-id {}", self.id)),
             1 => {
                 let sink = sinks.pop().unwrap();
                 env::participant(sink.writer)?
             }
-            _ => return Err(anyhow!("The writer has multiple sinks")),
-        };
-
-        // Invariant: 'action' should be set by the state transition
-        let action = match self.action {
-            None => return Err(anyhow!("Action must be specified")),
-            Some(action) => action,
+            _ => {
+                return Err(anyhow!(
+                    "Found multiple sinks for contract-id {} - please specify the writer directly",
+                    self.id
+                ));
+            }
         };
 
         Ok(ContractCall {
             contract_id: self.id,
-            action,
+            action: self.action.unwrap(),
             writer,
         })
     }
 }
 
 /// An outgoing event for another contract
+///
+/// `ContractCall`s will be converted into transactions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContractCall {
     pub contract_id: ContractId,
@@ -218,6 +246,47 @@ pub struct AgentCall {
     pub agent_id: AgentId,
     pub action: CallAction,
 }
+
+// TODO: Maybe this is a 'better' abstraction ?
+//
+// -> What I don't like here: This would place the subscribe / unsubscribe logic to the Events / Output.
+// As we designed it, we said: "Events are handled by the outside". Which is fine, since we cannot rely on the Runtime,
+// to dispatch outgoing events into other contracts.
+// However; if the runtime is not capable of handling the subscriptions either, this could lead to cumbersome logic...
+// The main problem: Contracts and Agents cannot modify state outside of their namespace.
+// For the subscriptions, it might be nice to handle them in one central place, and not on a per-contract/agent level,
+// because then we e.g. could not query "how many agents are subscribed to that contract",
+// we could only go through each agent and query "what contracts are you subscribed to".
+//
+// So I think the way to go is really via a "central" system in the database; for which we can write an own type (similar to ActionLog or Logger).
+//
+// ... Nevermind; maybe I am being stupid here - I *can* make the logic use arbitrary storage; I just forbid this using the storage keys.
+// But since the VmState has access to the DB; in principal I might be able to model this out....
+//
+// So fuck this enum; let's add two ABI functions for the agents (subscibe, unsubscribe);
+// for the messages we do it as we modelled it below (using the output events);
+// and then we can add something like a "handle_msgs" hook in the Runtime to e.g. automatically recursively call other agents
+// with the messages or so...
+//
+// pub enum MsgEvent {
+//     Subscribe {
+//         id: Id,
+//         topic: String,
+//         method: String,
+//     },
+//     Unsubscribe {
+//         id: Id,
+//         topic: String,
+//     },
+//     Message {
+//         topic: String,
+//         value: Value,
+//     },
+// }
+//
+//
+// Agent-A -> Contract-B
+//    |           |
 
 /// An outgoing message that clients or agents can subscribe to
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -66,6 +66,13 @@ impl CallMethod for ContractId {
     }
 }
 
+impl private_trait::Sealed for events::Sink {}
+impl CallMethod for events::Sink {
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<CBInit> {
+        events::CallBuilder::new_with_writer(self.contract_id, method_name, &self.writer)
+    }
+}
+
 impl private_trait::Sealed for AgentId {}
 impl CallMethod for AgentId {
     fn call_method(&self, _method_name: &str) -> events::CallBuilder<CBInit> {
