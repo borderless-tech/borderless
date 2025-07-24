@@ -105,7 +105,6 @@ pub fn parse_module_content(
             #read_input
 
             let action = CallAction::from_bytes(&input)?;
-            let s = action.pretty_print()?;
             let mut state = #as_state::load()?;
             #match_and_call_action
             let events = _match_result?;
