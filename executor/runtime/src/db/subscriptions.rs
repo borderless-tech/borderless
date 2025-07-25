@@ -5,6 +5,15 @@ use borderless::{AgentId, Context};
 use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx, Tx};
 use std::str::FromStr;
 
+/// Generates a DB key from an AgentId and an unprefixed topic
+///
+/// Current DB relationship is: topic | subscriber => publisher
+fn generate_key(subscriber: AgentId, topic: String) -> String {
+    // TODO: Handle lowercase + trailing slash etc.
+    let id = subscriber.to_string().to_ascii_lowercase();
+    format!("{topic}{id}")
+}
+
 pub struct SubscriptionHandler<'a, S: Db> {
     db: &'a S,
 }
@@ -17,15 +26,11 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let mut txn = self.db.begin_rw_txn()?;
 
-        // Current DB relationship = topic | subscriber => publisher
-        // TODO: Handle lowercase + trailing slash etc.
-        let subscriber = subscriber.to_string().to_ascii_lowercase();
         let publisher = match publisher {
             Id::Contract { contract_id } => contract_id.to_string().to_ascii_lowercase(),
             Id::Agent { agent_id } => agent_id.to_string().to_ascii_lowercase(),
         };
-        let key = format!("{topic}{subscriber}");
-
+        let key = generate_key(subscriber, topic);
         // Apply changes to DB
         txn.write(&db_ptr, &key, &publisher)?;
         txn.commit()?;
@@ -36,10 +41,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let mut txn = self.db.begin_rw_txn()?;
 
-        // TODO Create auxiliary function DRY?
-        let subscriber = subscriber.to_string().to_ascii_lowercase();
-        let key = format!("{topic}{subscriber}");
-
+        let key = generate_key(subscriber, topic);
         // Apply changes to DB
         txn.delete(&db_ptr, &key)?;
         txn.commit()?;
