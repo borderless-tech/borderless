@@ -26,14 +26,22 @@ fn generate_key(publisher: Id, subscriber: Option<AgentId>, topic: String) -> St
     format!("{publisher}\0{topic}\0{subscriber}")
 }
 
-/// Extracts the subscriber from a DB key
+/// Extracts the full topic (publisher + topic) and subscriber from a DB key
 ///
-/// Returns an AgentId, or an error if the deserialization fails
-fn extract_subscriber(key: &[u8]) -> Result<AgentId> {
-    // Extract subscriber from key
+/// Returns a tuple, or an error if the deserialization fails
+fn extract_key(key: &[u8]) -> Result<(String, AgentId)> {
     let key = std::str::from_utf8(key).with_context(|| "DB key deserialization failed")?;
-    let s = key.rsplit('\0').next().unwrap();
-    Ok(AgentId::from_str(s).with_context(|| "AgentId deserialization error")?)
+
+    let mut parts = key.splitn(3, '\0');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(publisher), Some(topic), Some(s)) => {
+            let subscriber =
+                AgentId::from_str(s).with_context(|| "AgentId deserialization error")?;
+            let full_topic = format!("/{publisher}/{topic}");
+            Ok((full_topic, subscriber))
+        }
+        _ => todo!("Use crate error"),
+    }
 }
 
 pub struct SubscriptionHandler<'a, S: Db> {
@@ -83,7 +91,8 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
                 break;
             }
             // Push subscriber to vector
-            subscribers.push(extract_subscriber(key)?);
+            let (_, subscriber) = extract_key(key)?;
+            subscribers.push(subscriber);
         }
         // Free up resources
         drop(cursor);
@@ -95,8 +104,29 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         self.get_topic_subscribers(publisher, String::default())
     }
 
-    pub fn get_subscriptions(aid: AgentId) -> Vec<String> {
-        todo!()
+    pub fn get_subscriptions(&self, target: AgentId) -> Result<Vec<String>> {
+        // Access to DB
+        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
+        let txn = self.db.begin_ro_txn()?;
+        let mut cursor = txn.ro_cursor(&db_ptr)?;
+
+        let mut topics = Vec::new();
+
+        // TODO Avoid iterating all the keys?
+        for (key, _) in cursor.iter() {
+            let (full_topic, subscriber) = extract_key(key)?;
+            // Ignore subscription not related with target
+            if target != subscriber {
+                continue;
+            }
+            // Push the full topic
+            // TODO Return topic or full topic?
+            topics.push(full_topic);
+        }
+        // Free up resources
+        drop(cursor);
+        drop(txn);
+        Ok(topics)
     }
 }
 
