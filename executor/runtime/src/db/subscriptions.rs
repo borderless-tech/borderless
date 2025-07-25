@@ -58,7 +58,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         // TODO Get Sized bytes
         let topic_prefix = topic.as_bytes();
 
-        for (key, value) in cursor.iter_from(topic_prefix) {
+        for (key, value) in cursor.iter_from(&topic_prefix) {
             // Stop iterating when prefix no longer matches
             if !key.starts_with(topic_prefix) {
                 break;
