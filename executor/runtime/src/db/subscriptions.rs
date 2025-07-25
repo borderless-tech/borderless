@@ -20,6 +20,27 @@ fn generate_key(publisher: Id, subscriber: AgentId, topic: String) -> String {
     format!("{publisher}\0{topic}\0{subscriber}")
 }
 
+/// Generates a DB key from a publisher and topic
+///
+/// Designed for efficient look-ups of a topic's subscribers
+fn generate_topic_key(publisher: Id, topic: String) -> String {
+    let publisher = match publisher {
+        Id::Contract { contract_id } => contract_id.to_string().to_ascii_lowercase(),
+        Id::Agent { agent_id } => agent_id.to_string().to_ascii_lowercase(),
+    };
+    format!("{publisher}\0{topic}")
+}
+
+/// Extracts the subscriber from a DB key
+///
+/// Returns an AgentId, or an error if the deserialization fails
+fn extract_subscriber(key: &[u8]) -> Result<AgentId> {
+    // Extract subscriber from key
+    let key = std::str::from_utf8(key).with_context(|| "DB key deserialization failed")?;
+    let s = key.rsplit('\0').next().unwrap();
+    Ok(AgentId::from_str(s).with_context(|| "AgentId deserialization error")?)
+}
+
 pub struct SubscriptionHandler<'a, S: Db> {
     db: &'a S,
 }
@@ -50,30 +71,24 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         Ok(())
     }
 
-    pub fn get_topic_subscribers(&self, publisher: String, topic: String) -> Result<Vec<AgentId>> {
+    pub fn get_topic_subscribers(&self, publisher: Id, topic: String) -> Result<Vec<AgentId>> {
         // Access to DB
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
         let mut cursor = txn.ro_cursor(&db_ptr)?;
 
         let mut subscribers = Vec::new();
-        // TODO Get Sized bytes
-        let topic_prefix = topic.as_bytes();
 
-        for (key, value) in cursor.iter_from(&topic_prefix) {
+        // Use an efficient look-up key
+        let prefix = generate_topic_key(publisher, topic);
+
+        for (key, _) in cursor.iter_from(&prefix.as_bytes()) {
             // Stop iterating when prefix no longer matches
-            if !key.starts_with(topic_prefix) {
+            if !key.starts_with(prefix.as_bytes()) {
                 break;
             }
-            // TODO Read subscriber from key
-            // Parse AgentId from encoded bytes
-            let s = std::str::from_utf8(value).with_context(|| "Deserialization failed")?;
-            let publisher =
-                AgentId::from_str(s).with_context(|| "AgentId deserialization error")?;
-
-            // TODO If publisher match, then add subscriber to vector
             // Push subscriber to vector
-            //subscribers.push(agent);
+            subscribers.push(extract_subscriber(key)?);
         }
         // Free up resources
         drop(cursor);
