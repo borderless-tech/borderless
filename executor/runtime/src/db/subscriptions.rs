@@ -8,27 +8,22 @@ use std::str::FromStr;
 /// Generates a DB key from a publisher, subscriber and topic
 ///
 /// Current DB relationship is: publisher | topic | subscriber => ()
-fn generate_key(publisher: Id, subscriber: AgentId, topic: String) -> String {
-    // TODO: Handle lowercase + trailing slash etc.
+///
+/// For look-ups of a topic's subscribers, leave the subscriber field as None
+fn generate_key(publisher: Id, subscriber: Option<AgentId>, topic: String) -> String {
+    // Publishers can be either Contracts or Agents
     let publisher = match publisher {
         Id::Contract { contract_id } => contract_id.to_string().to_ascii_lowercase(),
         Id::Agent { agent_id } => agent_id.to_string().to_ascii_lowercase(),
     };
-    let subscriber = subscriber.to_string().to_ascii_lowercase();
-
+    // Subscribers are only Agents
+    let subscriber = subscriber
+        .map(|agent| agent.to_string().to_ascii_lowercase())
+        .unwrap_or_default();
+    // Remove leading and trailing slashes
+    let topic = topic.trim_matches('/').to_ascii_lowercase();
     // TODO NUL in ASCII is rare in text (is it a valid delimiter?)
     format!("{publisher}\0{topic}\0{subscriber}")
-}
-
-/// Generates a DB key from a publisher and topic
-///
-/// Designed for efficient look-ups of a topic's subscribers
-fn generate_topic_key(publisher: Id, topic: String) -> String {
-    let publisher = match publisher {
-        Id::Contract { contract_id } => contract_id.to_string().to_ascii_lowercase(),
-        Id::Agent { agent_id } => agent_id.to_string().to_ascii_lowercase(),
-    };
-    format!("{publisher}\0{topic}")
 }
 
 /// Extracts the subscriber from a DB key
@@ -53,7 +48,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let mut txn = self.db.begin_rw_txn()?;
 
-        let key = generate_key(publisher, subscriber, topic);
+        let key = generate_key(publisher, Some(subscriber), topic);
         // Apply changes to DB
         txn.write(&db_ptr, &key, &[])?; // Store a placeholder as value
         txn.commit()?;
@@ -64,7 +59,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let mut txn = self.db.begin_rw_txn()?;
 
-        let key = generate_key(publisher, subscriber, topic);
+        let key = generate_key(publisher, Some(subscriber), topic);
         // Apply changes to DB
         txn.delete(&db_ptr, &key)?;
         txn.commit()?;
@@ -80,7 +75,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         let mut subscribers = Vec::new();
 
         // Use an efficient look-up key
-        let prefix = generate_topic_key(publisher, topic);
+        let prefix = generate_key(publisher, None, topic);
 
         for (key, _) in cursor.iter_from(&prefix.as_bytes()) {
             // Stop iterating when prefix no longer matches
