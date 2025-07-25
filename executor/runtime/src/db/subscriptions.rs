@@ -9,7 +9,7 @@ use std::str::FromStr;
 ///
 /// Current DB relationship is: publisher | topic | subscriber => ()
 ///
-/// For look-ups of a topic's subscribers, leave the subscriber field as None
+/// For generating a subscribers look-up key, leave the subscriber field as None
 fn generate_key(publisher: Id, subscriber: Option<AgentId>, topic: String) -> String {
     // Publishers can be either Contracts or Agents
     let publisher = match publisher {
