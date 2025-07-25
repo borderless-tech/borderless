@@ -96,8 +96,8 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         Ok(subscribers)
     }
 
-    pub fn get_subscribers(id: Id) -> Vec<(AgentId, String /* topic-string */)> {
-        todo!()
+    pub fn get_subscribers(&self, publisher: Id) -> Result<Vec<AgentId>> {
+        self.get_topic_subscribers(publisher, String::default())
     }
 
     pub fn get_subscriptions(aid: AgentId) -> Vec<String> {
