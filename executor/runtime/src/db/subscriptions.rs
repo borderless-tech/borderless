@@ -71,6 +71,9 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
             // Push subscriber to vector
             //subscribers.push(agent);
         }
+        // Free up resources
+        drop(cursor);
+        drop(txn);
         Ok(subscribers)
     }
 
