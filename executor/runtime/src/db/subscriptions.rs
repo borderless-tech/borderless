@@ -5,13 +5,19 @@ use borderless::{AgentId, Context};
 use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx, Tx};
 use std::str::FromStr;
 
-/// Generates a DB key from an AgentId and an unprefixed topic
+/// Generates a DB key from a publisher, subscriber and topic
 ///
-/// Current DB relationship is: topic | subscriber => publisher
-fn generate_key(subscriber: AgentId, topic: String) -> String {
+/// Current DB relationship is: publisher | topic | subscriber => ()
+fn generate_key(publisher: Id, subscriber: AgentId, topic: String) -> String {
     // TODO: Handle lowercase + trailing slash etc.
-    let id = subscriber.to_string().to_ascii_lowercase();
-    format!("{topic}{id}")
+    let publisher = match publisher {
+        Id::Contract { contract_id } => contract_id.to_string().to_ascii_lowercase(),
+        Id::Agent { agent_id } => agent_id.to_string().to_ascii_lowercase(),
+    };
+    let subscriber = subscriber.to_string().to_ascii_lowercase();
+
+    // TODO NUL in ASCII is rare in text (is it a valid delimiter?)
+    format!("{publisher}\0{topic}\0{subscriber}")
 }
 
 pub struct SubscriptionHandler<'a, S: Db> {
@@ -26,22 +32,18 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let mut txn = self.db.begin_rw_txn()?;
 
-        let publisher = match publisher {
-            Id::Contract { contract_id } => contract_id.to_string().to_ascii_lowercase(),
-            Id::Agent { agent_id } => agent_id.to_string().to_ascii_lowercase(),
-        };
-        let key = generate_key(subscriber, topic);
+        let key = generate_key(publisher, subscriber, topic);
         // Apply changes to DB
-        txn.write(&db_ptr, &key, &publisher)?;
+        txn.write(&db_ptr, &key, &[])?; // Store a placeholder as value
         txn.commit()?;
         Ok(())
     }
 
-    pub fn unsubscribe(&self, subscriber: AgentId, topic: String) -> Result<()> {
+    pub fn unsubscribe(&self, subscriber: AgentId, publisher: Id, topic: String) -> Result<()> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let mut txn = self.db.begin_rw_txn()?;
 
-        let key = generate_key(subscriber, topic);
+        let key = generate_key(publisher, subscriber, topic);
         // Apply changes to DB
         txn.delete(&db_ptr, &key)?;
         txn.commit()?;
