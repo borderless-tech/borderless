@@ -452,10 +452,6 @@ where
     }
 }
 
-// TODO We have to implement this on a bunch of different types:
-// Events
-//
-// .. and their crate::Result<T> equivalents
 impl Sealed for Events {}
 impl ActionOutput for Events {
     fn convert_out_events(self) -> anyhow::Result<Events> {
