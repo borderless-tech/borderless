@@ -23,8 +23,15 @@ fn generate_key(publisher: Id, topic: String, subscriber: Option<AgentId>) -> St
         .unwrap_or_default();
     // Remove leading and trailing slashes
     let topic = topic.trim_matches('/').to_ascii_lowercase();
-    // TODO Forbid creating topics containing the newline character
-    format!("{publisher}\n{topic}\n{subscriber}")
+
+    // NOTE: when building a look-up key without a topic, do not write
+    // additional delimiters as they interfere with our cursor logic
+    if topic.is_empty() && subscriber.is_empty() {
+        format!("{publisher}\n")
+    } else {
+        // TODO Forbid creating topics containing the newline character
+        format!("{publisher}\n{topic}\n{subscriber}")
+    }
 }
 
 /// Extracts the full topic (publisher + topic) and subscriber from a DB key
@@ -263,6 +270,32 @@ mod tests {
         subscribers.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
         output.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
         assert_eq!(subscribers, output, "Mismatch in subscribers");
+        Ok(())
+    }
+
+    #[test]
+    fn fetch_subscriptions() -> Result<()> {
+        // Setup dummy DB
+        let lmdb = open_tmp_lmdb();
+        let handler = SubscriptionHandler::new(&lmdb);
+
+        // Setup: subscriber is a sw-agent and publishers are smart-contracts
+        let subscriber = AgentId::generate();
+        let publishers: Vec<Id> = std::iter::repeat_with(|| Id::agent(AgentId::generate()))
+            .take(N)
+            .collect();
+        let topics = vec!["Soccer", "Tennis", "Golf", "Basketball", "Football"];
+
+        for i in 0..N {
+            let p = publishers[i];
+            let topic = topics[i % 5];
+            // Subscribe to topic
+            handler.subscribe(subscriber, p, topic.to_string())?;
+        }
+        // TODO Finish this after discussing if returning the full topic or just the topic
+        //let mut output = handler.get_subscriptions(subscriber)?;
+        //output.sort();
+        //assert_eq!(topics, output, "Mismatch in subscriptions");
         Ok(())
     }
 }
