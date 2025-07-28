@@ -63,15 +63,15 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         Ok(())
     }
 
-    pub fn unsubscribe(&self, subscriber: AgentId, publisher: Id, topic: String) -> Result<()> {
+    pub fn unsubscribe(&self, subscriber: AgentId, publisher: Id, topic: String) -> Result<bool> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let mut txn = self.db.begin_rw_txn()?;
 
         let key = generate_key(publisher, topic, Some(subscriber));
         // Apply changes to DB
-        txn.delete(&db_ptr, &key)?;
+        let deleted = txn.delete(&db_ptr, &key).is_ok();
         txn.commit()?;
-        Ok(())
+        Ok(deleted)
     }
 
     pub fn get_topic_subscribers(&self, publisher: Id, topic: String) -> Result<Vec<AgentId>> {
