@@ -141,12 +141,12 @@ mod tests {
     use crate::db::subscriptions::SubscriptionHandler;
     use crate::SUBSCRIPTION_REL_SUB_DB;
     use borderless::common::Id;
-    use borderless::{AgentId, ContractId, Result};
+    use borderless::{AgentId, Result};
     use borderless_kv_store::backend::lmdb::Lmdb;
     use borderless_kv_store::Db;
     use tempfile::tempdir;
 
-    const TEST_REPEATS: usize = 10;
+    const N: usize = 10;
 
     fn open_tmp_lmdb() -> Lmdb {
         let tmp_dir = tempdir().unwrap();
@@ -156,20 +156,58 @@ mod tests {
     }
 
     #[test]
-    fn subscribe() -> Result<()> {
+    fn subscription() -> Result<()> {
         // Setup dummy DB
         let lmdb = open_tmp_lmdb();
         let handler = SubscriptionHandler::new(&lmdb);
 
-        for _ in 0..TEST_REPEATS {
-            // Generate random test data
-            let cid = Id::contract(ContractId::generate());
-            let aid = AgentId::generate();
-            let topic = "MyTopic";
-            // Generate subscription and check if it is correctly stored
-            handler.subscribe(aid, cid, topic.to_string())?;
-            let subscribers = handler.get_topic_subscribers(cid, topic.to_string())?;
-            assert!(subscribers.contains(&aid));
+        // Setup: subscribers are sw-agents and publishers are smart-contracts
+        let subscribers: Vec<AgentId> = std::iter::repeat_with(|| AgentId::generate())
+            .take(N)
+            .collect();
+        let publishers: Vec<Id> = std::iter::repeat_with(|| Id::agent(AgentId::generate()))
+            .take(N)
+            .collect();
+        let topic = "MyTopic";
+
+        for i in 0..N {
+            let s = subscribers[i];
+            let p = publishers[i];
+            // Subscribe to topic
+            handler.subscribe(s, p, topic.to_string())?;
+            let subscribers = handler.get_topic_subscribers(p, topic.to_string())?;
+            assert!(subscribers.contains(&s));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unsubscription() -> Result<()> {
+        // Setup dummy DB
+        let lmdb = open_tmp_lmdb();
+        let handler = SubscriptionHandler::new(&lmdb);
+
+        // Setup: both subscribers and publishers are sw-agents
+        let subscribers: Vec<AgentId> = std::iter::repeat_with(|| AgentId::generate())
+            .take(N)
+            .collect();
+        let publishers: Vec<Id> = std::iter::repeat_with(|| Id::agent(AgentId::generate()))
+            .take(N)
+            .collect();
+        let topic = "MyTopic";
+
+        for i in 0..N {
+            let s = subscribers[i];
+            let p = publishers[i];
+            // Subscribe to topic
+            handler.subscribe(s, p, topic.to_string())?;
+        }
+
+        for i in 0..N {
+            let s = subscribers[i];
+            let p = publishers[i];
+            // Unsubscribe and check result is true
+            assert!(handler.unsubscribe(s, p, topic.to_string())?);
         }
         Ok(())
     }
