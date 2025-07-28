@@ -136,6 +136,45 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use crate::db::subscriptions::SubscriptionHandler;
+    use crate::SUBSCRIPTION_REL_SUB_DB;
+    use borderless::common::Id;
+    use borderless::{AgentId, ContractId, Result};
+    use borderless_kv_store::backend::lmdb::Lmdb;
+    use borderless_kv_store::Db;
+    use tempfile::tempdir;
+
+    const TEST_REPEATS: usize = 10;
+
+    fn open_tmp_lmdb() -> Lmdb {
+        let tmp_dir = tempdir().unwrap();
+        let env = Lmdb::new(tmp_dir.path(), 1).unwrap();
+        env.create_sub_db(SUBSCRIPTION_REL_SUB_DB).unwrap();
+        env
+    }
+
+    #[test]
+    fn subscribe() -> Result<()> {
+        // Setup dummy DB
+        let lmdb = open_tmp_lmdb();
+        let handler = SubscriptionHandler::new(&lmdb);
+
+        for _ in 0..TEST_REPEATS {
+            // Generate random test data
+            let cid = Id::contract(ContractId::generate());
+            let aid = AgentId::generate();
+            let topic = "MyTopic";
+            // Generate subscription and check if it is correctly stored
+            handler.subscribe(aid, cid, topic.to_string())?;
+            let subscribers = handler.get_topic_subscribers(cid, topic.to_string())?;
+            assert!(subscribers.contains(&aid));
+        }
+        Ok(())
+    }
+}
+
 /*
  * subscibe(cid, "/order/change", "my_action");
  *
