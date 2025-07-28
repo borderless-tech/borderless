@@ -40,6 +40,7 @@ impl<'a, S: Db> Controller<'a, S> {
         Logger::new(self.db, id)
     }
 
+    /// Returns the ['SubscriptionHandler'] of the contract or agent
     pub fn messages(&self) -> SubscriptionHandler<'a, S> {
         SubscriptionHandler::new(self.db)
     }
