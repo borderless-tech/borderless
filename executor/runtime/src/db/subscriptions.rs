@@ -141,7 +141,7 @@ mod tests {
     use crate::db::subscriptions::SubscriptionHandler;
     use crate::SUBSCRIPTION_REL_SUB_DB;
     use borderless::common::Id;
-    use borderless::{AgentId, Result};
+    use borderless::{AgentId, ContractId, Result};
     use borderless_kv_store::backend::lmdb::Lmdb;
     use borderless_kv_store::Db;
     use tempfile::tempdir;
@@ -209,6 +209,39 @@ mod tests {
             // Unsubscribe and check result is true
             assert!(handler.unsubscribe(s, p, topic.to_string())?);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn fetch_subscribers() -> Result<()> {
+        // Setup dummy DB
+        let lmdb = open_tmp_lmdb();
+        let handler = SubscriptionHandler::new(&lmdb);
+
+        // Setup: subscribers are sw-agents and publisher is a smart-contract
+        let subscribers: Vec<AgentId> = std::iter::repeat_with(|| AgentId::generate())
+            .take(N)
+            .collect();
+        let publisher = Id::contract(ContractId::generate());
+        let topics = vec!["Soccer", "Tennis", "Golf", "Basketball", "Football"];
+
+        for i in 0..N {
+            let s = subscribers[i];
+            let topic = topics[i % 5];
+            // Subscribe to topic
+            handler.subscribe(s, publisher, topic.to_string())?;
+        }
+        let output = handler.get_subscribers(publisher)?;
+
+        // Check output
+        let mut actual: Vec<_> = subscribers.iter().map(|aid| aid.to_string()).collect();
+        let mut expected: Vec<_> = output.iter().map(|aid| aid.to_string()).collect();
+        actual.sort();
+        expected.sort();
+        assert_eq!(
+            actual, expected,
+            "Mismatch between actual and expected subscribers"
+        );
         Ok(())
     }
 }
