@@ -4,6 +4,7 @@ use borderless::common::Id;
 use borderless::{AgentId, Context};
 use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx, Tx};
 use std::str::FromStr;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Generates a DB key from a publisher, subscriber and topic
 ///
@@ -57,8 +58,13 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         let mut txn = self.db.begin_rw_txn()?;
 
         let key = generate_key(publisher, topic, Some(subscriber));
+        // Store the subscription's timestamp for debugging purposes
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("ts < unix-epoch")
+            .as_millis();
         // Apply changes to DB
-        txn.write(&db_ptr, &key, &[])?; // Store a placeholder as value
+        txn.write(&db_ptr, &key, &timestamp.to_be_bytes())?;
         txn.commit()?;
         Ok(())
     }
