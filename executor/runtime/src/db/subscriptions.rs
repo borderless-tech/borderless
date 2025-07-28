@@ -213,13 +213,39 @@ mod tests {
     }
 
     #[test]
+    fn fetch_topic_subscribers() -> Result<()> {
+        // Setup dummy DB
+        let lmdb = open_tmp_lmdb();
+        let handler = SubscriptionHandler::new(&lmdb);
+
+        // Setup: subscribers are sw-agents and publisher is a smart-contract
+        let mut subscribers: Vec<AgentId> = std::iter::repeat_with(|| AgentId::generate())
+            .take(N)
+            .collect();
+        let publisher = Id::contract(ContractId::generate());
+        let topic = "tennis";
+
+        for i in 0..N {
+            let s = subscribers[i];
+            // Subscribe to topic
+            handler.subscribe(s, publisher, topic.to_string())?;
+        }
+        let mut output = handler.get_topic_subscribers(publisher, topic.to_string())?;
+        // Check output (sort by bytes as AgentId does not implement Ord)
+        subscribers.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+        output.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+        assert_eq!(subscribers, output, "Mismatch in topic subscribers");
+        Ok(())
+    }
+
+    #[test]
     fn fetch_subscribers() -> Result<()> {
         // Setup dummy DB
         let lmdb = open_tmp_lmdb();
         let handler = SubscriptionHandler::new(&lmdb);
 
         // Setup: subscribers are sw-agents and publisher is a smart-contract
-        let subscribers: Vec<AgentId> = std::iter::repeat_with(|| AgentId::generate())
+        let mut subscribers: Vec<AgentId> = std::iter::repeat_with(|| AgentId::generate())
             .take(N)
             .collect();
         let publisher = Id::contract(ContractId::generate());
@@ -231,17 +257,12 @@ mod tests {
             // Subscribe to topic
             handler.subscribe(s, publisher, topic.to_string())?;
         }
-        let output = handler.get_subscribers(publisher)?;
+        let mut output = handler.get_subscribers(publisher)?;
 
-        // Check output
-        let mut actual: Vec<_> = subscribers.iter().map(|aid| aid.to_string()).collect();
-        let mut expected: Vec<_> = output.iter().map(|aid| aid.to_string()).collect();
-        actual.sort();
-        expected.sort();
-        assert_eq!(
-            actual, expected,
-            "Mismatch between actual and expected subscribers"
-        );
+        // Check output (sort by bytes as AgentId does not implement Ord)
+        subscribers.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+        output.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+        assert_eq!(subscribers, output, "Mismatch in subscribers");
         Ok(())
     }
 }
