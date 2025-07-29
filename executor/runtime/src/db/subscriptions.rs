@@ -238,9 +238,9 @@ mod tests {
             handler.subscribe(s, publisher, topic.to_string())?;
         }
         let mut output = handler.get_topic_subscribers(publisher, topic.to_string())?;
-        // Check output (sort by bytes as AgentId does not implement Ord)
-        subscribers.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
-        output.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+        // Check output
+        subscribers.sort();
+        output.sort();
         assert_eq!(subscribers, output, "Mismatch in topic subscribers");
         Ok(())
     }
@@ -265,10 +265,9 @@ mod tests {
             handler.subscribe(s, publisher, topic.to_string())?;
         }
         let mut output = handler.get_subscribers(publisher)?;
-
-        // Check output (sort by bytes as AgentId does not implement Ord)
-        subscribers.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
-        output.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+        // Check output
+        subscribers.sort();
+        output.sort();
         assert_eq!(subscribers, output, "Mismatch in subscribers");
         Ok(())
     }
@@ -301,7 +300,7 @@ mod tests {
 }
 
 /*
- * subscibe(cid, "/order/change", "my_action");
+ * subscribe(cid, "/order/change", "my_action");
  *
  * Message { topic, value } <<<< Bake in the contract-id or agent-id of the emitter of the message
  * -> lookup subscribers -> agent-id
