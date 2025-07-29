@@ -25,6 +25,7 @@ use wasmtime::{Caller, Extern, Memory};
 #[cfg(feature = "agents")]
 use tokio::sync::mpsc;
 
+use crate::db::subscriptions::SubscriptionHandler;
 use crate::{
     db::action_log::{ActionLog, ActionRecord},
     db::controller::{write_introduction, write_revocation},
@@ -207,7 +208,8 @@ impl<S: Db> VmState<S> {
                 assert_eq!(introduction.id, id);
                 introduction.meta.active_since = timestamp;
                 introduction.meta.tx_ctx_introduction = tx_ctx;
-                write_introduction::<S>(&self.db_ptr, &mut txn, introduction)?;
+                write_introduction::<S>(&self.db_ptr, &mut txn, introduction.clone())?;
+                SubscriptionHandler::new(&self.db).init(id, introduction.subscriptions)?;
             }
             Commit::Revocation(revocation) => {
                 assert_eq!(revocation.id, id);

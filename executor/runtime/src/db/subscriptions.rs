@@ -1,14 +1,14 @@
 use crate::Result;
 use crate::SUBSCRIPTION_REL_SUB_DB;
 use borderless::common::Id;
+use borderless::events::Topic;
 use borderless::{AgentId, Context};
 use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx, Tx};
 use std::str::FromStr;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Generates a DB key from a publisher, subscriber and topic
 ///
-/// Current DB relationship is: publisher | topic | subscriber => ()
+/// Current DB relationship is: publisher | topic | subscriber => method_name
 ///
 /// For generating a subscribers look-up key, leave the subscriber field as None
 fn generate_key(publisher: Id, topic: String, subscriber: Option<AgentId>) -> String {
@@ -60,18 +60,27 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
     pub fn new(db: &'a S) -> Self {
         Self { db }
     }
-    pub fn subscribe(&self, subscriber: AgentId, publisher: Id, topic: String) -> Result<()> {
+
+    /// Inits the handler by adding the provided subscriptions
+    pub fn init(&mut self, subscriber: Id, subscriptions: Vec<Topic>) -> Result<()> {
+        let subscriber = match subscriber {
+            Id::Contract { .. } => return Ok(()), // Contracts cannot be subscribers
+            Id::Agent { agent_id } => agent_id,
+        };
+        for s in subscriptions {
+            self.subscribe(subscriber, s)?;
+        }
+        Ok(())
+    }
+
+    pub fn subscribe(&self, subscriber: AgentId, topic: Topic) -> Result<()> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let mut txn = self.db.begin_rw_txn()?;
 
-        let key = generate_key(publisher, topic, Some(subscriber));
-        // Store the subscription's timestamp for debugging purposes
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("ts < unix-epoch")
-            .as_millis();
+        let key = generate_key(topic.publisher, topic.topic, Some(subscriber));
+        // TODO Store the subscription's timestamp for debugging purposes?
         // Apply changes to DB
-        txn.write(&db_ptr, &key, &timestamp.to_be_bytes())?;
+        txn.write(&db_ptr, &key, &topic.method)?;
         txn.commit()?;
         Ok(())
     }
