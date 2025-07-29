@@ -1,5 +1,9 @@
+pub use super::*;
+use crate::log_shim::*;
+use crate::{db::controller::Controller, rt::agent::Runtime};
+use borderless::events::Message;
 use borderless::{
-    events::{AgentCall, CallAction, Events},
+    events::{CallAction, Events},
     http::queries::Pagination,
     AgentId, BorderlessId,
 };
@@ -15,10 +19,6 @@ use std::{
     time::Instant,
 };
 use tokio::sync::Mutex;
-
-pub use super::*;
-use crate::log_shim::*;
-use crate::{db::controller::Controller, rt::agent::Runtime};
 
 #[derive(Serialize)]
 pub struct ActionResp {
@@ -66,11 +66,12 @@ impl<S: Db> EventHandler for RecursiveEventHandler<S> {
         agent_events.extend(events.local);
 
         // Handle events one by one
-        while let Some(AgentCall { agent_id, action }) = agent_events.pop_front() {
+        while let Some(Message { topic, value }) = agent_events.pop_front() {
+            // TODO Do the magic here
             // Queue all process events and apply them again
-            if let Some(events) = rt.process_action(&agent_id, action).await? {
-                agent_events.extend(events.local);
-            }
+            // if let Some(events) = rt.process_action(&agent_id, action).await? {
+            //    agent_events.extend(events.local);
+            // }
         }
         Ok(())
     }

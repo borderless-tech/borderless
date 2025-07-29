@@ -1,3 +1,4 @@
+use crate::common::Id;
 use crate::events::private::Sealed;
 use crate::prelude::env;
 use anyhow::anyhow;
@@ -5,7 +6,6 @@ use borderless_id_types::{AgentId, BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fmt::Debug, fmt::Display, str::FromStr};
-use crate::common::Id;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -241,13 +241,6 @@ pub struct ContractCall {
     pub writer: BorderlessId,
 }
 
-/// An outgoing event for another agent
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentCall {
-    pub agent_id: AgentId,
-    pub action: CallAction,
-}
-
 /// An outgoing message that clients or agents can subscribe to
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -315,8 +308,7 @@ impl MsgBuilder {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Events {
     pub contracts: Vec<ContractCall>,
-    pub local: Vec<AgentCall>,
-    pub msgs: Vec<Message>,
+    pub local: Vec<Message>,
 }
 
 impl Events {
@@ -341,17 +333,6 @@ impl From<ContractCall> for Events {
         Events {
             contracts: vec![value],
             local: Vec::new(),
-            msgs: Vec::new(),
-        }
-    }
-}
-
-impl From<AgentCall> for Events {
-    fn from(value: AgentCall) -> Self {
-        Events {
-            contracts: Vec::new(),
-            local: vec![value],
-            msgs: Vec::new(),
         }
     }
 }
@@ -360,8 +341,7 @@ impl From<Message> for Events {
     fn from(value: Message) -> Self {
         Events {
             contracts: Vec::new(),
-            local: Vec::new(),
-            msgs: vec![value],
+            local: vec![value],
         }
     }
 }
@@ -371,17 +351,6 @@ impl From<Vec<ContractCall>> for Events {
         Events {
             contracts: value,
             local: Vec::new(),
-            msgs: Vec::new(),
-        }
-    }
-}
-
-impl From<Vec<AgentCall>> for Events {
-    fn from(value: Vec<AgentCall>) -> Self {
-        Events {
-            contracts: Vec::new(),
-            local: value,
-            msgs: Vec::new(),
         }
     }
 }
@@ -390,8 +359,7 @@ impl From<Vec<Message>> for Events {
     fn from(value: Vec<Message>) -> Self {
         Events {
             contracts: Vec::new(),
-            local: Vec::new(),
-            msgs: value,
+            local: value,
         }
     }
 }
@@ -555,7 +523,7 @@ impl Topic {
         Topic {
             publisher,
             topic,
-            method
+            method,
         }
     }
 }
