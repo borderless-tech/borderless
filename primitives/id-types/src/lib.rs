@@ -188,7 +188,7 @@ macro_rules! impl_uuid {
 ///
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash, PartialOrd, Ord)]
 pub struct AgentId(uuid::Uuid);
 impl_uuid!(AgentId, 0xaf, 0xa0);
 
@@ -208,7 +208,7 @@ impl_uuid!(AgentId, 0xaf, 0xa0);
 ///
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash, PartialOrd, Ord)]
 pub struct BorderlessId(uuid::Uuid);
 impl_uuid!(BorderlessId, 0xbf, 0xb0);
 
@@ -228,7 +228,7 @@ impl_uuid!(BorderlessId, 0xbf, 0xb0);
 ///
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash, PartialOrd, Ord)]
 pub struct ContractId(uuid::Uuid);
 impl_uuid!(ContractId, 0xcf, 0xc0);
 
@@ -248,7 +248,7 @@ impl_uuid!(ContractId, 0xcf, 0xc0);
 ///
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash, PartialOrd, Ord)]
 pub struct Did(uuid::Uuid);
 impl_uuid!(Did, 0xdf, 0xd0);
 
@@ -268,7 +268,7 @@ impl_uuid!(Did, 0xdf, 0xd0);
 ///
 /// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
 /// as we utilize standard version 8 uuids.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash, PartialOrd, Ord)]
 pub struct ExternalId(uuid::Uuid);
 impl_uuid!(ExternalId, 0xef, 0xe0);
 // TODO: Add tests for external ID and prefix checks
