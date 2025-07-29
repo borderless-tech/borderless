@@ -5,6 +5,7 @@ use borderless_id_types::{AgentId, BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fmt::Debug, fmt::Display, str::FromStr};
+use crate::common::Id;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -536,4 +537,15 @@ impl Sink {
     pub fn has_alias(&self, alias: impl AsRef<str>) -> bool {
         alias.as_ref().eq_ignore_ascii_case(&self.alias)
     }
+}
+
+/// A topic for Sw-Agents
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Topic {
+    /// The publisher's ID, who creates new messages
+    pub publisher: Id,
+    /// The topic an agent can subscribe to
+    pub topic: String,
+    /// The method triggered in the subscriber's side
+    pub method: String,
 }

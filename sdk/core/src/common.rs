@@ -7,7 +7,7 @@ use serde_json::Value;
 
 pub use borderless_pkg as pkg;
 
-use crate::{contracts::TxCtx, events::Sink, BorderlessId, ContractId};
+use crate::{contracts::TxCtx, events::Sink, events::Topic, BorderlessId, ContractId};
 
 /// High level description and information about the contract or agent itself
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -168,9 +168,13 @@ pub struct Introduction {
     /// This will be parsed by the implementors of the contract or agent
     pub initial_state: Value,
 
-    /// List of available sinks
+    /// List of available sinks (only relevant for contracts)
     #[serde(default)]
     pub sinks: Vec<Sink>,
+
+    /// List of available subscriptions (only relevant for agents)
+    #[serde(default)]
+    pub subscriptions: Vec<Topic>,
 
     /// High-Level description of the contract or agent
     pub desc: Description,
@@ -237,6 +241,11 @@ pub struct IntroductionDto {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub sinks: Vec<Sink>,
 
+    /// List of available topics
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub subscriptions: Vec<Topic>,
+
     /// High-Level description of the contract or agent
     pub desc: Description,
 
@@ -254,6 +263,7 @@ impl From<IntroductionDto> for Introduction {
             participants: value.participants,
             initial_state: value.initial_state,
             sinks: value.sinks,
+            subscriptions: value.subscriptions,
             desc: value.desc,
             meta: Default::default(),
             package: value.package,
