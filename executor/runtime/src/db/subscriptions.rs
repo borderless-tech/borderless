@@ -157,6 +157,7 @@ mod tests {
     use crate::db::subscriptions::SubscriptionHandler;
     use crate::SUBSCRIPTION_REL_SUB_DB;
     use borderless::common::Id;
+    use borderless::events::Topic;
     use borderless::{AgentId, ContractId, Result};
     use borderless_kv_store::backend::lmdb::Lmdb;
     use borderless_kv_store::Db;
@@ -189,9 +190,10 @@ mod tests {
         for i in 0..N {
             let s = subscribers[i];
             let p = publishers[i];
+            let topic = Topic::new(p, topic.to_string(), "method".to_string());
             // Subscribe to topic
-            handler.subscribe(s, p, topic.to_string())?;
-            let subscribers = handler.get_topic_subscribers(p, topic.to_string())?;
+            handler.subscribe(s, topic.clone())?;
+            let subscribers = handler.get_topic_subscribers(p, topic.topic)?;
             assert!(subscribers.contains(&s));
         }
         Ok(())
@@ -213,10 +215,9 @@ mod tests {
         let topic = "MyTopic";
 
         for i in 0..N {
-            let s = subscribers[i];
-            let p = publishers[i];
+            let topic = Topic::new(publishers[i], topic.to_string(), "method".to_string());
             // Subscribe to topic
-            handler.subscribe(s, p, topic.to_string())?;
+            handler.subscribe(subscribers[i], topic)?;
         }
 
         for i in 0..N {
@@ -242,9 +243,9 @@ mod tests {
         let topic = "tennis";
 
         for i in 0..N {
-            let s = subscribers[i];
+            let topic = Topic::new(publisher, topic.to_string(), "method".to_string());
             // Subscribe to topic
-            handler.subscribe(s, publisher, topic.to_string())?;
+            handler.subscribe(subscribers[i], topic)?;
         }
         let mut output = handler.get_topic_subscribers(publisher, topic.to_string())?;
         // Check output
@@ -268,10 +269,9 @@ mod tests {
         let topics = vec!["Soccer", "Tennis", "Golf", "Basketball", "Football"];
 
         for i in 0..N {
-            let s = subscribers[i];
-            let topic = topics[i % 5];
+            let topic = Topic::new(publisher, topics[i % 5].to_string(), "method".to_string());
             // Subscribe to topic
-            handler.subscribe(s, publisher, topic.to_string())?;
+            handler.subscribe(subscribers[i], topic)?;
         }
         let mut output = handler.get_subscribers(publisher)?;
         // Check output
@@ -295,10 +295,13 @@ mod tests {
         let topics = vec!["Soccer", "Tennis", "Golf", "Basketball", "Football"];
 
         for i in 0..N {
-            let p = publishers[i];
-            let topic = topics[i % 5];
+            let topic = Topic::new(
+                publishers[i],
+                topics[i % 5].to_string(),
+                "method".to_string(),
+            );
             // Subscribe to topic
-            handler.subscribe(subscriber, p, topic.to_string())?;
+            handler.subscribe(subscriber, topic)?;
         }
         // TODO Finish this after discussing if returning the full topic or just the topic
         //let mut output = handler.get_subscriptions(subscriber)?;
