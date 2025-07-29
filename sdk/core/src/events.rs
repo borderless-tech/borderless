@@ -549,3 +549,13 @@ pub struct Topic {
     /// The method triggered in the subscriber's side
     pub method: String,
 }
+
+impl Topic {
+    pub fn new(publisher: Id, topic: String, method: String) -> Self {
+        Topic {
+            publisher,
+            topic,
+            method
+        }
+    }
+}
