@@ -96,7 +96,11 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         Ok(deleted)
     }
 
-    pub fn get_topic_subscribers(&self, publisher: Id, topic: String) -> Result<Vec<AgentId>> {
+    pub fn get_topic_subscribers(
+        &self,
+        publisher: Id,
+        topic: String,
+    ) -> Result<Vec<(AgentId, String)>> {
         // Access to DB
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
@@ -107,14 +111,17 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         // Use an efficient look-up key
         let prefix = generate_key(publisher, topic, None);
 
-        for (key, _) in cursor.iter_from(&prefix.as_bytes()) {
+        for (key, value) in cursor.iter_from(&prefix) {
             // Stop iterating when prefix no longer matches
             if !key.starts_with(prefix.as_bytes()) {
                 break;
             }
+            // Decode method_name
+            let topic =
+                String::from_utf8(value.to_vec()).with_context(|| "Failed to deserialize topic")?;
             // Push subscriber to vector
             let (_, subscriber) = extract_key(key)?;
-            subscribers.push(subscriber);
+            subscribers.push((subscriber, topic));
         }
         // Free up resources
         drop(cursor);
@@ -122,7 +129,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         Ok(subscribers)
     }
 
-    pub fn get_subscribers(&self, publisher: Id) -> Result<Vec<AgentId>> {
+    pub fn get_subscribers(&self, publisher: Id) -> Result<Vec<(AgentId, String)>> {
         self.get_topic_subscribers(publisher, String::default())
     }
 
