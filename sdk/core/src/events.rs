@@ -2,7 +2,7 @@ use crate::common::Id;
 use crate::events::private::Sealed;
 use crate::prelude::env;
 use anyhow::anyhow;
-use borderless_id_types::{AgentId, BorderlessId, ContractId};
+use borderless_id_types::{BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fmt::Debug, fmt::Display, str::FromStr};
@@ -272,23 +272,24 @@ pub struct Message {
 /// - `/My-Topic`
 /// - `MY-TOPIC`
 pub fn message(topic: impl AsRef<str>) -> MsgBuilder {
-    // TODO: Do we automatically prepend the contract-id or agent-id of the emitter ?
-    // -> I think it might be smart to do it here (or in the .build() function)
+    // TODO Handle agents as well
+    // Fetch publisher from the environment
+    let publisher = Id::contract(env::contract_id());
     MsgBuilder {
+        publisher,
         topic: topic.as_ref().to_string(),
     }
 }
 
 pub struct MsgBuilder {
+    publisher: Id,
     topic: String,
 }
 
 impl MsgBuilder {
-    pub fn with_value(self, value: serde_json::Value) -> Message {
-        // TODO Handle agents as well
-        let publisher = Id::contract(env::contract_id());
+    pub fn with_value(self, value: Value) -> Message {
         Message {
-            publisher,
+            publisher: self.publisher,
             topic: self.topic,
             value,
         }
@@ -301,10 +302,8 @@ impl MsgBuilder {
                 self.topic,
             ))
         })?;
-        // TODO Handle agents as well
-        let publisher = Id::contract(env::contract_id());
         Ok(Message {
-            publisher,
+            publisher: self.publisher,
             topic: self.topic,
             value,
         })
