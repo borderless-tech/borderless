@@ -371,34 +371,6 @@ impl From<Vec<Message>> for Events {
     }
 }
 
-/// Specifies the Sink-Type of an `ActionOutput`.
-///
-/// A sink can be either a named sink, that gets referenced by its `sink_alias`.
-/// The real contract- or process-id is taken from the Contract- or ProcessInfo,
-/// using [`ContractInfo::find_sink`] (or [`ProcessInfo::find_sink`]).
-///
-/// In general it is recommended to use the named sink-type, as it provides the most
-/// comfort and fool-proof way of interacting with other contracts or processes.
-///
-/// However, for maximum flexibility, users can also refer to a sink directly by their
-/// [`ContractId`] or [`ProcessId`].
-#[derive(Debug)]
-pub enum SinkType {
-    Named(String),
-    Agent(AgentId),
-    Contract(ContractId),
-}
-
-impl Display for SinkType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SinkType::Named(s) => write!(f, "{s}"),
-            SinkType::Agent(s) => write!(f, "{s}"),
-            SinkType::Contract(s) => write!(f, "{s}"),
-        }
-    }
-}
-
 /// Trait that indicates that a return type can be used as an output of an action function.
 ///
 /// Note: This trait converts `()`, `ActionOutput`, `Result<(), E>` and `Result<ActionOutput, E>` into [`Events`].
