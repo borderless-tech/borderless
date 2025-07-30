@@ -244,6 +244,7 @@ pub struct ContractCall {
 /// An outgoing message that clients or agents can subscribe to
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
+    pub publisher: Id,
     pub topic: String,
     pub value: Value,
 }
@@ -284,7 +285,10 @@ pub struct MsgBuilder {
 
 impl MsgBuilder {
     pub fn with_value(self, value: serde_json::Value) -> Message {
+        // TODO Handle agents as well
+        let publisher = Id::contract(env::contract_id());
         Message {
+            publisher,
             topic: self.topic,
             value,
         }
@@ -297,7 +301,10 @@ impl MsgBuilder {
                 self.topic,
             ))
         })?;
+        // TODO Handle agents as well
+        let publisher = Id::contract(env::contract_id());
         Ok(Message {
+            publisher,
             topic: self.topic,
             value,
         })

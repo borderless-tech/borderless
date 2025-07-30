@@ -66,7 +66,12 @@ impl<S: Db> EventHandler for RecursiveEventHandler<S> {
         agent_events.extend(events.local);
 
         // Handle events one by one
-        while let Some(Message { topic, value }) = agent_events.pop_front() {
+        while let Some(Message {
+            publisher,
+            topic,
+            value,
+        }) = agent_events.pop_front()
+        {
             // TODO Do the magic here
             // Queue all process events and apply them again
             // if let Some(events) = rt.process_action(&agent_id, action).await? {
