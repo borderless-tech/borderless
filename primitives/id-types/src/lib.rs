@@ -252,10 +252,10 @@ impl_uuid!(ContractId, 0xcf, 0xc0);
 pub struct Did(uuid::Uuid);
 impl_uuid!(Did, 0xdf, 0xd0);
 
-/// The external-id used to identify external entities, that are not in the borderless-network.
+/// An external-id used to identify external entities, that are not in the borderless-network.
 ///
 /// These ids are version 8 [uuids](https://en.wikipedia.org/wiki/Universally_unique_identifier), where
-/// the first four bits of the uuid are set to `0xb`, to indicate that it is a borderless-id and not another uuid based id.
+/// the first four bits of the uuid are set to `0xe`, to indicate that it is an external-id and not another uuid based id.
 ///
 /// Example:
 /// ```sh
@@ -272,6 +272,26 @@ impl_uuid!(Did, 0xdf, 0xd0);
 pub struct ExternalId(uuid::Uuid);
 impl_uuid!(ExternalId, 0xef, 0xe0);
 // TODO: Add tests for external ID and prefix checks
+
+/// A flow-id used to identify `Flows` in a contract.
+///
+/// These ids are version 8 [uuids](https://en.wikipedia.org/wiki/Universally_unique_identifier), where
+/// the first four bits of the uuid are set to `0xf`, to indicate that it is a flow-id and not another uuid based id.
+///
+/// Example:
+/// ```sh
+/// fbc23cb3-f447-8107-8f93-9bfb8e1d157d
+/// ```
+///
+/// All uuid-based ids used in the borderless-ecosystem have a different prefix, based on what the id is used for.
+/// This mechanism ensures that you cannot mistake an participant-id for e.g. a contract-id and vice versa. Even if you convert the participant-id
+/// back into a uuid and the result into a contract-id, the results are different.
+///
+/// The implementation of the IDs is compliant with [RFC9562](https://www.ietf.org/rfc/rfc9562.html#name-uuid-version-8),
+/// as we utilize standard version 8 uuids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Hash, PartialOrd, Ord)]
+pub struct FlowId(uuid::Uuid);
+impl_uuid!(FlowId, 0xff, 0xf0);
 
 /// Check weather or not an array of bytes contains the prefix of an [`AgentId`].
 ///
@@ -326,6 +346,17 @@ pub fn eid_prefix(bytes: impl AsRef<[u8]>) -> bool {
         return false;
     }
     bytes[0] | 0x0f == 0xef
+}
+
+/// Check weather or not an array of bytes contains the prefix of a [`FlowId`].
+///
+/// Useful for filtering in key-value storages, when multiple ID types are used as keys or key-prefixes.
+pub fn fid_prefix(bytes: impl AsRef<[u8]>) -> bool {
+    let bytes = bytes.as_ref();
+    if bytes.is_empty() {
+        return false;
+    }
+    bytes[0] | 0x0f == 0xff
 }
 
 /// Type used to identify blocks.
@@ -639,8 +670,28 @@ mod tests {
             assert_ne!(base_id, back_to_uuid);
             // Check, if first four bits match 'd'
             // NOTE: Bit-level-hacking here: bits abcdefgh & 11110000 = abcd0000
-            // -> so i can match on byte level agains abcd0000 (in this case 0xa0)
+            // -> so i can match on byte level agains abcd0000 (in this case 0xd0)
             assert_eq!(back_to_uuid.as_bytes()[0] & 0xF0, 0xd0);
+        }
+    }
+
+    #[test]
+    fn external_id_prefix() {
+        for _ in 0..1_000_000 {
+            let base_id = Uuid::new_v4();
+            let asset_id = ExternalId::from(base_id);
+            let aid_string = asset_id.to_string();
+            assert_eq!(
+                aid_string.chars().next(),
+                Some('e'),
+                "External-IDs must be prefixed with 'e' in string representation"
+            );
+            let back_to_uuid: Uuid = asset_id.into();
+            assert_ne!(base_id, back_to_uuid);
+            // Check, if first four bits match 'e'
+            // NOTE: Bit-level-hacking here: bits abcdefgh & 11110000 = abcd0000
+            // -> so i can match on byte level agains abcd0000 (in this case 0xe0)
+            assert_eq!(back_to_uuid.as_bytes()[0] & 0xF0, 0xe0);
         }
     }
 
@@ -651,21 +702,27 @@ mod tests {
         // This allows us to easily spot, which ID type we have and prevents cross-matches.
         for _ in 0..1_000_000 {
             let base_id = Uuid::new_v4();
-            let participant_id: Uuid = BorderlessId::from(base_id).into();
-            let asset_id: Uuid = Did::from(base_id).into();
-            let process_id: Uuid = AgentId::from(base_id).into();
+            let agent_id: Uuid = AgentId::from(base_id).into();
+            let borderless_id: Uuid = BorderlessId::from(base_id).into();
             let contract_id: Uuid = ContractId::from(base_id).into();
+            let did: Uuid = Did::from(base_id).into();
+            let external_id: Uuid = ExternalId::from(base_id).into();
+            let flow_id: Uuid = FlowId::from(base_id).into();
+            let ids = [
+                base_id,
+                agent_id,
+                borderless_id,
+                contract_id,
+                did,
+                external_id,
+                flow_id,
+            ];
             // NOTE: Check all permutations, just to be sure:
-            assert_ne!(base_id, participant_id);
-            assert_ne!(base_id, asset_id);
-            assert_ne!(base_id, process_id);
-            assert_ne!(base_id, contract_id);
-            assert_ne!(participant_id, asset_id);
-            assert_ne!(participant_id, process_id);
-            assert_ne!(participant_id, contract_id);
-            assert_ne!(asset_id, process_id);
-            assert_ne!(asset_id, contract_id);
-            assert_ne!(process_id, contract_id);
+            for i in 0..ids.len() {
+                for j in i..ids.len() {
+                    assert_eq!(ids[i] == ids[j], i == j);
+                }
+            }
         }
     }
 
@@ -736,17 +793,33 @@ mod tests {
             assert_ne!(base_id.as_u128(), back_to_u128);
         }
     }
+
+    #[test]
+    fn external_id_construction() {
+        for _ in 0..1_000_000 {
+            let base_id = Uuid::new_v4();
+            let base_u128 = base_id.as_u128();
+            let from_uuid = ExternalId::from(base_id);
+            let from_u128 = ExternalId::from(base_u128);
+            assert_eq!(from_uuid, from_u128);
+            let back_to_uuid: Uuid = from_uuid.into();
+            let back_to_u128: u128 = from_u128.into();
+            assert_eq!(back_to_uuid, Uuid::from_u128(back_to_u128));
+            assert_eq!(back_to_uuid.as_u128(), back_to_u128); // this is redundant - but let's stay paranoid
+            assert_ne!(base_id, back_to_uuid);
+            assert_ne!(base_id.as_u128(), back_to_u128);
+        }
+    }
+
     #[test]
     fn check_aid_prefix() {
         for _ in 0..1_000_000 {
-            let aid = AgentId::generate();
-            let bid = BorderlessId::generate();
-            let cid = ContractId::generate();
-            let did = Did::generate();
-            assert!(aid_prefix(&aid));
-            assert!(!aid_prefix(&bid));
-            assert!(!aid_prefix(&cid));
-            assert!(!aid_prefix(&did));
+            assert!(aid_prefix(&AgentId::generate()));
+            assert!(!aid_prefix(&BorderlessId::generate()));
+            assert!(!aid_prefix(&ContractId::generate()));
+            assert!(!aid_prefix(&Did::generate()));
+            assert!(!aid_prefix(&ExternalId::generate()));
+            assert!(!aid_prefix(&FlowId::generate()));
             assert!(!aid_prefix(&[]));
         }
     }
@@ -754,14 +827,12 @@ mod tests {
     #[test]
     fn check_bid_prefix() {
         for _ in 0..1_000_000 {
-            let aid = AgentId::generate();
-            let bid = BorderlessId::generate();
-            let cid = ContractId::generate();
-            let did = Did::generate();
-            assert!(!bid_prefix(&aid));
-            assert!(bid_prefix(&bid));
-            assert!(!bid_prefix(&cid));
-            assert!(!bid_prefix(&did));
+            assert!(!bid_prefix(&AgentId::generate()));
+            assert!(bid_prefix(&BorderlessId::generate()));
+            assert!(!bid_prefix(&ContractId::generate()));
+            assert!(!bid_prefix(&Did::generate()));
+            assert!(!bid_prefix(&ExternalId::generate()));
+            assert!(!bid_prefix(&FlowId::generate()));
             assert!(!bid_prefix(&[]));
         }
     }
@@ -769,14 +840,12 @@ mod tests {
     #[test]
     fn check_cid_prefix() {
         for _ in 0..1_000_000 {
-            let aid = AgentId::generate();
-            let bid = BorderlessId::generate();
-            let cid = ContractId::generate();
-            let did = Did::generate();
-            assert!(!cid_prefix(&aid));
-            assert!(!cid_prefix(&bid));
-            assert!(cid_prefix(&cid));
-            assert!(!cid_prefix(&did));
+            assert!(!cid_prefix(&AgentId::generate()));
+            assert!(!cid_prefix(&BorderlessId::generate()));
+            assert!(cid_prefix(&ContractId::generate()));
+            assert!(!cid_prefix(&Did::generate()));
+            assert!(!cid_prefix(&ExternalId::generate()));
+            assert!(!cid_prefix(&FlowId::generate()));
             assert!(!cid_prefix(&[]));
         }
     }
@@ -784,28 +853,60 @@ mod tests {
     #[test]
     fn check_did_prefix() {
         for _ in 0..1_000_000 {
-            let aid = AgentId::generate();
-            let bid = BorderlessId::generate();
-            let cid = ContractId::generate();
-            let did = Did::generate();
-            assert!(!did_prefix(&aid));
-            assert!(!did_prefix(&bid));
-            assert!(!did_prefix(&cid));
-            assert!(did_prefix(&did));
+            assert!(!did_prefix(&AgentId::generate()));
+            assert!(!did_prefix(&BorderlessId::generate()));
+            assert!(!did_prefix(&ContractId::generate()));
+            assert!(did_prefix(&Did::generate()));
+            assert!(!did_prefix(&ExternalId::generate()));
+            assert!(!did_prefix(&FlowId::generate()));
             assert!(!did_prefix(&[]));
         }
     }
 
     #[test]
+    fn check_eid_prefix() {
+        for _ in 0..1_000_000 {
+            assert!(!eid_prefix(&AgentId::generate()));
+            assert!(!eid_prefix(&BorderlessId::generate()));
+            assert!(!eid_prefix(&ContractId::generate()));
+            assert!(!eid_prefix(&Did::generate()));
+            assert!(eid_prefix(&ExternalId::generate()));
+            assert!(!eid_prefix(&FlowId::generate()));
+            assert!(!eid_prefix(&[]));
+        }
+    }
+
+    #[test]
+    fn check_fid_prefix() {
+        for _ in 0..1_000_000 {
+            assert!(!fid_prefix(&AgentId::generate()));
+            assert!(!fid_prefix(&BorderlessId::generate()));
+            assert!(!fid_prefix(&ContractId::generate()));
+            assert!(!fid_prefix(&Did::generate()));
+            assert!(!fid_prefix(&ExternalId::generate()));
+            assert!(fid_prefix(&FlowId::generate()));
+            assert!(!fid_prefix(&[]));
+        }
+    }
+
+    #[test]
     fn string_representation() {
-        let aid = AgentId::generate();
-        let s1: String = aid.into();
-        let s2: String = (&aid).into();
-        assert_eq!(s1, s2);
-        let a1: Result<AgentId, _> = s1.try_into();
-        let a2: Result<AgentId, _> = s2.as_str().try_into();
-        assert!(a1.is_ok());
-        assert_eq!(a1, a2);
+        fn parse<T>(id: T)
+        where
+            T: Into<String> + TryFrom<String> + fmt::Debug + Eq + Copy,
+        {
+            let s1: String = id.into();
+            let a1: Result<T, _> = s1.try_into();
+            assert!(a1.is_ok());
+            let id2 = unsafe { a1.unwrap_unchecked() };
+            assert_eq!(id, id2);
+        }
+        parse(AgentId::generate());
+        parse(BorderlessId::generate());
+        parse(ContractId::generate());
+        parse(Did::generate());
+        parse(ExternalId::generate());
+        parse(FlowId::generate());
     }
 
     #[test]
@@ -815,21 +916,29 @@ mod tests {
         let bid: BorderlessId = uid.into();
         let cid: ContractId = uid.into();
         let did: Did = uid.into();
+        let eid: ExternalId = uid.into();
+        let fid: FlowId = uid.into();
         // They must never match the uuid, because of the prefix
         assert_ne!(aid.into_bytes(), uid.into_bytes());
         assert_ne!(bid.into_bytes(), uid.into_bytes());
         assert_ne!(cid.into_bytes(), uid.into_bytes());
         assert_ne!(did.into_bytes(), uid.into_bytes());
+        assert_ne!(eid.into_bytes(), uid.into_bytes());
+        assert_ne!(fid.into_bytes(), uid.into_bytes());
         assert_ne!(aid.into_uuid(), uid);
         assert_ne!(bid.into_uuid(), uid);
         assert_ne!(cid.into_uuid(), uid);
         assert_ne!(did.into_uuid(), uid);
+        assert_ne!(eid.into_uuid(), uid);
+        assert_ne!(fid.into_uuid(), uid);
 
         // But roundtrip will work
         assert_eq!(AgentId::from(aid.into_uuid()), aid);
         assert_eq!(BorderlessId::from(aid.into_uuid()), bid);
         assert_eq!(ContractId::from(aid.into_uuid()), cid);
         assert_eq!(Did::from(aid.into_uuid()), did);
+        assert_eq!(ExternalId::from(aid.into_uuid()), eid);
+        assert_eq!(FlowId::from(aid.into_uuid()), fid);
     }
 
     #[test]
@@ -869,6 +978,7 @@ mod tests {
             check_id::<ContractId>(base_id);
             check_id::<Did>(base_id);
             check_id::<ExternalId>(base_id);
+            check_id::<FlowId>(base_id);
         }
     }
 }
