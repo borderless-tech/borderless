@@ -1,0 +1,18 @@
+# --- The general section defines the package type and the name.
+#
+# App-Name and App-Module fields can be used to create a "group" out of multiple packages.
+# They are simply for organisational purposes, if your application consists of multiple contracts and/or agents.
+[contract]
+name = "order-oneshot"
+#app_name   = ""
+#app_module = ""
+
+# --- The Meta section adds additional information to the package
+#
+# All fields of this section are optional.
+[meta]
+authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]
+#description = "a short description of your contract"
+#documentation = "url to the package's documentation"
+#license = "SPDX 2.3 license expression"
+#repository = "url to the package's repository"

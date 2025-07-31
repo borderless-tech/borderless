@@ -1,11 +1,6 @@
 [workspace]
 members = [
-  "examples/collections",
-  "examples/flipper-agent",
-  "examples/flipper-contract",
-  "examples/callchain-agent",
-  "examples/callchain-contract",
-  "examples/hello-agent",
+  "examples/*",
   "executor/runner",
   "executor/runtime",
   "json-proof",
