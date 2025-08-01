@@ -37,9 +37,9 @@ pub use borderless_hash as hash;
 pub use borderless_pkg as pkg;
 
 pub mod prelude {
-    pub use crate::agents::*;
+    pub use crate::agents::env as AgentEnv;
     pub use crate::common::*;
-    pub use crate::contracts::*;
+    pub use crate::contracts::{env as ContractEnv, TxCtx};
     pub use crate::events::*;
     pub use crate::serialize::json;
     /// Re-Export of `serde_json::json` macro as `value!`

@@ -1,6 +1,7 @@
 use crate::common::Id;
 use crate::events::private::Sealed;
-use crate::prelude::env;
+use crate::prelude::ContractEnv::{contract_id, participant, sinks};
+//use crate::prelude::AgentEnv::agent_id;
 use anyhow::anyhow;
 use borderless_id_types::{BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
@@ -125,7 +126,7 @@ impl CallBuilder<CBInit> {
         method_name: &str,
         writer: &str,
     ) -> CallBuilder<CBInit> {
-        let writer = env::participant(writer).expect("sink contains unknown writer");
+        let writer = participant(writer).expect("sink contains unknown writer");
         CallBuilder {
             id,
             name: method_name.to_string(),
@@ -177,7 +178,7 @@ impl CallBuilder<CBWithAction> {
         writer_alias: impl AsRef<str>,
     ) -> Result<CallBuilder<CBWithAction>, crate::Error> {
         // Check if a participant with the provided alias exists
-        let writer_id = env::participant(writer_alias.as_ref())?;
+        let writer_id = participant(writer_alias.as_ref())?;
         Ok(CallBuilder {
             id: self.id,
             name: self.name,
@@ -203,7 +204,7 @@ impl CallBuilder<CBWithAction> {
         // --- Proceed as normal, without a writer
 
         // Fetch the sinks related to the contract
-        let mut sinks: Vec<Sink> = env::sinks()
+        let mut sinks: Vec<Sink> = sinks()
             .into_iter()
             .filter(|s| s.contract_id == self.id)
             .collect();
@@ -213,7 +214,7 @@ impl CallBuilder<CBWithAction> {
             0 => return Err(anyhow!("Found no sink related to contract-id {}", self.id)),
             1 => {
                 let sink = sinks.pop().unwrap();
-                env::participant(sink.writer)?
+                participant(sink.writer)?
             }
             _ => {
                 return Err(anyhow!(
@@ -272,9 +273,10 @@ pub struct Message {
 /// - `/My-Topic`
 /// - `MY-TOPIC`
 pub fn message(topic: impl AsRef<str>) -> MsgBuilder {
-    // TODO Handle agents as well
     // Fetch publisher from the environment
-    let publisher = Id::contract(env::contract_id());
+    let publisher = Id::contract(contract_id());
+    //let publisher = Id::agent(agent_id());
+
     MsgBuilder {
         publisher,
         topic: topic.as_ref().to_string(),
