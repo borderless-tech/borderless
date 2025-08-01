@@ -15,7 +15,7 @@ use crate::{
 
 /// Returns the contract-id of the current contract
 pub fn contract_id() -> ContractId {
-    read_field(BASE_KEY_METADATA, META_SUB_KEY_CONTRACT_ID).expect("contract-id not in metadata")
+    read_field(BASE_KEY_METADATA, META_SUB_KEY_ID).expect("contract-id not in metadata")
 }
 
 /// Returns the contract participants

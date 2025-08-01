@@ -60,7 +60,7 @@ impl<'a, S: Db> Controller<'a, S> {
             .read_value::<ContractId>(
                 &Id::contract(*cid),
                 BASE_KEY_METADATA,
-                META_SUB_KEY_CONTRACT_ID,
+                META_SUB_KEY_ID,
             )?
             .is_some())
     }
@@ -71,7 +71,7 @@ impl<'a, S: Db> Controller<'a, S> {
             .read_value::<AgentId>(
                 &Id::agent(*aid),
                 BASE_KEY_METADATA,
-                META_SUB_KEY_CONTRACT_ID,
+                META_SUB_KEY_ID,
             )?
             .is_some())
     }
@@ -352,7 +352,7 @@ pub(crate) fn write_introduction<S: Db>(
         txn,
         &cid,
         BASE_KEY_METADATA,
-        META_SUB_KEY_CONTRACT_ID,
+        META_SUB_KEY_ID,
     )?;
     if check_id.is_some() {
         return Err(ErrorKind::DoubleIntroduction.into());
@@ -364,7 +364,7 @@ pub(crate) fn write_introduction<S: Db>(
         txn,
         &cid,
         BASE_KEY_METADATA,
-        META_SUB_KEY_CONTRACT_ID,
+        META_SUB_KEY_ID,
         &introduction.id,
     )?;
 
