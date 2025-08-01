@@ -57,22 +57,14 @@ impl<'a, S: Db> Controller<'a, S> {
     /// Returns `true` if the contract exists
     pub fn contract_exists(&self, cid: &ContractId) -> Result<bool> {
         Ok(self
-            .read_value::<ContractId>(
-                &Id::contract(*cid),
-                BASE_KEY_METADATA,
-                META_SUB_KEY_ID,
-            )?
+            .read_value::<ContractId>(&Id::contract(*cid), BASE_KEY_METADATA, META_SUB_KEY_ID)?
             .is_some())
     }
 
     /// Returns `true` if the contract exists
     pub fn agent_exists(&self, aid: &AgentId) -> Result<bool> {
         Ok(self
-            .read_value::<AgentId>(
-                &Id::agent(*aid),
-                BASE_KEY_METADATA,
-                META_SUB_KEY_ID,
-            )?
+            .read_value::<AgentId>(&Id::agent(*aid), BASE_KEY_METADATA, META_SUB_KEY_ID)?
             .is_some())
     }
 
@@ -347,13 +339,8 @@ pub(crate) fn write_introduction<S: Db>(
     let cid = introduction.id;
 
     // NOTE: If the id was already written to disk, this means that the contract has already been written !
-    let check_id = read_system_value::<S, Id, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_ID,
-    )?;
+    let check_id =
+        read_system_value::<S, Id, _>(db_ptr, txn, &cid, BASE_KEY_METADATA, META_SUB_KEY_ID)?;
     if check_id.is_some() {
         return Err(ErrorKind::DoubleIntroduction.into());
     }
