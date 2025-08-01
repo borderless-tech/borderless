@@ -1,7 +1,7 @@
+use crate::agents::env::agent_id;
 use crate::common::Id;
+use crate::contracts::env::{contract_id, participant, sinks};
 use crate::events::private::Sealed;
-use crate::prelude::ContractEnv::{contract_id, participant, sinks};
-//use crate::prelude::AgentEnv::agent_id;
 use anyhow::anyhow;
 use borderless_id_types::{BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
