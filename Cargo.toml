@@ -25,8 +25,6 @@ borderless-hash = { version = "1.0.0", path = "primitives/hash" }
 borderless-kv-store = { version = "1.0.0", path = "kv-store" }
 borderless-pkg = { version = "0.1.0", path = "primitives/pkg" }
 borderless-runtime = { version = "0.2.0", path = "executor/runtime" }
-borderless-registry = { version = "0.1.0", path = "registry" }
-json-proof = { version = "1.0.0", path = "json-proof" }
 
 # External dependencies
 anyhow = "1.0"

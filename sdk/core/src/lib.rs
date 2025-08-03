@@ -80,6 +80,42 @@ impl CallMethod for AgentId {
     }
 }
 
+pub trait Participant: Sized + private_trait::Sealed {
+    fn get_participant(elem: Self) -> Result<BorderlessId>;
+}
+
+impl private_trait::Sealed for BorderlessId {}
+impl Participant for BorderlessId {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participants()
+            .into_iter()
+            .find(|p| p.id == elem)
+            .map(|p| p.id)
+            .with_context(|| format!("Found no participant with id={elem}"))
+    }
+}
+
+impl private_trait::Sealed for String {}
+impl Participant for String {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participant(elem)
+    }
+}
+
+impl private_trait::Sealed for &str {}
+impl Participant for &str {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participant(elem)
+    }
+}
+
+impl private_trait::Sealed for common::Participant {}
+impl Participant for common::Participant {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participant(elem.alias)
+    }
+}
+
 mod private_trait {
     pub trait Sealed {}
 }
