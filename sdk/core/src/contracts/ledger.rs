@@ -2,8 +2,9 @@ use core::fmt;
 use core::str::FromStr;
 
 use borderless_id_types::BorderlessId;
+use serde::{Deserialize, Serialize};
 
-use crate::{Error, Participant, Result};
+use crate::{Error, Participant, Result, __private::create_ledger_entry};
 
 /// ISO 4217 currencies that account for the vast majority of global FX turnover (BIS 2022).
 ///
@@ -11,7 +12,7 @@ use crate::{Error, Participant, Result};
 /// * The discriminant is the ISO numeric code (`repr(u32)`).
 /// * `Display` prints the common symbol (or symbol‑like shorthand).
 #[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Currency {
     USD = 840,
     EUR = 978,
@@ -187,7 +188,7 @@ impl fmt::Display for Currency {
 ///
 /// Using thousandths lets us represent all ISO 4217 currencies (the largest fraction
 /// in normal use is the Bahraini dinar’s 3 decimal places) without loss.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Money {
     /// Number of thousandths of a unit (can be negative).
     amount_milli: i64,
@@ -359,7 +360,7 @@ impl fmt::Display for EntryTypeErr {
 impl std::error::Error for EntryTypeErr {}
 
 #[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EntryType {
     /// A new debt is created
     CREATE = 0,
@@ -382,6 +383,9 @@ impl TryFrom<u32> for EntryType {
     }
 }
 
+// TODO: Maybe it's better to make this the DB representation;
+// while we keep the concept of using json to communicate between host and guest
+#[derive(Serialize, Deserialize)]
 pub struct LedgerEntry {
     pub creditor: BorderlessId,
     pub debitor: BorderlessId,
@@ -395,7 +399,7 @@ pub struct LedgerEntry {
 // 2 * 16 byte for the ids
 // 2 *  8 byte for the amount + tax
 // 2 *  4 byte for currency + kind
-pub const LEDGER_ENTRY_MIN_LEN: usize = 32 + 16 + 8;
+// pub const LEDGER_ENTRY_MIN_LEN: usize = 32 + 16 + 8;
 
 impl LedgerEntry {
     pub fn get_money(&self) -> Money {
@@ -405,64 +409,72 @@ impl LedgerEntry {
         }
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(LEDGER_ENTRY_MIN_LEN + self.tag.len());
-        bytes.extend(self.creditor.as_bytes());
-        bytes.extend(self.debitor.as_bytes());
-        bytes.extend(self.amount_milli.to_be_bytes());
-        bytes.extend(self.tax_milli.to_be_bytes());
-        bytes.extend((self.currency as u32).to_be_bytes());
-        bytes.extend((self.kind as u32).to_be_bytes());
-        bytes.extend(self.tag.as_bytes());
-        bytes
+    pub fn to_bytes(&self) -> std::result::Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(&self)
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        LedgerEntry::check_buffer(bytes)?;
-        // 16 byte buffer
-        let mut buf = [0; 16];
-        buf.copy_from_slice(&bytes[0..16]);
-        let creditor = BorderlessId::from_bytes(buf);
-        buf.copy_from_slice(&bytes[16..32]);
-        let debitor = BorderlessId::from_bytes(buf);
-        // 8 byte buffer
-        let mut buf = [0; 8];
-        buf.copy_from_slice(&bytes[32..40]);
-        let amount_milli = i64::from_be_bytes(buf);
-        buf.copy_from_slice(&bytes[40..48]);
-        let tax_milli = i64::from_be_bytes(buf);
-        // 4 byte buffer
-        let mut buf = [0; 4];
-        buf.copy_from_slice(&bytes[48..52]);
-        let currency = Currency::try_from(u32::from_be_bytes(buf))?;
-        buf.copy_from_slice(&bytes[52..56]);
-        let kind = EntryType::try_from(u32::from_be_bytes(buf))?;
-        let tag = String::from_utf8_lossy(&bytes[56..]);
-        Ok(LedgerEntry {
-            creditor,
-            debitor,
-            amount_milli,
-            tax_milli,
-            currency,
-            kind,
-            tag: tag.into_owned(),
-        })
+    pub fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
     }
 
-    pub fn check_buffer(bytes: &[u8]) -> Result<()> {
-        if bytes.len() < LEDGER_ENTRY_MIN_LEN {
-            return Err(Error::msg("slice is too short for a ledger-entry"));
-        }
-        Ok(())
-    }
+    // pub fn to_bytes(&self) -> Vec<u8> {
+    //     let mut bytes = Vec::with_capacity(LEDGER_ENTRY_MIN_LEN + self.tag.len());
+    //     bytes.extend(self.creditor.as_bytes());
+    //     bytes.extend(self.debitor.as_bytes());
+    //     bytes.extend(self.amount_milli.to_be_bytes());
+    //     bytes.extend(self.tax_milli.to_be_bytes());
+    //     bytes.extend((self.currency as u32).to_be_bytes());
+    //     bytes.extend((self.kind as u32).to_be_bytes());
+    //     bytes.extend(self.tag.as_bytes());
+    //     bytes
+    // }
+
+    // pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    //     LedgerEntry::check_buffer(bytes)?;
+    //     // 16 byte buffer
+    //     let mut buf = [0; 16];
+    //     buf.copy_from_slice(&bytes[0..16]);
+    //     let creditor = BorderlessId::from_bytes(buf);
+    //     buf.copy_from_slice(&bytes[16..32]);
+    //     let debitor = BorderlessId::from_bytes(buf);
+    //     // 8 byte buffer
+    //     let mut buf = [0; 8];
+    //     buf.copy_from_slice(&bytes[32..40]);
+    //     let amount_milli = i64::from_be_bytes(buf);
+    //     buf.copy_from_slice(&bytes[40..48]);
+    //     let tax_milli = i64::from_be_bytes(buf);
+    //     // 4 byte buffer
+    //     let mut buf = [0; 4];
+    //     buf.copy_from_slice(&bytes[48..52]);
+    //     let currency = Currency::try_from(u32::from_be_bytes(buf))?;
+    //     buf.copy_from_slice(&bytes[52..56]);
+    //     let kind = EntryType::try_from(u32::from_be_bytes(buf))?;
+    //     let tag = String::from_utf8_lossy(&bytes[56..]);
+    //     Ok(LedgerEntry {
+    //         creditor,
+    //         debitor,
+    //         amount_milli,
+    //         tax_milli,
+    //         currency,
+    //         kind,
+    //         tag: tag.into_owned(),
+    //     })
+    // }
+
+    // pub fn check_buffer(bytes: &[u8]) -> Result<()> {
+    //     if bytes.len() < LEDGER_ENTRY_MIN_LEN {
+    //         return Err(Error::msg("slice is too short for a ledger-entry"));
+    //     }
+    //     Ok(())
+    // }
 
     // POC how we can generate a view over a byte buffer
-    pub unsafe fn view_kind(bytes: &[u8]) -> Result<EntryType> {
-        let mut buf = [0; 4];
-        buf.copy_from_slice(&bytes.get_unchecked(52..56));
-        let kind = EntryType::try_from(u32::from_be_bytes(buf)).unwrap();
-        Ok(kind)
-    }
+    // pub unsafe fn view_kind(bytes: &[u8]) -> Result<EntryType> {
+    //     let mut buf = [0; 4];
+    //     buf.copy_from_slice(&bytes.get_unchecked(52..56));
+    //     let kind = EntryType::try_from(u32::from_be_bytes(buf)).unwrap();
+    //     Ok(kind)
+    // }
 }
 
 pub struct EntryBuilder<C, D> {
@@ -551,7 +563,7 @@ where
 
     pub fn execute(self) -> Result<()> {
         let entry = self.build()?;
-        Ok(())
+        create_ledger_entry(entry)
     }
 }
 
@@ -722,9 +734,9 @@ mod tests {
             .with_tax("19 €".parse()?)?
             .build()?;
 
-        assert_eq!(e1.to_bytes(), e2.to_bytes());
-        assert_eq!(e2.to_bytes(), e3.to_bytes());
-        assert_eq!(e1.to_bytes(), e3.to_bytes());
+        assert_eq!(e1.to_bytes()?, e2.to_bytes()?);
+        assert_eq!(e2.to_bytes()?, e3.to_bytes()?);
+        assert_eq!(e1.to_bytes()?, e3.to_bytes()?);
         Ok(())
     }
 
@@ -736,7 +748,7 @@ mod tests {
             .with_tax("19 €".parse()?)?
             .with_tag("test-transfer")
             .build()?;
-        let bytes = entry.to_bytes();
+        let bytes = entry.to_bytes()?;
         let decoded = LedgerEntry::from_bytes(&bytes)?;
         assert_eq!(decoded.amount_milli, 100_000);
         assert_eq!(decoded.tax_milli, 19_000);

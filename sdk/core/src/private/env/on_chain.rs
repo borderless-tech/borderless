@@ -97,11 +97,13 @@ pub fn tic() {
     unsafe { abi::tic() }
 }
 
+// TODO: Change this function to not produce side-effects
 pub fn toc() -> Duration {
     let dur = unsafe { abi::toc() };
     Duration::from_nanos(dur)
 }
 
+// TODO: Remove this
 pub fn rand(min: u64, max: u64) -> u64 {
     unsafe { abi::rand(min, max) }
 }

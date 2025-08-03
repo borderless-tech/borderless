@@ -17,6 +17,7 @@ use registers::*;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::error;
+use crate::prelude::ledger::LedgerEntry;
 pub use postcard::from_bytes as from_postcard_bytes;
 pub use postcard::to_allocvec as to_postcard_bytes;
 
@@ -265,6 +266,21 @@ pub fn abort() -> ! {
     #[cfg(not(target_arch = "wasm32"))]
     {
         panic!();
+    }
+}
+
+pub fn create_ledger_entry(entry: LedgerEntry) -> crate::Result<()> {
+    let _bytes = entry.to_bytes();
+    #[cfg(target_arch = "wasm32")]
+    unsafe {
+        match abi::create_ledger_entry(_bytes.as_ptr() as _, _bytes.len() as _) {
+            0 => Ok(()),
+            _ => Err(crate::Error::msg("failed to create ledger entry")),
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        panic!("Ledger-API is not supportet on non-wasm targets")
     }
 }
 
