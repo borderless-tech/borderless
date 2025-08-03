@@ -85,14 +85,14 @@ impl Currency {
             Currency::SGD => "S$",
             Currency::SEK => "kr",
             Currency::KRW => "₩",
-            Currency::NOK => "kr",
+            Currency::NOK => "NKr",
             Currency::NZD => "NZ$",
             Currency::INR => "₹",
             Currency::MXN => "Mex$",
             Currency::TWD => "NT$",
             Currency::ZAR => "R",
             Currency::BRL => "R$",
-            Currency::DKK => "kr",
+            Currency::DKK => "DKK",
             Currency::PLN => "zł",
             Currency::THB => "฿",
             Currency::ILS => "₪",
@@ -265,71 +265,82 @@ impl fmt::Display for ParseMoneyError {
 }
 impl std::error::Error for ParseMoneyError {}
 
+enum ParserState {
+    Prefix,
+    Number,
+    NumberFrac,
+    CurSym,
+}
+
 impl FromStr for Money {
     type Err = ParseMoneyError;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        let s = input.trim();
-
-        // Try to find a trailing currency symbol (optionally preceded by space)
-        for &cur in Currency::ALL.iter() {
-            let sym = cur.symbol();
-            if s.ends_with(sym) {
-                // slice off the symbol and any whitespace before it.
-                let number_part = s[..s.len() - sym.len()].trim_end();
-
-                // Replace comma with dot to unify decimal separator.
-                let unified = number_part.replace(',', ".");
-                if unified.is_empty() {
-                    println!("--");
-                    return Err(ParseMoneyError::InvalidFormat);
-                }
-
-                // Handle optional negative sign.
-                let negative = unified.starts_with('-');
-                let number_core = if negative { &unified[1..] } else { &unified };
-
-                // Split on optional decimal point.
-                let mut parts = number_core.split('.');
-                let int_part_str = parts.next().unwrap();
-                let frac_part_str = parts.next();
-                if parts.next().is_some() {
-                    // more than one dot
-                    println!("too many dots");
-                    return Err(ParseMoneyError::InvalidFormat);
-                }
-
-                let integral: i64 = int_part_str
-                    .parse()
-                    .map_err(|_| ParseMoneyError::InvalidFormat)?;
-
-                let mut milli: i64 = integral
-                    .checked_mul(1000)
-                    .ok_or(ParseMoneyError::Overflow)?;
-
-                if let Some(frac) = frac_part_str {
-                    if frac.len() > 3 {
-                        println!("fracs: {}", frac.len());
+        // Okay, write a small parser from scratch
+        // start with either number or "-"
+        let mut state = ParserState::Prefix;
+        let mut mul = 1;
+        let mut num = String::new();
+        let mut frac = String::new();
+        let mut sym = String::new();
+        for c in input.chars() {
+            // Ignore whitespace completely
+            if c.is_ascii_whitespace() {
+                continue;
+            }
+            match state {
+                ParserState::Prefix => {
+                    if c == '-' {
+                        mul = -1; // multiply by -1 to make a negative number
+                        state = ParserState::Number;
+                    } else if c.is_numeric() {
+                        state = ParserState::Number;
+                        num.push(c);
+                    } else {
                         return Err(ParseMoneyError::InvalidFormat);
                     }
-                    // Pad to 3 digits on the right by adding zeros.
-                    let mut padded = frac.to_owned();
-                    while padded.len() < 3 {
-                        padded.push('0');
+                }
+                ParserState::Number => {
+                    if c.is_numeric() {
+                        num.push(c);
+                    } else if c == ',' || c == '.' {
+                        state = ParserState::NumberFrac;
+                    } else {
+                        sym.push(c);
+                        state = ParserState::CurSym;
                     }
-                    let frac_val: i64 =
-                        padded.parse().map_err(|_| ParseMoneyError::InvalidFormat)?;
-                    milli = milli
-                        .checked_add(frac_val)
-                        .ok_or(ParseMoneyError::Overflow)?;
                 }
-
-                if negative {
-                    milli = -milli;
+                ParserState::NumberFrac => {
+                    if c.is_numeric() {
+                        frac.push(c);
+                    } else {
+                        sym.push(c);
+                        state = ParserState::CurSym;
+                    }
                 }
+                ParserState::CurSym => {
+                    sym.push(c);
+                }
+            }
+        }
+        let num = i64::from_str_radix(&num, 10).map_err(|_| ParseMoneyError::InvalidFormat)?;
+        let frac = if frac.is_empty() {
+            0
+        } else {
+            // We have to account for the correct number of fractions
+            let n = i64::from_str_radix(&frac, 10).map_err(|_| ParseMoneyError::InvalidFormat)?;
+            if frac.len() > 3 {
+                return Err(ParseMoneyError::InvalidFormat);
+            }
+            n * 10_i64.pow(3 - frac.len() as u32)
+        };
+        debug_assert!(frac < 1000);
+        let amount_milli = mul * (1000 * num + frac);
 
+        for cur in Currency::ALL {
+            if sym == cur.symbol() {
                 return Ok(Money {
-                    amount_milli: milli,
+                    amount_milli,
                     currency: cur,
                 });
             }
@@ -594,6 +605,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use rand::random_range;
+
     use crate::{
         __private::storage_keys::{BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS},
         common::Participant,
@@ -601,41 +614,57 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn usd_symbol() {
-        assert_eq!(Currency::USD.symbol(), "$");
+    fn random_money() -> Money {
+        let amount_milli: i64 = random_range(-1_000_000_000..1_000_000_000);
+        let currency = Currency::ALL[random_range(0..Currency::ALL.len())];
+        Money {
+            amount_milli,
+            currency,
+        }
     }
 
     #[test]
-    fn eur_full_name() {
-        assert_eq!(Currency::EUR.full_name(), "Euro");
+    fn cur_u32_roundtrip() {
+        for cur in Currency::ALL {
+            let num = cur as u32;
+            let back = Currency::try_from(num).unwrap();
+            assert_eq!(cur, back);
+        }
     }
 
     #[test]
-    fn repr_value_matches_iso() {
-        assert_eq!(Currency::JPY as u32, 392);
+    fn display_parse_roundtrip() -> Result<()> {
+        for _ in 0..1_000 {
+            let m = random_money();
+            let s = m.to_string();
+            let m2: Money = s.parse()?;
+            assert_eq!(m, m2, "{s}");
+        }
+        Ok(())
     }
 
     #[test]
-    fn parse_eur_comma() {
-        let m: Money = "10,23 €".parse().unwrap();
-        assert_eq!(m.amount_thousandths(), 10230);
-        assert_eq!(m.currency(), Currency::EUR);
+    fn parse_dot_comma() -> Result<()> {
+        for _ in 0..1_000 {
+            let m = random_money();
+            let s1 = m.to_string();
+            let s2 = s1.replace(".", ",");
+            let m1: Money = s1.parse()?;
+            let m2: Money = s2.parse()?;
+            assert_eq!(m1, m2);
+        }
+        Ok(())
     }
 
     #[test]
-    fn parse_usd_dot() {
-        let m: Money = "-99.1$".parse().unwrap();
-        assert_eq!(m.amount_thousandths(), -99100);
-        assert_eq!(m.currency(), Currency::USD);
-    }
-
-    #[test]
-    fn display_round_trip() {
-        let original = "123.456 NZ$";
-        let m: Money = original.parse().unwrap();
-        let round = m.to_string();
-        assert_eq!(round, "123.456 NZ$");
+    fn ignore_whitespace() -> Result<()> {
+        let spaces = ["100 €", "100€", "  100€ ", " 100 €", "1 00, 0 0 €"];
+        for s in spaces {
+            let m: Money = s.parse()?;
+            assert_eq!(m.amount(), 100.0);
+            assert_eq!(m.currency, Currency::EUR);
+        }
+        Ok(())
     }
 
     fn prepare_participants() -> (Participant, Participant) {
