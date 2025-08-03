@@ -109,10 +109,17 @@ impl Participant for &str {
     }
 }
 
+impl private_trait::Sealed for &common::Participant {}
+impl Participant for &common::Participant {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participant(&elem.alias)
+    }
+}
+
 impl private_trait::Sealed for common::Participant {}
 impl Participant for common::Participant {
     fn get_participant(elem: Self) -> Result<BorderlessId> {
-        contracts::env::participant(elem.alias)
+        Participant::get_participant(&elem)
     }
 }
 

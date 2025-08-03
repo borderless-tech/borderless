@@ -1,6 +1,5 @@
 use core::fmt;
 use core::str::FromStr;
-use std::marker::PhantomData;
 
 use borderless_id_types::BorderlessId;
 
@@ -130,6 +129,50 @@ impl Currency {
             Currency::ILS => "Israeli new shekel",
             Currency::IDR => "Indonesian rupiah",
             Currency::CZK => "Czech koruna",
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct CurrencyError;
+impl fmt::Display for CurrencyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("invalid ISO-4217 currency code")
+    }
+}
+impl std::error::Error for CurrencyError {}
+
+impl TryFrom<u32> for Currency {
+    type Error = CurrencyError;
+
+    fn try_from(value: u32) -> std::result::Result<Self, Self::Error> {
+        match value {
+            840 => Ok(Currency::USD),
+            978 => Ok(Currency::EUR),
+            392 => Ok(Currency::JPY),
+            826 => Ok(Currency::GBP),
+            156 => Ok(Currency::CNY),
+            36 => Ok(Currency::AUD),
+            124 => Ok(Currency::CAD),
+            756 => Ok(Currency::CHF),
+            344 => Ok(Currency::HKD),
+            702 => Ok(Currency::SGD),
+            752 => Ok(Currency::SEK),
+            410 => Ok(Currency::KRW),
+            578 => Ok(Currency::NOK),
+            554 => Ok(Currency::NZD),
+            356 => Ok(Currency::INR),
+            484 => Ok(Currency::MXN),
+            901 => Ok(Currency::TWD),
+            710 => Ok(Currency::ZAR),
+            986 => Ok(Currency::BRL),
+            208 => Ok(Currency::DKK),
+            985 => Ok(Currency::PLN),
+            764 => Ok(Currency::THB),
+            376 => Ok(Currency::ILS),
+            360 => Ok(Currency::IDR),
+            203 => Ok(Currency::CZK),
+            _ => Err(CurrencyError),
         }
     }
 }
@@ -295,6 +338,15 @@ impl FromStr for Money {
     }
 }
 
+#[derive(Debug)]
+pub struct EntryTypeErr;
+impl fmt::Display for EntryTypeErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("invalid entry-type")
+    }
+}
+impl std::error::Error for EntryTypeErr {}
+
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EntryType {
@@ -306,15 +358,33 @@ pub enum EntryType {
     CANCEL = 2,
 }
 
+impl TryFrom<u32> for EntryType {
+    type Error = EntryTypeErr;
+
+    fn try_from(value: u32) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0 => Ok(EntryType::CREATE),
+            1 => Ok(EntryType::SETTLE),
+            2 => Ok(EntryType::CANCEL),
+            _ => Err(EntryTypeErr),
+        }
+    }
+}
+
 pub struct LedgerEntry {
-    pub debitor: BorderlessId,
     pub creditor: BorderlessId,
+    pub debitor: BorderlessId,
     pub amount_milli: i64,
     pub tax_milli: i64,
     pub currency: Currency,
     pub kind: EntryType,
     pub tag: String,
 }
+
+// 2 * 16 byte for the ids
+// 2 *  8 byte for the amount + tax
+// 2 *  4 byte for currency + kind
+pub const LEDGER_ENTRY_MIN_LEN: usize = 32 + 16 + 8;
 
 impl LedgerEntry {
     pub fn get_money(&self) -> Money {
@@ -323,57 +393,64 @@ impl LedgerEntry {
             currency: self.currency,
         }
     }
-}
 
-pub struct Init;
-pub struct WithCredit;
-pub struct WithDebit;
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(LEDGER_ENTRY_MIN_LEN + self.tag.len());
+        bytes.extend(self.creditor.as_bytes());
+        bytes.extend(self.debitor.as_bytes());
+        bytes.extend(self.amount_milli.to_be_bytes());
+        bytes.extend(self.tax_milli.to_be_bytes());
+        bytes.extend((self.currency as u32).to_be_bytes());
+        bytes.extend((self.kind as u32).to_be_bytes());
+        bytes.extend(self.tag.as_bytes());
+        bytes
+    }
 
-pub struct DebitBuilder<C, D, S> {
-    creditor: Option<C>,
-    debitor: Option<D>,
-    _marker: PhantomData<S>,
-}
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        LedgerEntry::check_buffer(bytes)?;
+        // 16 byte buffer
+        let mut buf = [0; 16];
+        buf.copy_from_slice(&bytes[0..16]);
+        let creditor = BorderlessId::from_bytes(buf);
+        buf.copy_from_slice(&bytes[16..32]);
+        let debitor = BorderlessId::from_bytes(buf);
+        // 8 byte buffer
+        let mut buf = [0; 8];
+        buf.copy_from_slice(&bytes[32..40]);
+        let amount_milli = i64::from_be_bytes(buf);
+        buf.copy_from_slice(&bytes[40..48]);
+        let tax_milli = i64::from_be_bytes(buf);
+        // 4 byte buffer
+        let mut buf = [0; 4];
+        buf.copy_from_slice(&bytes[48..52]);
+        let currency = Currency::try_from(u32::from_be_bytes(buf))?;
+        buf.copy_from_slice(&bytes[52..56]);
+        let kind = EntryType::try_from(u32::from_be_bytes(buf))?;
+        let tag = String::from_utf8_lossy(&bytes[56..]);
+        Ok(LedgerEntry {
+            creditor,
+            debitor,
+            amount_milli,
+            tax_milli,
+            currency,
+            kind,
+            tag: tag.into_owned(),
+        })
+    }
 
-impl<C, D> DebitBuilder<C, D, Init>
-where
-    C: Participant,
-    D: Participant,
-{
-    pub fn creditor(self, creditor: C) -> DebitBuilder<C, D, WithCredit> {
-        DebitBuilder {
-            creditor: Some(creditor),
-            debitor: self.debitor,
-            _marker: PhantomData,
+    pub fn check_buffer(bytes: &[u8]) -> Result<()> {
+        if bytes.len() < LEDGER_ENTRY_MIN_LEN {
+            return Err(Error::msg("slice is too short for a ledger-entry"));
         }
+        Ok(())
     }
 
-    pub fn debitor(self, debitor: D) -> DebitBuilder<C, D, WithDebit> {
-        DebitBuilder {
-            creditor: self.creditor,
-            debitor: Some(debitor),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<C, D> DebitBuilder<C, D, WithCredit>
-where
-    C: Participant,
-    D: Participant,
-{
-    pub fn debitor(self, _debitor: D) -> EntryBuilder<C, D> {
-        todo!()
-    }
-}
-
-impl<C, D> DebitBuilder<C, D, WithDebit>
-where
-    C: Participant,
-    D: Participant,
-{
-    pub fn creditor(self, _creditor: C) -> EntryBuilder<C, D> {
-        todo!()
+    // POC how we can generate a view over a byte buffer
+    pub unsafe fn view_kind(bytes: &[u8]) -> Result<EntryType> {
+        let mut buf = [0; 4];
+        buf.copy_from_slice(&bytes.get_unchecked(52..56));
+        let kind = EntryType::try_from(u32::from_be_bytes(buf)).unwrap();
+        Ok(kind)
     }
 }
 
@@ -595,6 +672,47 @@ mod tests {
         assert_eq!(entry.tax_milli, 19_000);
         assert_eq!(entry.currency, Currency::EUR);
         assert_eq!(entry.tag, "test-transfer");
+        Ok(())
+    }
+
+    #[test]
+    fn participant_logic() -> Result<()> {
+        let (creditor, debitor) = prepare_participants();
+        let e1 = transfer(&debitor, &creditor)
+            .with_amount("100 €".parse()?)?
+            .with_tax("19 €".parse()?)?
+            .build()?;
+
+        let e2 = transfer(debitor.id, creditor.id)
+            .with_amount("100 €".parse()?)?
+            .with_tax("19 €".parse()?)?
+            .build()?;
+
+        let e3 = transfer(debitor.alias, creditor.alias)
+            .with_amount("100 €".parse()?)?
+            .with_tax("19 €".parse()?)?
+            .build()?;
+
+        assert_eq!(e1.to_bytes(), e2.to_bytes());
+        assert_eq!(e2.to_bytes(), e3.to_bytes());
+        assert_eq!(e1.to_bytes(), e3.to_bytes());
+        Ok(())
+    }
+
+    #[test]
+    fn encode_decode() -> Result<()> {
+        let (creditor, debitor) = prepare_participants();
+        let entry = transfer(debitor, creditor)
+            .with_amount("100 €".parse()?)?
+            .with_tax("19 €".parse()?)?
+            .with_tag("test-transfer")
+            .build()?;
+        let bytes = entry.to_bytes();
+        let decoded = LedgerEntry::from_bytes(&bytes)?;
+        assert_eq!(decoded.amount_milli, 100_000);
+        assert_eq!(decoded.tax_milli, 19_000);
+        assert_eq!(decoded.currency, Currency::EUR);
+        assert_eq!(decoded.tag, "test-transfer");
         Ok(())
     }
 }
