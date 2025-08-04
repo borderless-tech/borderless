@@ -1,4 +1,4 @@
-use crate::__private::registers::{REGISTER_BLOCK_CTX, REGISTER_TX_CTX, REGISTER_WRITER};
+use crate::__private::registers::{REGISTER_BLOCK_CTX, REGISTER_EXECUTOR, REGISTER_TX_CTX};
 use crate::__private::storage_keys::{
     BASE_KEY_METADATA, META_SUB_KEY_DESC, META_SUB_KEY_ID, META_SUB_KEY_META,
 };
@@ -29,10 +29,10 @@ pub fn meta() -> Metadata {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_META).expect("meta not in metadata")
 }
 
-/// Returns the writer of the current transaction
-pub fn writer() -> BorderlessId {
-    let bytes = read_register(REGISTER_WRITER).expect("caller not present");
-    BorderlessId::from_bytes(bytes.try_into().expect("caller must be a borderless-id"))
+/// Returns the executor of the sw-agent
+pub fn executor() -> BorderlessId {
+    let bytes = read_register(REGISTER_EXECUTOR).expect("executor not present");
+    BorderlessId::from_bytes(bytes.try_into().expect("executor must be a borderless-id"))
 }
 
 /// Returns the roles that are assigned to the writer of the current transaction
