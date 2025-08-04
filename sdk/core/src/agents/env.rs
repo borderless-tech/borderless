@@ -14,17 +14,17 @@ pub fn is_agent() -> bool {
     id.as_aid().is_some()
 }
 
-/// Returns the contract-id of the current contract
+/// Returns the Agent-id of the current sw-agent
 pub fn agent_id() -> AgentId {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_ID).expect("agent-id not in metadata")
 }
 
-/// Returns the [`Description`] of a contract
+/// Returns the [`Description`] of a sw-agent
 pub fn desc() -> Description {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_DESC).expect("description not in metadata")
 }
 
-/// Returns the [`Metadata`] of a contract
+/// Returns the [`Metadata`] of a sw-agent
 pub fn meta() -> Metadata {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_META).expect("meta not in metadata")
 }
