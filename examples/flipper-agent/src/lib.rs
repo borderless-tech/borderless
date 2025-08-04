@@ -1,6 +1,7 @@
 #[borderless::agent]
 pub mod flipper {
-    use borderless::events::Events;
+    use borderless::contracts::env;
+    use borderless::prelude::*;
     use borderless::{Result, *};
     use collections::lazyvec::LazyVec;
     use serde::{Deserialize, Serialize};
@@ -36,8 +37,12 @@ pub mod flipper {
         }
 
         #[action]
-        pub fn set_other(&self, _switch: bool) -> Result<Events> {
-            todo!("Implement message system")
+        pub fn set_other(&self, switch: bool) -> Result<ContractCall> {
+            let call = env::sink("flipper")?
+                .call_method("set_switch")
+                .with_value(value!({ "switch": switch }))
+                .build()?;
+            Ok(call)
         }
     }
 }
