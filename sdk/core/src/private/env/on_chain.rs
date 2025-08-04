@@ -1,4 +1,4 @@
-use crate::__private::REGISTER_ATOMIC_OP;
+use crate::__private::{LedgerEntry, REGISTER_ATOMIC_OP};
 use crate::error;
 use borderless_abi as abi;
 use std::time::Duration;
@@ -90,9 +90,9 @@ pub fn register_len(register_id: u64) -> Option<u64> {
 }
 
 pub fn create_ledger_entry(entry: LedgerEntry) -> crate::Result<()> {
-    let bytes = entry.to_bytes();
+    let bytes = entry.to_bytes()?;
     unsafe {
-        match abi::create_ledger_entry(_bytes.as_ptr() as _, _bytes.len() as _) {
+        match abi::create_ledger_entry(bytes.as_ptr() as _, bytes.len() as _) {
             0 => Ok(()),
             1 => Err(crate::Error::msg("creditor not in participants")),
             2 => Err(crate::Error::msg("debitor not in participants")),

@@ -272,7 +272,7 @@ pub fn abort() -> ! {
 pub fn create_ledger_entry(entry: LedgerEntry) -> crate::Result<()> {
     let _bytes = entry.to_bytes();
     #[cfg(target_arch = "wasm32")]
-    unsafe {
+    {
         env::on_chain::create_ledger_entry(entry)
     }
     #[cfg(not(target_arch = "wasm32"))]
