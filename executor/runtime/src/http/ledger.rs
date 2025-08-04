@@ -95,10 +95,7 @@ where
                     Err(e) => return Ok(bad_request(e.to_string())),
                 };
                 let ledger = controller.ledger().select(ledger_id);
-                let route = match pieces.next() {
-                    Some(r) => r,
-                    None => return Ok(reject_404()),
-                };
+                let route = pieces.next().unwrap_or_default();
                 match route {
                     "" => {
                         let pagination = Pagination::from_query(query).unwrap_or_default();
