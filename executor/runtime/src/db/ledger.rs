@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Error, Result, LEDGER_SUB_DB};
 
+use crate::log_shim::*;
+
 pub struct Ledger<'a, S: Db> {
     db: &'a S,
 }
@@ -40,8 +42,6 @@ impl<'a, S: Db> Ledger<'a, S> {
             Some(val) => postcard::from_bytes(&val)?,
             None => LedgerMeta::new(entry.creditor, entry.debitor),
         };
-        // update meta information based on the current entry
-        let meta = meta.update(entry)?;
 
         // Write ledger line
         let c_key = LedgerKey::new(ledger_id, meta.len, "creditor");
@@ -53,7 +53,7 @@ impl<'a, S: Db> Ledger<'a, S> {
         let tag_key = LedgerKey::new(ledger_id, meta.len, "tag");
         let cid_key = LedgerKey::new(ledger_id, meta.len, "contract_id");
         let tx_ctx_key = LedgerKey::new(ledger_id, meta.len, "tx_ctx");
-        let tx_ctx_bytes = tx_ctx.to_bytes()?;
+        let tx_ctx_bytes = postcard::to_allocvec(&tx_ctx)?;
         txn.write(&db_ptr, &c_key, entry.creditor.as_bytes())?;
         txn.write(&db_ptr, &d_key, entry.debitor.as_bytes())?;
         txn.write(&db_ptr, &amount_key, &entry.amount_milli.to_be_bytes())?;
@@ -64,9 +64,13 @@ impl<'a, S: Db> Ledger<'a, S> {
         txn.write(&db_ptr, &cid_key, &cid.as_bytes())?;
         txn.write(&db_ptr, &tx_ctx_key, &tx_ctx_bytes)?;
 
+        // update meta information based on the current entry
+        let meta = meta.update(entry)?;
+
         // Write meta back
         let meta_bytes = postcard::to_allocvec(&meta)?;
         txn.write(&db_ptr, &meta_key, &meta_bytes)?;
+        info!("-- created ledger-entry: meta={meta:?}");
         Ok(())
     }
 
@@ -397,7 +401,7 @@ pub struct LedgerIds {
 }
 
 /// Meta information about this ledger
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LedgerMeta {
     /// Creditor side
     pub creditor: BorderlessId,
