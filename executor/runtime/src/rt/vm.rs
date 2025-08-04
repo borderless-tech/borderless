@@ -697,8 +697,12 @@ pub fn create_ledger_entry(
     if creditor && debitor {
         caller.data_mut().active.push_ledger(entry)?;
         Ok(0)
-    } else {
+    } else if !creditor && debitor {
         Ok(1)
+    } else if creditor && !debitor {
+        Ok(2)
+    } else {
+        Ok(3)
     }
 }
 
