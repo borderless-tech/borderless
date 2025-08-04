@@ -1,6 +1,7 @@
 #[borderless::contract]
 pub mod flipper {
     use borderless::collections::lazyvec::LazyVec;
+    use borderless::contracts::env;
     use borderless::prelude::*;
     use serde::{Deserialize, Serialize};
 
@@ -36,7 +37,7 @@ pub mod flipper {
 
         #[action(web_api = true, roles = "Flipper")]
         pub fn set_other(&self, switch: bool) -> Result<ContractCall> {
-            let call = ContractEnv::sink("flipper")?
+            let call = env::sink("flipper")?
                 .call_method("set_switch")
                 .with_value(value!({ "switch": switch }))
                 //.with_writer("alpha")?
