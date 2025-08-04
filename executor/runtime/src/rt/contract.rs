@@ -71,6 +71,7 @@ impl<S: Db> Runtime<S> {
             "print",
             |caller: Caller<'_, VmState<S>>, ptr, len, level| vm::print(caller, ptr, len, level),
         )?;
+        // -- Register-API
         linker.func_wrap(
             "env",
             "read_register",
@@ -90,6 +91,7 @@ impl<S: Db> Runtime<S> {
                 vm::write_register(caller, register_id, wasm_ptr, wasm_ptr_len)
             },
         )?;
+        // -- Storage-API
         linker.func_wrap(
             "env",
             "storage_read",
@@ -123,10 +125,19 @@ impl<S: Db> Runtime<S> {
             "storage_cursor",
             |caller: Caller<'_, VmState<S>>, base_key| vm::storage_cursor(caller, base_key),
         )?;
+        linker.func_wrap("env", "storage_gen_sub_key", vm::storage_gen_sub_key)?;
+
+        // -- Ledger-API
+        linker.func_wrap(
+            "env",
+            "create_ledger_entry",
+            |caller: Caller<'_, VmState<S>>, wasm_ptr, wasm_len| {
+                vm::create_ledger_entry(caller, wasm_ptr, wasm_len)
+            },
+        )?;
 
         // NOTE: Those functions introduce side-effects;
         // they should only be used by us or during development of a contract
-        linker.func_wrap("env", "storage_gen_sub_key", vm::storage_gen_sub_key)?;
         linker.func_wrap("env", "tic", |caller: Caller<'_, VmState<S>>| {
             vm::tic(caller)
         })?;

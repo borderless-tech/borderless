@@ -32,7 +32,7 @@ impl<'a, S: Db> Ledger<'a, S> {
         txn: &mut <S as Db>::RwTx<'_>,
         entry: &LedgerEntry,
         cid: ContractId,
-        tx_ctx: TxCtx,
+        tx_ctx: &TxCtx,
     ) -> Result<()> {
         let db_ptr = self.db.open_sub_db(LEDGER_SUB_DB)?;
         // Read current ledger meta information
