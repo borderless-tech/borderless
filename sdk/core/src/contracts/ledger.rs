@@ -136,6 +136,12 @@ impl Currency {
     pub fn to_be_bytes(&self) -> [u8; 4] {
         (*self as u32).to_be_bytes()
     }
+
+    pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
+        let b = bytes.try_into().ok()?;
+        let num = u32::from_be_bytes(b);
+        num.try_into().ok()
+    }
 }
 
 #[derive(Debug)]
@@ -382,6 +388,18 @@ pub enum EntryType {
     CANCEL = 2,
 }
 
+impl EntryType {
+    pub fn to_be_bytes(&self) -> [u8; 4] {
+        (*self as u32).to_be_bytes()
+    }
+
+    pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
+        let b = bytes.try_into().ok()?;
+        let num = u32::from_be_bytes(b);
+        num.try_into().ok()
+    }
+}
+
 impl TryFrom<u32> for EntryType {
     type Error = EntryTypeErr;
 
@@ -391,6 +409,16 @@ impl TryFrom<u32> for EntryType {
             1 => Ok(EntryType::SETTLE),
             2 => Ok(EntryType::CANCEL),
             _ => Err(EntryTypeErr),
+        }
+    }
+}
+
+impl fmt::Display for EntryType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EntryType::CREATE => f.write_str("CREATE"),
+            EntryType::SETTLE => f.write_str("SETTLE"),
+            EntryType::CANCEL => f.write_str("CANCEL"),
         }
     }
 }

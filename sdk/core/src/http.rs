@@ -255,6 +255,16 @@ where
     pub pagination: Pagination,
 }
 
+impl<T: Serialize> PaginatedElements<T> {
+    pub fn empty(pagination: Pagination) -> Self {
+        PaginatedElements {
+            elements: Vec::new(),
+            total_elements: 0,
+            pagination,
+        }
+    }
+}
+
 /// Wrapper to connect contract-actions with their tx-identifier and the related timestamp
 #[derive(Debug, Clone, Serialize)]
 pub struct TxAction {

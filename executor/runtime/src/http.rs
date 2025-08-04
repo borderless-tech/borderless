@@ -12,6 +12,9 @@ pub mod contract;
 #[cfg(feature = "agents")]
 pub mod agent;
 
+#[cfg(feature = "contracts")]
+pub mod ledger;
+
 pub type Request<T = Bytes> = http::Request<T>;
 pub type Response<T = Bytes> = http::Response<T>;
 

@@ -134,7 +134,14 @@ where
             _ => Ok(method_not_allowed()),
         };
         let elapsed = start.elapsed();
-        info!("Finished executing request. path={path}. Time elapsed: {elapsed:?}");
+        // TODO: I don't know if this should be logged every time
+        match &result {
+            Ok(res) => info!(
+                "Request success. path={path}. Time elapsed: {elapsed:?}, status={}",
+                res.status()
+            ),
+            Err(e) => warn!("Request failed. path={path}. Time elapsed: {elapsed:?}, error={e}"),
+        }
         result
     }
 
