@@ -3,10 +3,16 @@ use crate::__private::storage_keys::{
     BASE_KEY_METADATA, META_SUB_KEY_DESC, META_SUB_KEY_ID, META_SUB_KEY_META,
 };
 use crate::__private::{read_field, read_register};
-use crate::common::{Description, Metadata};
+use crate::common::{Description, Id, Metadata};
 use crate::contracts::env::participants;
 use crate::contracts::{BlockCtx, TxCtx};
 use borderless_id_types::{AgentId, BlockIdentifier, BorderlessId, TxIdentifier};
+
+/// Checks whether the current running program is a sw-agent
+pub fn is_agent() -> bool {
+    let id: Id = read_field(BASE_KEY_METADATA, META_SUB_KEY_ID).expect("id not in metadata");
+    id.as_aid().is_some()
+}
 
 /// Returns the contract-id of the current contract
 pub fn agent_id() -> AgentId {

@@ -2,7 +2,7 @@ use anyhow::Context;
 use borderless_id_types::{BlockIdentifier, TxIdentifier};
 
 use super::{BlockCtx, Sink, TxCtx};
-use crate::common::Participant;
+use crate::common::{Id, Participant};
 use crate::{
     BorderlessId, ContractId,
     __private::{
@@ -12,6 +12,12 @@ use crate::{
     },
     common::{Description, Metadata},
 };
+
+/// Checks whether the current running program is a smart-contract
+pub fn is_contract() -> bool {
+    let id: Id = read_field(BASE_KEY_METADATA, META_SUB_KEY_ID).expect("id not in metadata");
+    id.as_cid().is_some()
+}
 
 /// Returns the contract-id of the current contract
 pub fn contract_id() -> ContractId {
