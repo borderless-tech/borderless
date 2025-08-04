@@ -1,7 +1,6 @@
-use crate::agents::env::agent_id;
+use crate::agents::env::{agent_id, executor};
 use crate::common::Id;
-use crate::contracts::env;
-use crate::contracts::env::{contract_id, participant, sinks};
+use crate::contracts::env::{contract_id, is_contract, participant, sinks};
 use crate::events::private::Sealed;
 use anyhow::anyhow;
 use borderless_id_types::{BorderlessId, ContractId};
@@ -127,7 +126,14 @@ impl CallBuilder<CBInit> {
         method_name: &str,
         writer: &str,
     ) -> CallBuilder<CBInit> {
-        let writer = participant(writer).expect("sink contains unknown writer");
+        let writer = if is_contract() {
+            participant(writer).expect("sink contains unknown writer")
+        }
+        else {
+            // When dealing with a sw-agent, the executor must be the writer
+            executor()
+        };
+
         CallBuilder {
             id,
             name: method_name.to_string(),
@@ -143,7 +149,7 @@ impl CallBuilder<CBInit> {
         CallBuilder {
             id: self.id,
             name: self.name,
-            writer: None,
+            writer: self.writer,
             action: Some(action),
             _marker: std::marker::PhantomData,
         }
@@ -163,7 +169,7 @@ impl CallBuilder<CBInit> {
         Ok(CallBuilder {
             id: self.id,
             name: self.name,
-            writer: None,
+            writer: self.writer,
             action: Some(action),
             _marker: std::marker::PhantomData,
         })
@@ -275,7 +281,7 @@ pub struct Message {
 /// - `MY-TOPIC`
 pub fn message(topic: impl AsRef<str>) -> MsgBuilder {
     // Fetch publisher from the environment
-    let publisher = if env::is_contract() {
+    let publisher = if is_contract() {
         Id::contract(contract_id())
     } else {
         Id::agent(agent_id())
