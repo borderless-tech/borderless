@@ -37,6 +37,10 @@ macro_rules! impl_uuid {
                 $type(uuid::Uuid::new_v8(bytes))
             }
 
+            pub fn from_slice(slice: &[u8]) -> Result<Self, std::array::TryFromSliceError> {
+                slice.try_into()
+            }
+
             /// Returns the underlying bytes
             pub fn into_bytes(self) -> [u8; 16] {
                 self.0.into_bytes()
@@ -140,6 +144,15 @@ macro_rules! impl_uuid {
 
             fn try_from(value: String) -> Result<Self, Self::Error> {
                 $type::try_from(value.as_str())
+            }
+        }
+
+        impl TryFrom<&[u8]> for $type {
+            type Error = std::array::TryFromSliceError;
+
+            fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+                let bytes = value.try_into()?;
+                Ok($type::from_bytes(bytes))
             }
         }
 
