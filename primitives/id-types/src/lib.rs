@@ -75,6 +75,17 @@ macro_rules! impl_uuid {
                 }
                 u64::from_be_bytes(out)
             }
+
+            /// Compacts the current ID into a `u64`
+            ///
+            /// Can be used to construct database keys.
+            pub fn compact(&self) -> u64 {
+                let mut out = [0; 8];
+                for i in 0..8 {
+                    out[i] = self.as_bytes()[i] ^ self.as_bytes()[i + 8];
+                }
+                u64::from_be_bytes(out)
+            }
         }
 
         impl<'de> serde::Deserialize<'de> for $type {
@@ -947,6 +958,8 @@ mod tests {
             let bid_1 = BorderlessId::generate();
             let bid_2 = BorderlessId::generate();
             assert_eq!(bid_1.merge(&bid_2), bid_2.merge(&bid_1));
+            // Merge with self is basically 0
+            assert_eq!(bid_1.merge(&bid_1), [0; 16]);
         }
     }
 
@@ -956,6 +969,43 @@ mod tests {
             let bid_1 = BorderlessId::generate();
             let bid_2 = BorderlessId::generate();
             assert_eq!(bid_1.merge_compact(&bid_2), bid_2.merge_compact(&bid_1));
+            // Merge with self is 0
+            assert_eq!(bid_1.merge_compact(&bid_1), 0);
+        }
+    }
+
+    #[test]
+    fn compact() {
+        for _ in 0..1_000_000 {
+            let bid_1 = BorderlessId::generate();
+            let bid_2 = BorderlessId::generate();
+            assert_ne!(bid_1.compact(), bid_2.compact());
+            // Compacting is not creating a 0
+            assert_ne!(bid_1.compact(), 0);
+        }
+    }
+
+    #[test]
+    fn compact_merge() {
+        for _ in 0..1_000_000 {
+            let bid_1 = BorderlessId::generate();
+            let bid_2 = BorderlessId::generate();
+            let merge_compact = bid_1.merge_compact(&bid_2);
+            let merged_bytes = bid_1.merge(&bid_2);
+            let merged_id = BorderlessId::from_bytes(merged_bytes);
+            let compacted = merged_id.compact();
+            // Merging and then compacting creates the same result, as calling merge_compact
+            // ONLY IF the byte-array would be left untouched (which is not really the case)
+            assert_eq!(
+                compacted == merge_compact,
+                merged_bytes == *merged_id.as_bytes()
+            );
+            // If we would do it manually however, it will work fine:
+            let mut manual_compact = [0; 8];
+            for i in 0..8 {
+                manual_compact[i] = merged_bytes[i] ^ merged_bytes[i + 8];
+            }
+            assert_eq!(merge_compact, u64::from_be_bytes(manual_compact));
         }
     }
 
