@@ -19,12 +19,12 @@ use super::{
     vm::{self, VmState},
 };
 use crate::db::action_log::ActionRecord;
-use crate::log_shim::*;
 use crate::ACTION_TX_REL_SUB_DB;
 use crate::{
     error::{ErrorKind, Result},
     CONTRACT_SUB_DB,
 };
+use crate::{log_shim::*, LEDGER_SUB_DB};
 
 pub type SharedRuntime<S> = Arc<Mutex<Runtime<S>>>;
 
@@ -53,6 +53,7 @@ impl<S: Db> Runtime<S> {
     pub fn new(storage: &S, contract_store: CodeStore<S>, lock: MutLock) -> Result<Self> {
         let db_ptr = storage.create_sub_db(CONTRACT_SUB_DB)?;
         let _ = storage.create_sub_db(ACTION_TX_REL_SUB_DB)?; // Also create the action relation db here
+        let _ = storage.create_sub_db(LEDGER_SUB_DB)?; // Also create ledger db here
         let start = Instant::now();
         let state = VmState::new(storage.clone(), db_ptr);
 
