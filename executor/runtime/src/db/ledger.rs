@@ -34,7 +34,8 @@ impl<'a, S: Db> Ledger<'a, S> {
     ) -> Result<()> {
         let db_ptr = self.db.open_sub_db(LEDGER_SUB_DB)?;
         // Read current ledger meta information
-        let meta_key = LedgerKey::meta(&entry.creditor, &entry.debitor);
+        let ledger_id = entry.creditor.merge_compact(&entry.debitor);
+        let meta_key = LedgerKey::meta(ledger_id);
         let meta = match txn.read(&db_ptr, &meta_key)? {
             Some(val) => postcard::from_bytes(&val)?,
             None => LedgerMeta::new(entry.creditor, entry.debitor),
@@ -43,15 +44,15 @@ impl<'a, S: Db> Ledger<'a, S> {
         let meta = meta.update(entry)?;
 
         // Write ledger line
-        let c_key = LedgerKey::new(&entry.creditor, &entry.debitor, meta.len, "creditor");
-        let d_key = LedgerKey::new(&entry.creditor, &entry.debitor, meta.len, "debitor");
-        let amount_key = LedgerKey::new(&entry.creditor, &entry.debitor, meta.len, "amount");
-        let tax_key = LedgerKey::new(&entry.creditor, &entry.debitor, meta.len, "tax");
-        let currency_key = LedgerKey::new(&entry.creditor, &entry.debitor, meta.len, "currency");
-        let kind_key = LedgerKey::new(&entry.creditor, &entry.debitor, meta.len, "kind");
-        let tag_key = LedgerKey::new(&entry.creditor, &entry.debitor, meta.len, "tag");
-        let cid_key = LedgerKey::new(&entry.creditor, &entry.debitor, meta.len, "contract_id");
-        let tx_ctx_key = LedgerKey::new(&entry.creditor, &entry.debitor, meta.len, "tx_ctx");
+        let c_key = LedgerKey::new(ledger_id, meta.len, "creditor");
+        let d_key = LedgerKey::new(ledger_id, meta.len, "debitor");
+        let amount_key = LedgerKey::new(ledger_id, meta.len, "amount");
+        let tax_key = LedgerKey::new(ledger_id, meta.len, "tax");
+        let currency_key = LedgerKey::new(ledger_id, meta.len, "currency");
+        let kind_key = LedgerKey::new(ledger_id, meta.len, "kind");
+        let tag_key = LedgerKey::new(ledger_id, meta.len, "tag");
+        let cid_key = LedgerKey::new(ledger_id, meta.len, "contract_id");
+        let tx_ctx_key = LedgerKey::new(ledger_id, meta.len, "tx_ctx");
         let tx_ctx_bytes = tx_ctx.to_bytes()?;
         txn.write(&db_ptr, &c_key, entry.creditor.as_bytes())?;
         txn.write(&db_ptr, &d_key, entry.debitor.as_bytes())?;
@@ -71,10 +72,10 @@ impl<'a, S: Db> Ledger<'a, S> {
 
     /// Opens a specific ledger
     pub fn open(&self, p1: BorderlessId, p2: BorderlessId) -> SelectedLedger<'a, S> {
+        let ledger_id = p1.merge_compact(&p2);
         SelectedLedger {
             db: self.db,
-            p1,
-            p2,
+            ledger_id,
         }
     }
 
@@ -109,28 +110,27 @@ impl<'a, S: Db> Ledger<'a, S> {
 // TODO: Simply save the ledger-id
 pub struct SelectedLedger<'a, S: Db> {
     db: &'a S,
-    p1: BorderlessId,
-    p2: BorderlessId,
+    ledger_id: u64,
 }
 
 impl<'a, S: Db> SelectedLedger<'a, S> {
-    /// Returns the length of the ledger
-    pub fn meta(&self) -> Result<LedgerMeta> {
+    /// Returns the length of the ledger (if it exists)
+    pub fn meta(&self) -> Result<Option<LedgerMeta>> {
         let db_ptr = self.db.open_sub_db(LEDGER_SUB_DB)?;
-        let key = LedgerKey::meta(&self.p1, &self.p2);
+        let key = LedgerKey::meta(self.ledger_id);
         let txn = self.db.begin_ro_txn()?;
         match txn.read(&db_ptr, &key)? {
             Some(val) => {
                 let out = postcard::from_bytes(&val)?;
-                Ok(out)
+                Ok(Some(out))
             }
-            None => Ok(LedgerMeta::new(self.p1, self.p2)),
+            None => Ok(None),
         }
     }
 
-    /// Returns the balances of the ledger
-    pub fn balances(&self) -> Result<Balances> {
-        self.meta().map(|m| m.to_balances())
+    /// Returns the balances of the ledger (if it exists)
+    pub fn balances(&self) -> Result<Option<Balances>> {
+        Ok(self.meta()?.map(|m| m.to_balances()))
     }
 
     /// Returns a paginated list of ledger entries (for all contracts)
@@ -142,7 +142,7 @@ impl<'a, S: Db> SelectedLedger<'a, S> {
         let txn = self.db.begin_ro_txn()?;
 
         // Read length via meta
-        let meta_key = LedgerKey::meta(&self.p1, &self.p2);
+        let meta_key = LedgerKey::meta(self.ledger_id);
         let total_elements = match txn
             .read(&db_ptr, &meta_key)?
             .and_then(|b| postcard::from_bytes::<LedgerMeta>(b).ok())
@@ -176,7 +176,7 @@ impl<'a, S: Db> SelectedLedger<'a, S> {
         let txn = self.db.begin_ro_txn()?;
 
         // Read length via meta
-        let meta_key = LedgerKey::meta(&self.p1, &self.p2);
+        let meta_key = LedgerKey::meta(self.ledger_id);
         let total_elements = match txn
             .read(&db_ptr, &meta_key)?
             .and_then(|b| postcard::from_bytes::<LedgerMeta>(b).ok())
@@ -222,7 +222,7 @@ impl<'a, S: Db> SelectedLedger<'a, S> {
         column: &'static str,
         transformer: impl Fn(&[u8]) -> Option<T>,
     ) -> Result<Option<T>> {
-        let key = LedgerKey::new(&self.p1, &self.p2, line, column);
+        let key = LedgerKey::new(self.ledger_id, line, column);
         let out = txn.read(db_ptr, &key)?.and_then(transformer);
         Ok(out)
     }
@@ -469,14 +469,11 @@ pub struct Balances {
 struct LedgerKey([u8; 24]);
 
 impl LedgerKey {
-    /// Constructs a new ledger-key for a specific line and column of a participant-tuple and contract-id.
-    pub fn new(
-        participant_a: &BorderlessId,
-        participant_b: &BorderlessId,
-        line_idx: u64,
-        column: &'static str,
-    ) -> Self {
-        let participant_key = participant_a.merge_compact(participant_b).to_be_bytes();
+    /// Constructs a new ledger-key for a specific ledger-id, line and column
+    ///
+    /// The ledger-id is the calculated from the participant-ids by using `BorderlessId::merge_compact`
+    pub fn new(ledger_id: u64, line_idx: u64, column: &'static str) -> Self {
+        let participant_key = ledger_id.to_be_bytes();
         let line_key = line_idx.to_be_bytes();
         let column_key = xxhash_rust::const_xxh3::xxh3_64(column.as_bytes()).to_be_bytes();
         let mut key = [0; 24];
@@ -487,8 +484,8 @@ impl LedgerKey {
     }
 
     /// Returns the key, where the length of the ledger is saved
-    pub fn meta(participant_a: &BorderlessId, participant_b: &BorderlessId) -> Self {
-        let participant_key = participant_a.merge_compact(participant_b).to_be_bytes();
+    pub fn meta(ledger_id: u64) -> Self {
+        let participant_key = ledger_id.to_be_bytes();
         // We want the meta-info to be the absolute last key, so we do some bit-hacking here:
         let mut key = [0xff; 24];
         key[0..8].copy_from_slice(&participant_key);
