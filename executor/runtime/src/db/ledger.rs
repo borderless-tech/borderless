@@ -97,18 +97,12 @@ impl<'a, S: Db> Ledger<'a, S> {
         let db_ptr = self.db.open_sub_db(LEDGER_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
         let mut cursor = txn.ro_cursor(&db_ptr)?;
-        let mask_meta = LedgerKey::mask_meta();
-        for (_key, value) in cursor.iter().filter(|(key, _)| {
-            // Bit-level-hacking: We try to only match the meta entry
-            for (b1, b2) in key.iter().zip(mask_meta.iter()) {
-                if b1 | b2 != 1 {
-                    return false;
-                }
+        for (key, value) in cursor.iter() {
+            let key = LedgerKey::from_slice(key);
+            if key.is_meta() {
+                let ledger_meta = postcard::from_bytes(value)?;
+                out.push(ledger_meta);
             }
-            true
-        }) {
-            let ledger_meta = postcard::from_bytes(value)?;
-            out.push(ledger_meta);
         }
         Ok(out)
     }
@@ -591,6 +585,10 @@ impl LedgerKey {
         let mut out = [0; 8];
         out.copy_from_slice(&self.0[0..8]);
         u64::from_be_bytes(out)
+    }
+
+    pub fn is_meta(&self) -> bool {
+        self.line() == u64::MAX
     }
 }
 

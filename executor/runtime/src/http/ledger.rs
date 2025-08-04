@@ -103,7 +103,7 @@ where
                         Ok(json_response(&entries))
                     }
                     "balances" => Ok(json_response(&ledger.balances()?)),
-                    "meta" => Ok(json_response(&ledger.meta()?)),
+                    "meta" => Ok(json_response(&ledger.meta()?.map(|m| m.into_dto()))),
                     _ => Ok(reject_404()),
                 }
             }
@@ -149,7 +149,7 @@ where
             // TODO: Incorporate contract-id !
             "/balances" | "balances" => Ok(json_response(&ledger.balances()?)),
             // TODO: Incorporate contract-id
-            "/meta" | "meta" => Ok(json_response(&ledger.meta()?)),
+            "/meta" | "meta" => Ok(json_response(&ledger.meta()?.map(|m| m.into_dto()))),
             // TODO: Add query for ledger by ledger-id (maybe post request ?)
             _ => Ok(reject_404()),
         }
