@@ -450,14 +450,17 @@ impl LedgerEntry {
     pub fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, serde_json::Error> {
         serde_json::from_slice(bytes)
     }
+
+    pub fn execute(self) -> Result<()> {
+        create_ledger_entry(self)
+    }
 }
 
 pub struct EntryBuilder<C, D> {
     creditor: C,
     debitor: D,
-    amount_milli: Option<i64>,
-    tax_milli: Option<i64>,
-    currency: Option<Currency>,
+    amount: Option<Money>,
+    tax: Option<Money>,
     kind: EntryType,
     tag: Option<String>,
 }
@@ -467,47 +470,34 @@ where
     C: Participant,
     D: Participant,
 {
-    pub fn with_amount(self, money: Money) -> Result<Self> {
-        if self
-            .currency
-            .map(|c| c != money.currency)
-            .unwrap_or_default()
-        {
-            return Err(Error::msg("Amount and Tax must use the same currency"));
-        }
-        Ok(Self {
+    pub fn with_amount(self, money: Money) -> Self {
+        Self {
             creditor: self.creditor,
             debitor: self.debitor,
-            amount_milli: Some(money.amount_milli),
-            tax_milli: self.tax_milli,
-            currency: Some(money.currency),
+            amount: Some(money),
+            tax: self.tax,
             kind: self.kind,
             tag: self.tag,
-        })
+        }
     }
 
-    pub fn with_tax(self, tax: Money) -> Result<Self> {
-        if self.currency.map(|c| c != tax.currency).unwrap_or_default() {
-            return Err(Error::msg("Amount and Tax must use the same currency"));
-        }
-        Ok(Self {
+    pub fn with_tax(self, tax: Money) -> Self {
+        Self {
             creditor: self.creditor,
             debitor: self.debitor,
-            amount_milli: self.amount_milli,
-            tax_milli: Some(tax.amount_milli),
-            currency: Some(tax.currency),
+            amount: self.amount,
+            tax: Some(tax),
             kind: self.kind,
             tag: self.tag,
-        })
+        }
     }
 
     pub fn with_tag(self, tag: impl AsRef<str>) -> Self {
         Self {
             creditor: self.creditor,
             debitor: self.debitor,
-            amount_milli: self.amount_milli,
-            tax_milli: self.tax_milli,
-            currency: self.currency,
+            amount: self.amount,
+            tax: self.tax,
             kind: self.kind,
             tag: Some(tag.as_ref().to_string()),
         }
@@ -516,20 +506,24 @@ where
         let creditor = C::get_participant(self.creditor)?;
         let debitor = D::get_participant(self.debitor)?;
         let tag = self.tag.unwrap_or_default();
-        if self.amount_milli.is_none() {
-            return Err(Error::msg("missing amount"));
-        }
-        if self.currency.is_none() {
-            return Err(Error::msg("missing currency"));
-        }
-        let tax_milli = self.tax_milli.unwrap_or_default();
+
+        let (amount, tax_milli) = match (self.amount, self.tax) {
+            (Some(a), Some(t)) => {
+                if a.currency != t.currency {
+                    return Err(Error::msg("amount and tax must use same currency"));
+                }
+                (a, t.amount_milli)
+            }
+            (Some(a), None) => (a, 0),
+            (None, _) => return Err(Error::msg("missing amount")),
+        };
 
         let ledger_entry = LedgerEntry {
             debitor,
             creditor,
-            amount_milli: self.amount_milli.unwrap(),
+            amount_milli: amount.amount_milli,
             tax_milli,
-            currency: self.currency.unwrap(),
+            currency: amount.currency,
             kind: self.kind,
             tag,
         };
@@ -550,9 +544,8 @@ where
     EntryBuilder {
         creditor: to,
         debitor: from,
-        amount_milli: None,
-        tax_milli: None,
-        currency: None,
+        amount: None,
+        tax: None,
         kind: EntryType::CREATE,
         tag: None,
     }
@@ -566,9 +559,8 @@ where
     EntryBuilder {
         creditor: to,
         debitor: from,
-        amount_milli: None,
-        tax_milli: None,
-        currency: None,
+        amount: None,
+        tax: None,
         kind: EntryType::SETTLE,
         tag: None,
     }
@@ -582,9 +574,8 @@ where
     EntryBuilder {
         creditor: to,
         debitor: from,
-        amount_milli: None,
-        tax_milli: None,
-        currency: None,
+        amount: None,
+        tax: None,
         kind: EntryType::CANCEL,
         tag: None,
     }
@@ -680,8 +671,8 @@ mod tests {
     fn create_ledger_entry() -> Result<()> {
         let (creditor, debitor) = prepare_participants();
         let entry = transfer(debitor, creditor)
-            .with_amount("100 €".parse()?)?
-            .with_tax("19 €".parse()?)?
+            .with_amount("100 €".parse()?)
+            .with_tax("19 €".parse()?)
             .with_tag("test-transfer")
             .build()?;
         assert_eq!(entry.amount_milli, 100_000);
@@ -695,18 +686,18 @@ mod tests {
     fn participant_logic() -> Result<()> {
         let (creditor, debitor) = prepare_participants();
         let e1 = transfer(&debitor, &creditor)
-            .with_amount("100 €".parse()?)?
-            .with_tax("19 €".parse()?)?
+            .with_amount("100 €".parse()?)
+            .with_tax("19 €".parse()?)
             .build()?;
 
         let e2 = transfer(debitor.id, creditor.id)
-            .with_amount("100 €".parse()?)?
-            .with_tax("19 €".parse()?)?
+            .with_amount("100 €".parse()?)
+            .with_tax("19 €".parse()?)
             .build()?;
 
         let e3 = transfer(debitor.alias, creditor.alias)
-            .with_amount("100 €".parse()?)?
-            .with_tax("19 €".parse()?)?
+            .with_amount("100 €".parse()?)
+            .with_tax("19 €".parse()?)
             .build()?;
 
         assert_eq!(e1.to_bytes()?, e2.to_bytes()?);
@@ -719,8 +710,8 @@ mod tests {
     fn encode_decode() -> Result<()> {
         let (creditor, debitor) = prepare_participants();
         let entry = transfer(debitor, creditor)
-            .with_amount("100 €".parse()?)?
-            .with_tax("19 €".parse()?)?
+            .with_amount("100 €".parse()?)
+            .with_tax("19 €".parse()?)
             .with_tag("test-transfer")
             .build()?;
         let bytes = entry.to_bytes()?;
