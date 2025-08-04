@@ -379,6 +379,7 @@ dependencies = [
  "tower",
  "tracing",
  "wasmtime",
+ "xxhash-rust",
 ]
 
 [[package]]

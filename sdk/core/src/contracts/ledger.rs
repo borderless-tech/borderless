@@ -132,6 +132,10 @@ impl Currency {
             Currency::CZK => "Czech koruna",
         }
     }
+
+    pub fn to_be_bytes(&self) -> [u8; 4] {
+        (*self as u32).to_be_bytes()
+    }
 }
 
 #[derive(Debug)]
@@ -196,6 +200,14 @@ pub struct Money {
 }
 
 impl Money {
+    /// Creates a new money struct
+    pub fn new(currency: Currency, amount_milli: i64) -> Self {
+        Money {
+            amount_milli,
+            currency,
+        }
+    }
+
     /// Creates a new `Money` from an *integer* amount of thousandths.
     pub const fn from_thousandths(amount_milli: i64, currency: Currency) -> Self {
         Self {
@@ -385,6 +397,16 @@ impl TryFrom<u32> for EntryType {
 
 // TODO: Maybe it's better to make this the DB representation;
 // while we keep the concept of using json to communicate between host and guest
+// -> we could use a LedgerKey system to encode these values:
+// [ participant-pair | contract-id | number | value ]
+// [     u64          |      u64    |  u64   | u64   ]
+// If we use the uuid-compaction, we can store the participant-pair as u64, aswell as the contract-id.
+// "Number" would then be the number of the ledger entry, and "value" would be
+// an encoded field of the ledger-entry (e.g. by using a hash-func on the field name like "amount_milli").
+//
+// This way we could efficiently scroll through all ledger entries and only read specific values from it.
+// Number = u64 could be used to store meta-info (for a single contract),
+// and contract-id = u64::MAX could be used to store meta infos over all contracts
 #[derive(Serialize, Deserialize)]
 pub struct LedgerEntry {
     pub creditor: BorderlessId,

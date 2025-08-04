@@ -85,13 +85,6 @@ pub const BASE_KEY_LOGS: u64 = 2;
 /// These work similar to the logs by using a ring-buffer that is stored in sub-keys.
 pub const BASE_KEY_METRICS: u64 = 3;
 
-// TODO: Instead of embedding this in the contract keyspace,
-// we could use a global ledger between parties for all contracts.
-/// Reserved key-space for ledgers
-///
-/// Everything from in the range from 2^16 to 2^63 is reserved to store the ledgers of a contract.
-pub const BASE_KEY_MASK_LEDGER: u64 = 0x0FFFFFFFFFFF0000;
-
 /// Reserved Base-Key - indicating the maximum possible system-key
 ///
 /// Everything between `0` and `BASE_KEY_RESERVED` can be used to store special
