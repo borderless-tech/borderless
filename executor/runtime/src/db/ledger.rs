@@ -10,7 +10,7 @@ use borderless::{
     prelude::{ledger::EntryType, TxCtx},
     BorderlessId, ContractId,
 };
-use borderless_kv_store::{Db, RawRead, RawWrite};
+use borderless_kv_store::{Db, RawRead, RawWrite, RoCursor as _, RoTx};
 use serde::{Deserialize, Serialize};
 
 use crate::{Error, Result, LEDGER_SUB_DB};
@@ -67,12 +67,40 @@ impl<'a, S: Db> Ledger<'a, S> {
         Ok(())
     }
 
+    /// Opens a specific ledger
     pub fn open(&self, p1: BorderlessId, p2: BorderlessId) -> SelectedLedger<'a, S> {
         SelectedLedger {
             db: self.db,
             p1,
             p2,
         }
+    }
+
+    /// Returns a list of all existing ledgers
+    pub fn all(&self) -> Result<Vec<LedgerMeta>> {
+        let mut out = Vec::new();
+        let db_ptr = self.db.open_sub_db(LEDGER_SUB_DB)?;
+        let txn = self.db.begin_ro_txn()?;
+        let mut cursor = txn.ro_cursor(&db_ptr)?;
+        let mask_meta = LedgerKey::mask_meta();
+        for (_key, value) in cursor.iter().filter(|(key, _)| {
+            // Bit-level-hacking: We try to only match the meta entry
+            for (b1, b2) in key.iter().zip(mask_meta.iter()) {
+                if b1 | b2 != 1 {
+                    return false;
+                }
+            }
+            true
+        }) {
+            let ledger_meta = postcard::from_bytes(value)?;
+            out.push(ledger_meta);
+        }
+        Ok(out)
+    }
+
+    /// Returns a list of balances for all existing ledgers
+    pub fn all_balances(&self) -> Result<Vec<Balances>> {
+        Ok(self.all()?.into_iter().map(|m| m.to_balances()).collect())
     }
 }
 
@@ -96,7 +124,11 @@ impl<'a, S: Db> SelectedLedger<'a, S> {
             None => Ok(LedgerMeta::new(self.p1, self.p2)),
         }
     }
-    // pub fn read_line(&self, line: u64) ->
+
+    /// Returns the balances of the ledger
+    pub fn balances(&self) -> Result<Balances> {
+        self.meta().map(|m| m.to_balances())
+    }
 }
 
 /// Meta information about this ledger
@@ -216,6 +248,20 @@ impl LedgerKey {
         let mut key = [0xff; 32];
         key[0..8].copy_from_slice(&participant_key);
         LedgerKey(key)
+    }
+
+    /// Generates a bit-mask that matches for all meta-keys: `mask_meta | key == 0xff`
+    pub fn mask_meta() -> [u8; 32] {
+        let mut mask = [0x00; 32];
+        mask[0..8].copy_from_slice(&[0xff; 8]);
+        mask
+    }
+
+    /// Generates a bit-mask that matches all keys where `len == 0`
+    pub fn mask_first_entry() -> [u8; 32] {
+        let mut mask = [0x00; 32];
+        mask[16..24].copy_from_slice(&[0xff; 8]);
+        mask
     }
 
     /// Returns the raw 32-byte representation of the storage key.

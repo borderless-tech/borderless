@@ -1,5 +1,6 @@
 use super::{
     action_log::{ActionLog, ActionRecord, RelTxAction},
+    ledger::Ledger,
     logger::Logger,
     subscriptions::SubscriptionHandler,
 };
@@ -43,6 +44,11 @@ impl<'a, S: Db> Controller<'a, S> {
     /// Returns the ['SubscriptionHandler'] of the contract or agent
     pub fn messages(&self) -> SubscriptionHandler<'a, S> {
         SubscriptionHandler::new(self.db)
+    }
+
+    /// Returns the [`Ledger`]
+    pub fn ledger(&self) -> Ledger<'a, S> {
+        Ledger::new(self.db)
     }
 
     /// List of contract-participants
