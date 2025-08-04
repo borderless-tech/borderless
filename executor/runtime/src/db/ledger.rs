@@ -70,9 +70,17 @@ impl<'a, S: Db> Ledger<'a, S> {
         Ok(())
     }
 
-    /// Opens a specific ledger
+    /// Opens a ledger for a pair of borderless-ids
     pub fn open(&self, p1: BorderlessId, p2: BorderlessId) -> SelectedLedger<'a, S> {
         let ledger_id = p1.merge_compact(&p2);
+        SelectedLedger {
+            db: self.db,
+            ledger_id,
+        }
+    }
+
+    /// Selects a specific ledger based on its ID
+    pub fn select(&self, ledger_id: u64) -> SelectedLedger<'a, S> {
         SelectedLedger {
             db: self.db,
             ledger_id,
@@ -104,6 +112,39 @@ impl<'a, S: Db> Ledger<'a, S> {
     /// Returns a list of balances for all existing ledgers
     pub fn all_balances(&self) -> Result<Vec<Balances>> {
         Ok(self.all()?.into_iter().map(|m| m.to_balances()).collect())
+    }
+
+    pub fn all_ids(&self) -> Result<Vec<LedgerIds>> {
+        let mut out = Vec::new();
+        let db_ptr = self.db.open_sub_db(LEDGER_SUB_DB)?;
+        let txn = self.db.begin_ro_txn()?;
+        let mut cursor = txn.ro_cursor(&db_ptr)?;
+        let mut last_ledger_id = 0;
+        for (key, _) in cursor.iter() {
+            let key = LedgerKey::from_slice(key);
+            let ledger_id = key.ledger_id();
+            if ledger_id == last_ledger_id {
+                continue;
+            }
+            last_ledger_id = ledger_id;
+            // Read creditor and debitor
+            let c_key = LedgerKey::new(ledger_id, key.line(), "creditor");
+            let d_key = LedgerKey::new(ledger_id, key.line(), "debitor");
+            let creditor = txn
+                .read(&db_ptr, &c_key)?
+                .and_then(|b| BorderlessId::from_slice(b).ok())
+                .context("missing creditor")?;
+            let debitor = txn
+                .read(&db_ptr, &d_key)?
+                .and_then(|b| BorderlessId::from_slice(b).ok())
+                .context("missing debitor")?;
+            out.push(LedgerIds {
+                creditor,
+                debitor,
+                ledger_id,
+            });
+        }
+        Ok(out)
     }
 }
 
@@ -348,6 +389,13 @@ impl LedgerEntryDto {
     }
 }
 
+#[derive(Serialize)]
+pub struct LedgerIds {
+    pub creditor: BorderlessId,
+    pub debitor: BorderlessId,
+    pub ledger_id: u64,
+}
+
 /// Meta information about this ledger
 #[derive(Serialize, Deserialize)]
 pub struct LedgerMeta {
@@ -499,6 +547,13 @@ impl LedgerKey {
         mask
     }
 
+    /// Creates a ledger-key from a slice (useful when iterating over the kv-store)
+    pub fn from_slice(slice: &[u8]) -> Self {
+        let mut key = [0; 24];
+        key[..].copy_from_slice(slice);
+        LedgerKey(key)
+    }
+
     // /// Generates a bit-mask that matches all keys where `len == 0`
     // pub fn mask_first_entry() -> [u8; 24] {
     //     let mut mask = [0x00; 24];
@@ -520,14 +575,19 @@ impl LedgerKey {
     //     })
     // }
 
-    // /// Returns the line of the ledger entry
-    // ///
-    // /// The line is the only thing we can really reconstruct from the LedgerKey.
-    // pub fn get_line(&self) -> u64 {
-    //     let mut out = [0; 8];
-    //     out.copy_from_slice(&self.0[8..16]);
-    //     u64::from_be_bytes(out)
-    // }
+    /// Reconstructs the 'line' (index) from the ledger-key
+    pub fn line(&self) -> u64 {
+        let mut out = [0; 8];
+        out.copy_from_slice(&self.0[8..16]);
+        u64::from_be_bytes(out)
+    }
+
+    /// Reconstructs the ledger-id from the ledger-key
+    pub fn ledger_id(&self) -> u64 {
+        let mut out = [0; 8];
+        out.copy_from_slice(&self.0[0..8]);
+        u64::from_be_bytes(out)
+    }
 }
 
 impl TryFrom<&[u8]> for LedgerKey {
