@@ -1,4 +1,5 @@
 use crate::__private::REGISTER_CURSOR;
+use crate::contracts::ledger::LedgerEntry;
 use borderless_abi::LogLevel;
 use core::cell::RefCell;
 use nohash_hasher::IntMap;
@@ -15,6 +16,11 @@ thread_local! {
 thread_local! {
     /// Simulates the WASM memory
     pub static REGISTERS: RefCell<IntMap<u64, Vec<u8>>> = RefCell::new(IntMap::default());
+}
+
+thread_local! {
+    /// Simulates the Ledger
+    pub static LEDGER: RefCell<IntMap<u64, Vec<LedgerEntry>>> = RefCell::new(IntMap::default());
 }
 
 thread_local! {
@@ -105,6 +111,16 @@ pub fn write_register(register_id: u64, data: impl AsRef<[u8]>) {
     });
 }
 
+pub fn create_ledger_entry(entry: LedgerEntry) -> crate::Result<()> {
+    // NOTE: We don't do a participant check here for sake of simplicity
+    LEDGER.with(|ledger| {
+        let mut ledger = ledger.borrow_mut();
+        let key = entry.creditor.merge_compact(&entry.debitor);
+        ledger.entry(key).or_default().push(entry);
+    });
+    Ok(())
+}
+
 pub fn tic() {
     TIMER.with(|timer| {
         *timer.borrow_mut() = Instant::now();
@@ -131,11 +147,10 @@ fn calc_storage_key(base_key: u64, sub_key: u64) -> Vec<u8> {
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
-    use crate::__private::env::off_chain::{
-        rand, read_register, storage_cursor, storage_has_key, storage_read, storage_remove,
-        storage_write, write_register,
-    };
+    use super::*;
     use crate::__private::registers::REGISTER_CURSOR;
+    use crate::prelude::ledger::{Currency, EntryType, LedgerEntry};
+    use borderless_id_types::BorderlessId;
 
     const BASE_KEY: u64 = 10;
     const SUB_KEY: u64 = 20;
@@ -175,6 +190,36 @@ mod tests {
         // Read value from register
         let value = read_register(REGISTER_ID);
         assert_eq!(value, Some(dummy), "Values do not match");
+        Ok(())
+    }
+
+    #[test]
+    fn ledger_test() -> anyhow::Result<()> {
+        let entry = LedgerEntry {
+            creditor: BorderlessId::generate(),
+            debitor: BorderlessId::generate(),
+            amount_milli: 100_000,
+            tax_milli: 10_000,
+            currency: Currency::EUR,
+            kind: EntryType::CREATE,
+            tag: "some-tag".to_string(),
+        };
+        let key = entry.creditor.merge_compact(&entry.debitor);
+        create_ledger_entry(entry.clone())?;
+        // Check that entry is present
+        LEDGER.with(|ledger| {
+            let ledger = ledger.borrow();
+            let value = ledger.get(&key);
+            assert!(value.is_some(), "found no entry");
+            let value = value.unwrap();
+            assert!(value.len() == 1);
+            assert_eq!(value[0].creditor, entry.creditor);
+            assert_eq!(value[0].debitor, entry.debitor);
+            assert_eq!(value[0].amount_milli, entry.amount_milli);
+            assert_eq!(value[0].tax_milli, entry.tax_milli);
+            assert_eq!(value[0].currency, entry.currency);
+            assert_eq!(value[0].tag, entry.tag);
+        });
         Ok(())
     }
 

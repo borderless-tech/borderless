@@ -89,6 +89,21 @@ pub fn register_len(register_id: u64) -> Option<u64> {
     }
 }
 
+pub fn create_ledger_entry(entry: LedgerEntry) -> crate::Result<()> {
+    let bytes = entry.to_bytes();
+    unsafe {
+        match abi::create_ledger_entry(_bytes.as_ptr() as _, _bytes.len() as _) {
+            0 => Ok(()),
+            1 => Err(crate::Error::msg("creditor not in participants")),
+            2 => Err(crate::Error::msg("debitor not in participants")),
+            3 => Err(crate::Error::msg(
+                "creditor and debitor not in participants",
+            )),
+            _ => Err(crate::Error::msg("failed to create ledger entry")),
+        }
+    }
+}
+
 pub fn abort() -> ! {
     core::arch::wasm32::unreachable()
 }

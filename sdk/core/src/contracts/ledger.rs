@@ -395,19 +395,8 @@ impl TryFrom<u32> for EntryType {
     }
 }
 
-// TODO: Maybe it's better to make this the DB representation;
-// while we keep the concept of using json to communicate between host and guest
-// -> we could use a LedgerKey system to encode these values:
-// [ participant-pair | contract-id | number | value ]
-// [     u64          |      u64    |  u64   | u64   ]
-// If we use the uuid-compaction, we can store the participant-pair as u64, aswell as the contract-id.
-// "Number" would then be the number of the ledger entry, and "value" would be
-// an encoded field of the ledger-entry (e.g. by using a hash-func on the field name like "amount_milli").
-//
-// This way we could efficiently scroll through all ledger entries and only read specific values from it.
-// Number = u64 could be used to store meta-info (for a single contract),
-// and contract-id = u64::MAX could be used to store meta infos over all contracts
-#[derive(Serialize, Deserialize)]
+/// A ledger entry on the guest side
+#[derive(Clone, Serialize, Deserialize)]
 pub struct LedgerEntry {
     pub creditor: BorderlessId,
     pub debitor: BorderlessId,
@@ -417,11 +406,6 @@ pub struct LedgerEntry {
     pub kind: EntryType,
     pub tag: String,
 }
-
-// 2 * 16 byte for the ids
-// 2 *  8 byte for the amount + tax
-// 2 *  4 byte for currency + kind
-// pub const LEDGER_ENTRY_MIN_LEN: usize = 32 + 16 + 8;
 
 impl LedgerEntry {
     pub fn get_money(&self) -> Money {
@@ -438,65 +422,6 @@ impl LedgerEntry {
     pub fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, serde_json::Error> {
         serde_json::from_slice(bytes)
     }
-
-    // pub fn to_bytes(&self) -> Vec<u8> {
-    //     let mut bytes = Vec::with_capacity(LEDGER_ENTRY_MIN_LEN + self.tag.len());
-    //     bytes.extend(self.creditor.as_bytes());
-    //     bytes.extend(self.debitor.as_bytes());
-    //     bytes.extend(self.amount_milli.to_be_bytes());
-    //     bytes.extend(self.tax_milli.to_be_bytes());
-    //     bytes.extend((self.currency as u32).to_be_bytes());
-    //     bytes.extend((self.kind as u32).to_be_bytes());
-    //     bytes.extend(self.tag.as_bytes());
-    //     bytes
-    // }
-
-    // pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-    //     LedgerEntry::check_buffer(bytes)?;
-    //     // 16 byte buffer
-    //     let mut buf = [0; 16];
-    //     buf.copy_from_slice(&bytes[0..16]);
-    //     let creditor = BorderlessId::from_bytes(buf);
-    //     buf.copy_from_slice(&bytes[16..32]);
-    //     let debitor = BorderlessId::from_bytes(buf);
-    //     // 8 byte buffer
-    //     let mut buf = [0; 8];
-    //     buf.copy_from_slice(&bytes[32..40]);
-    //     let amount_milli = i64::from_be_bytes(buf);
-    //     buf.copy_from_slice(&bytes[40..48]);
-    //     let tax_milli = i64::from_be_bytes(buf);
-    //     // 4 byte buffer
-    //     let mut buf = [0; 4];
-    //     buf.copy_from_slice(&bytes[48..52]);
-    //     let currency = Currency::try_from(u32::from_be_bytes(buf))?;
-    //     buf.copy_from_slice(&bytes[52..56]);
-    //     let kind = EntryType::try_from(u32::from_be_bytes(buf))?;
-    //     let tag = String::from_utf8_lossy(&bytes[56..]);
-    //     Ok(LedgerEntry {
-    //         creditor,
-    //         debitor,
-    //         amount_milli,
-    //         tax_milli,
-    //         currency,
-    //         kind,
-    //         tag: tag.into_owned(),
-    //     })
-    // }
-
-    // pub fn check_buffer(bytes: &[u8]) -> Result<()> {
-    //     if bytes.len() < LEDGER_ENTRY_MIN_LEN {
-    //         return Err(Error::msg("slice is too short for a ledger-entry"));
-    //     }
-    //     Ok(())
-    // }
-
-    // POC how we can generate a view over a byte buffer
-    // pub unsafe fn view_kind(bytes: &[u8]) -> Result<EntryType> {
-    //     let mut buf = [0; 4];
-    //     buf.copy_from_slice(&bytes.get_unchecked(52..56));
-    //     let kind = EntryType::try_from(u32::from_be_bytes(buf)).unwrap();
-    //     Ok(kind)
-    // }
 }
 
 pub struct EntryBuilder<C, D> {

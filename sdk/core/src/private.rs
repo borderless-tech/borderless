@@ -273,14 +273,11 @@ pub fn create_ledger_entry(entry: LedgerEntry) -> crate::Result<()> {
     let _bytes = entry.to_bytes();
     #[cfg(target_arch = "wasm32")]
     unsafe {
-        match abi::create_ledger_entry(_bytes.as_ptr() as _, _bytes.len() as _) {
-            0 => Ok(()),
-            _ => Err(crate::Error::msg("failed to create ledger entry")),
-        }
+        env::on_chain::create_ledger_entry(entry)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        panic!("Ledger-API is not supportet on non-wasm targets")
+        env::off_chain::create_ledger_entry(entry)
     }
 }
 
