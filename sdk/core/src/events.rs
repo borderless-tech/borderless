@@ -1,5 +1,6 @@
 use crate::agents::env::agent_id;
 use crate::common::Id;
+use crate::contracts::env;
 use crate::contracts::env::{contract_id, participant, sinks};
 use crate::events::private::Sealed;
 use anyhow::anyhow;
@@ -274,8 +275,11 @@ pub struct Message {
 /// - `MY-TOPIC`
 pub fn message(topic: impl AsRef<str>) -> MsgBuilder {
     // Fetch publisher from the environment
-    let publisher = Id::contract(contract_id());
-    //let publisher = Id::agent(agent_id());
+    let publisher = if env::is_contract() {
+        Id::contract(contract_id())
+    } else {
+        Id::agent(agent_id())
+    };
 
     MsgBuilder {
         publisher,
