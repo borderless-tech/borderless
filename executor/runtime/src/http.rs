@@ -36,20 +36,28 @@ pub fn unsupported_media_type() -> Response {
     resp
 }
 
+#[derive(Serialize)]
+struct ErrBody {
+    status: String,
+    error: String,
+}
+
 pub fn bad_request(err: String) -> Response {
-    let mut resp = Response::new(err.into_bytes().into());
-    *resp.status_mut() = StatusCode::BAD_REQUEST;
-    resp
+    err_response(StatusCode::BAD_REQUEST, err)
 }
 
 pub fn err_response(status: StatusCode, err_msg: String) -> Response {
-    let mut resp = Response::new(err_msg.into_bytes().into());
+    let body = ErrBody {
+        status: status.to_string(),
+        error: err_msg,
+    };
+    let mut resp = json_response(&body);
     *resp.status_mut() = status;
     resp
 }
 
 pub fn json_response<S: Serialize>(value: &S) -> Response<Bytes> {
-    let bytes = serde_json::to_vec(value).unwrap();
+    let bytes = serde_json::to_vec(value).unwrap_or_default();
     json_body(bytes)
 }
 
