@@ -128,8 +128,7 @@ impl CallBuilder<CBInit> {
     ) -> CallBuilder<CBInit> {
         let writer = if is_contract() {
             participant(writer).expect("sink contains unknown writer")
-        }
-        else {
+        } else {
             // When dealing with a sw-agent, the executor must be the writer
             executor()
         };
@@ -464,6 +463,43 @@ where
         inner.convert_out_events()
     }
 }
+
+impl Sealed for Message {}
+impl ActionOutput for Message {
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        Ok(Events::from(self))
+    }
+}
+
+impl<E> Sealed for Result<Message, E> where E: Display + Debug + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<Message, E>
+where
+    E: Display + Debug + Send + Sync + 'static,
+{
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        let inner = self.map_err(|e| crate::Error::msg(e))?;
+        inner.convert_out_events()
+    }
+}
+
+impl Sealed for Vec<Message> {}
+impl ActionOutput for Vec<Message> {
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        Ok(Events::from(self))
+    }
+}
+
+impl<E> Sealed for Result<Vec<Message>, E> where E: Display + Debug + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<Vec<Message>, E>
+where
+    E: Display + Debug + Send + Sync + 'static,
+{
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        let inner = self.map_err(|e| crate::Error::msg(e))?;
+        inner.convert_out_events()
+    }
+}
+
 /// An event Sink for a smart-contract
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sink {
