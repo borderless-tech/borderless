@@ -131,8 +131,10 @@ where
         // NOTE: We haven't split the path, so the trailing '/' might be important depending on the
         // web-framework that embeds this service !
         match path {
-            // TODO: Incorporate contract-id
-            "/" | "" => Ok(json_response(&ledger.meta()?.map(|m| m.into_dto()))),
+            "/" | "" => match payload.contract_id {
+                Some(cid) => Ok(json_response(&ledger.meta_for_contract(cid)?)),
+                None => Ok(json_response(&ledger.meta()?.map(|m| m.into_dto()))),
+            },
             "/entries" | "entries" => match payload.contract_id {
                 Some(cid) => Ok(json_response(
                     &ledger.get_contract_paginated(cid, pagination)?,

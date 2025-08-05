@@ -18,6 +18,7 @@ use crate::{Error, Result, LEDGER_SUB_DB};
 
 use crate::log_shim::debug;
 
+/// Ledger controller of the database
 pub struct Ledger<'a, S: Db> {
     db: &'a S,
 }
@@ -27,6 +28,7 @@ impl<'a, S: Db> Ledger<'a, S> {
         Self { db }
     }
 
+    /// Commits a new ledger-entry in the given transaction
     pub(crate) fn commit_entry(
         &self,
         txn: &mut <S as Db>::RwTx<'_>,
@@ -38,7 +40,7 @@ impl<'a, S: Db> Ledger<'a, S> {
         // Read current ledger meta information
         let ledger_id = entry.creditor.merge_compact(&entry.debitor);
         let meta_key = LedgerKey::meta(ledger_id);
-        let meta = match txn.read(&db_ptr, &meta_key)? {
+        let mut meta = match txn.read(&db_ptr, &meta_key)? {
             Some(val) => postcard::from_bytes(&val)?,
             None => LedgerMeta::new(entry.creditor, entry.debitor),
         };
@@ -65,7 +67,7 @@ impl<'a, S: Db> Ledger<'a, S> {
         txn.write(&db_ptr, &tx_ctx_key, &tx_ctx_bytes)?;
 
         // update meta information based on the current entry
-        let meta = meta.update(entry)?;
+        meta.update(entry)?;
 
         // Write meta back
         let meta_bytes = postcard::to_allocvec(&meta)?;
@@ -103,7 +105,7 @@ impl<'a, S: Db> Ledger<'a, S> {
 
         // NOTE: We always iterate over the entire key-space.
         // As this is all super low level, it is quite efficient,
-        // but honestly it does not scale very well.
+        // but on paper it does not scale very well.
         // In the far or near future we have to migrate this to something different.
         for (key, value) in cursor.iter() {
             let key = LedgerKey::from_slice(key);
@@ -130,7 +132,7 @@ impl<'a, S: Db> Ledger<'a, S> {
 
         // NOTE: We always iterate over the entire key-space.
         // As this is all super low level, it is quite efficient,
-        // but honestly it does not scale very well.
+        // but on paper it does not scale very well.
         // In the far or near future we have to migrate this to something different.
         for (key, value) in cursor.iter() {
             let key = LedgerKey::from_slice(key);
@@ -186,7 +188,7 @@ impl<'a, S: Db> Ledger<'a, S> {
 
         // NOTE: We always iterate over the entire key-space.
         // As this is all super low level, it is quite efficient,
-        // but honestly it does not scale very well.
+        // but on paper it does not scale very well.
         // In the far or near future we have to migrate this to something different.
         for (key, _) in cursor.iter() {
             let key = LedgerKey::from_slice(key);
@@ -239,7 +241,7 @@ impl<'a, S: Db> Ledger<'a, S> {
     }
 }
 
-// TODO: Simply save the ledger-id
+/// Represents a selected ledger
 pub struct SelectedLedger<'a, S: Db> {
     db: &'a S,
     ledger_id: u64,
@@ -258,6 +260,47 @@ impl<'a, S: Db> SelectedLedger<'a, S> {
             }
             None => Ok(None),
         }
+    }
+
+    /// Returns the length of the ledger (if it exists)
+    pub fn meta_for_contract(&self, cid: ContractId) -> Result<Option<LedgerMetaDto>> {
+        let db_ptr = self.db.open_sub_db(LEDGER_SUB_DB)?;
+        let txn = self.db.begin_ro_txn()?;
+
+        // Read ledger meta
+        let key = LedgerKey::meta(self.ledger_id);
+        let mut meta: LedgerMeta = match txn
+            .read(&db_ptr, &key)?
+            .and_then(|b| postcard::from_bytes(b).ok())
+        {
+            Some(m) => m,
+            None => return Ok(None),
+        };
+        // Reset it, to only keep the creditor -> debitor info
+        meta.reset_balance();
+
+        let mut line = 0;
+        loop {
+            // If there are no more lines to read, then break
+            match self.check_line(&txn, &db_ptr, line as u64, cid)? {
+                Some(true) => { /* execute the logic below */ }
+                Some(false) => {
+                    line += 1;
+                    continue;
+                }
+                None => break,
+            }
+            let (entry, entry_cid, _tx_ctx) = self
+                .get(&txn, &db_ptr, line as u64)?
+                .context("line must exist")?;
+            debug_assert_eq!(entry_cid, cid);
+            // Update the ledger-meta based on the new entry
+            meta.update(&entry)?;
+            line += 1;
+        }
+        let mut dto = meta.into_dto();
+        dto.contract_id = Some(cid);
+        Ok(Some(dto))
     }
 
     /// Returns a paginated list of ledger entries (for all contracts)
@@ -504,6 +547,10 @@ pub struct LedgerMetaDto {
     pub len: u64,
     /// Balances by currency ( values are normalized, so 1€ = 1.00 €)
     pub balances: HashMap<Currency, f64>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// (Optional) Contract-ID, if the query was for a single contract-id only.
+    pub contract_id: Option<ContractId>,
 }
 
 impl LedgerMeta {
@@ -529,13 +576,20 @@ impl LedgerMeta {
             debitor: self.debitor,
             len: self.len,
             balances,
+            contract_id: None,
         }
+    }
+
+    /// Resets the balances and length - useful when creating a temporary balance from the original `LedgerMeta`
+    pub fn reset_balance(&mut self) {
+        self.balances.clear();
+        self.len = 0;
     }
 
     /// Updates the ledger meta information with the current entry
     ///
     /// Returns an error, if the ledger-entry does not belong to this ledger.
-    pub fn update(mut self, entry: &LedgerEntry) -> Result<Self> {
+    pub fn update(&mut self, entry: &LedgerEntry) -> Result<()> {
         let balance = self.balances.entry(entry.currency).or_default();
 
         // We have to modify the balance, based on the 'direction' of the transfer
@@ -557,7 +611,7 @@ impl LedgerMeta {
             }
         }
         self.len += 1;
-        Ok(self)
+        Ok(())
     }
 }
 
