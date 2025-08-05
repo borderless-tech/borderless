@@ -13,6 +13,7 @@ pub mod serialize {
     pub use serde_json::to_value;
     pub use serde_json::Error;
     pub use serde_json::Value;
+    pub use serde_json::Number;
 }
 
 // Directly export macros, so that the user can write:
@@ -37,9 +38,8 @@ pub use borderless_hash as hash;
 pub use borderless_pkg as pkg;
 
 pub mod prelude {
-    pub use crate::agents::*;
     pub use crate::common::*;
-    pub use crate::contracts::*;
+    pub use crate::contracts::TxCtx;
     pub use crate::events::*;
     pub use crate::serialize::json;
     /// Re-Export of `serde_json::json` macro as `value!`

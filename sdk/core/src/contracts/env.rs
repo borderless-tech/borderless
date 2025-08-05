@@ -1,5 +1,5 @@
 use anyhow::Context;
-use borderless_id_types::{BlockIdentifier, TxIdentifier};
+use borderless_id_types::{cid_prefix, BlockIdentifier, TxIdentifier, Uuid};
 
 use super::{BlockCtx, Sink, TxCtx};
 use crate::common::Participant;
@@ -13,9 +13,15 @@ use crate::{
     common::{Description, Metadata},
 };
 
+/// Checks whether the current running program is a smart-contract
+pub fn is_contract() -> bool {
+    let id: Uuid = read_field(BASE_KEY_METADATA, META_SUB_KEY_ID).expect("id not in metadata");
+    cid_prefix(id.as_bytes())
+}
+
 /// Returns the contract-id of the current contract
 pub fn contract_id() -> ContractId {
-    read_field(BASE_KEY_METADATA, META_SUB_KEY_CONTRACT_ID).expect("contract-id not in metadata")
+    read_field(BASE_KEY_METADATA, META_SUB_KEY_ID).expect("contract-id not in metadata")
 }
 
 /// Returns the contract participants

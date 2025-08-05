@@ -1,6 +1,7 @@
 #[borderless::contract]
 pub mod flipper {
     use borderless::collections::lazyvec::LazyVec;
+    use borderless::contracts::env;
     use borderless::prelude::*;
     use serde::{Deserialize, Serialize};
 
@@ -39,7 +40,7 @@ pub mod flipper {
             let call = env::sink("flipper")?
                 .call_method("set_switch")
                 .with_value(value!({ "switch": switch }))
-                .with_writer("alpha")?
+                //.with_writer("alpha")?
                 .build()?;
 
             // Or emit messages:

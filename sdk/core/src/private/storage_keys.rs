@@ -92,8 +92,8 @@ pub const BASE_KEY_METRICS: u64 = 3;
 pub const BASE_KEY_RESERVED: u64 = u64::MAX & !(1 << 63); // max. possible system-key
 
 // --- NOTE: The META_SUB_*-keys are basically the values of the introduction
-/// Sub-Key to store the contract-id ( TODO: What about agent-ids ??)
-pub const META_SUB_KEY_CONTRACT_ID: u64 = 0;
+/// Sub-Key to store the contract-id
+pub const META_SUB_KEY_ID: u64 = 0;
 
 /// Sub-Key to store the list of participants
 ///

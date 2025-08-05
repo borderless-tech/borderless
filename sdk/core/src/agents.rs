@@ -1,3 +1,6 @@
+/// Agent Environment
+pub mod env;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
