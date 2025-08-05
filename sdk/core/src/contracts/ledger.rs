@@ -435,6 +435,22 @@ pub struct LedgerEntry {
     pub tag: String,
 }
 
+impl fmt::Display for LedgerEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}, {}->{}, amount={}, tax={}, cur={}, tag={}",
+            self.kind,
+            self.debitor,
+            self.creditor,
+            self.amount_milli,
+            self.tax_milli,
+            self.currency,
+            self.tag
+        )
+    }
+}
+
 impl LedgerEntry {
     pub fn get_money(&self) -> Money {
         Money {

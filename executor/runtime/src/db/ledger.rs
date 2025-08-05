@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Error, Result, LEDGER_SUB_DB};
 
-use crate::log_shim::*;
+use crate::log_shim::debug;
 
 pub struct Ledger<'a, S: Db> {
     db: &'a S,
@@ -70,7 +70,10 @@ impl<'a, S: Db> Ledger<'a, S> {
         // Write meta back
         let meta_bytes = postcard::to_allocvec(&meta)?;
         txn.write(&db_ptr, &meta_key, &meta_bytes)?;
-        info!("-- created ledger-entry: meta={meta:?}");
+        debug!(
+            "commited ledger entry: {entry}, ledger-id={ledger_id}, len={}",
+            meta.len
+        );
         Ok(())
     }
 
@@ -105,11 +108,6 @@ impl<'a, S: Db> Ledger<'a, S> {
             }
         }
         Ok(out)
-    }
-
-    /// Returns a list of balances for all existing ledgers
-    pub fn all_balances(&self) -> Result<Vec<Balances>> {
-        Ok(self.all()?.into_iter().map(|m| m.to_balances()).collect())
     }
 
     pub fn all_ids(&self) -> Result<Vec<LedgerIds>> {
@@ -165,11 +163,6 @@ impl<'a, S: Db> SelectedLedger<'a, S> {
             }
             None => Ok(None),
         }
-    }
-
-    /// Returns the balances of the ledger (if it exists)
-    pub fn balances(&self) -> Result<Option<Balances>> {
-        Ok(self.meta()?.map(|m| m.to_balances()))
     }
 
     /// Returns a paginated list of ledger entries (for all contracts)
@@ -403,13 +396,14 @@ pub struct LedgerMeta {
     pub debitor: BorderlessId,
     /// Length of the ledger
     pub len: u64,
-    /// Balances by currency ( values are in 1000 units )
+    /// Balances by currency ( values are in 1000 units, so 1€ = 1000 )
     pub balances: HashMap<Currency, i64>,
 }
 
 /// Meta information about this ledger (DTO for JSON-APIs)
 ///
-/// Contains the ledger-id, which is useful for later queries
+/// Contains the ledger-id, which is useful for later queries,
+/// + converts the amount
 #[derive(Serialize)]
 pub struct LedgerMetaDto {
     /// ID that is used for this ledger
@@ -420,8 +414,8 @@ pub struct LedgerMetaDto {
     pub debitor: BorderlessId,
     /// Length of the ledger
     pub len: u64,
-    /// Balances by currency ( values are in 1000 units )
-    pub balances: HashMap<Currency, i64>,
+    /// Balances by currency ( values are normalized, so 1€ = 1.00 €)
+    pub balances: HashMap<Currency, f64>,
 }
 
 impl LedgerMeta {
@@ -436,12 +430,17 @@ impl LedgerMeta {
 
     pub fn into_dto(self) -> LedgerMetaDto {
         let ledger_id = self.creditor.merge_compact(&self.debitor);
+        let balances = self
+            .balances
+            .into_iter()
+            .map(|(k, v)| (k, v as f64 / 1000.0))
+            .collect();
         LedgerMetaDto {
             ledger_id,
             creditor: self.creditor,
             debitor: self.debitor,
             len: self.len,
-            balances: self.balances,
+            balances,
         }
     }
 
@@ -472,32 +471,6 @@ impl LedgerMeta {
         self.len += 1;
         Ok(self)
     }
-
-    pub fn to_balances(&self) -> Balances {
-        let ledger_id = self.creditor.merge_compact(&self.debitor);
-        let mut balances = HashMap::with_capacity(self.balances.len());
-        for (key, value) in self.balances.iter() {
-            balances.insert(
-                key.symbol().to_string(),
-                Money::new(*key, *value).to_string(),
-            );
-        }
-        Balances {
-            ledger_id,
-            creditor: self.creditor,
-            debitor: self.debitor,
-            balances,
-        }
-    }
-}
-
-/// Json-Friendly balances information
-#[derive(Serialize)]
-pub struct Balances {
-    pub ledger_id: u64,
-    pub creditor: BorderlessId,
-    pub debitor: BorderlessId,
-    pub balances: HashMap<String, String>,
 }
 
 /// A 24-bit ledger key constructed from a pair of borderless-ids, a line-index and a 'column' name.

@@ -52,34 +52,23 @@ where
     }
 
     async fn process_get_rq(&self, req: Request) -> crate::Result<Response> {
-        let path = req.uri().path();
+        // strip leading “/” and split, collecting all non-empty segments
+        let segs: Vec<&str> = req
+            .uri()
+            .path()
+            .trim_start_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
 
         // TODO: Add pagination to ledger routes
         let query = req.uri().query();
 
         let controller = Controller::new(&self.db);
-        if path == "/" {
-            let ids = controller.ledger().all_ids()?;
-            return Ok(json_response(&ids));
-        }
-        let mut pieces = path.split('/').skip(1);
 
-        // Get top-level route
-        let route = match pieces.next() {
-            Some(r) => r,
-            None => return Ok(reject_404()),
-        };
-
-        match route {
-            "" => {
-                let ids = controller.ledger().all_ids()?;
-                Ok(json_response(&ids))
-            }
-            "balances" => {
-                let balances = controller.ledger().all_balances()?;
-                Ok(json_response(&balances))
-            }
-            "meta" => {
+        match segs.as_slice() {
+            // GET /
+            [] => {
                 let meta: Vec<_> = controller
                     .ledger()
                     .all()?
@@ -88,25 +77,30 @@ where
                     .collect();
                 Ok(json_response(&meta))
             }
-            other => {
-                // Try parse the ledger-id and then match against the next piece
-                let ledger_id = match other.parse::<u64>() {
+            // GET /ids
+            ["ids"] => {
+                let ids = controller.ledger().all_ids()?;
+                Ok(json_response(&ids))
+            }
+            [id_str] => {
+                let ledger_id = match id_str.parse::<u64>() {
                     Ok(id) => id,
                     Err(e) => return Ok(bad_request(e.to_string())),
                 };
                 let ledger = controller.ledger().select(ledger_id);
-                let route = pieces.next().unwrap_or_default();
-                match route {
-                    "" => {
-                        let pagination = Pagination::from_query(query).unwrap_or_default();
-                        let entries = ledger.get_entries_paginated(pagination)?;
-                        Ok(json_response(&entries))
-                    }
-                    "balances" => Ok(json_response(&ledger.balances()?)),
-                    "meta" => Ok(json_response(&ledger.meta()?.map(|m| m.into_dto()))),
-                    _ => Ok(reject_404()),
-                }
+                Ok(json_response(&ledger.meta()?.map(|m| m.into_dto())))
             }
+            [id_str, "entries"] => {
+                let ledger_id = match id_str.parse::<u64>() {
+                    Ok(id) => id,
+                    Err(e) => return Ok(bad_request(e.to_string())),
+                };
+                let ledger = controller.ledger().select(ledger_id);
+                let pagination = Pagination::from_query(query).unwrap_or_default();
+                let entries = ledger.get_entries_paginated(pagination)?;
+                Ok(json_response(&entries))
+            }
+            _ => Ok(reject_404()),
         }
     }
 
@@ -116,6 +110,7 @@ where
         if !check_json_content(&parts) {
             return Ok(unsupported_media_type());
         }
+        // NOTE: We don't have any nested routes here, so we can get away with matching the path
         let path = parts.uri.path();
 
         // Parse pagination
@@ -140,17 +135,14 @@ where
         let ledger = controller.ledger().select(ledger_id);
 
         match path {
-            "/" | "" => match payload.contract_id {
+            // TODO: Incorporate contract-id
+            "" => Ok(json_response(&ledger.meta()?.map(|m| m.into_dto()))),
+            "entries" => match payload.contract_id {
                 Some(cid) => Ok(json_response(
                     &ledger.get_contract_paginated(cid, pagination)?,
                 )),
                 None => Ok(json_response(&ledger.get_entries_paginated(pagination)?)),
             },
-            // TODO: Incorporate contract-id !
-            "/balances" | "balances" => Ok(json_response(&ledger.balances()?)),
-            // TODO: Incorporate contract-id
-            "/meta" | "meta" => Ok(json_response(&ledger.meta()?.map(|m| m.into_dto()))),
-            // TODO: Add query for ledger by ledger-id (maybe post request ?)
             _ => Ok(reject_404()),
         }
     }
