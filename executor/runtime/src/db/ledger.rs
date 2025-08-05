@@ -100,6 +100,11 @@ impl<'a, S: Db> Ledger<'a, S> {
         let db_ptr = self.db.open_sub_db(LEDGER_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
         let mut cursor = txn.ro_cursor(&db_ptr)?;
+
+        // NOTE: We always iterate over the entire key-space.
+        // As this is all super low level, it is quite efficient,
+        // but honestly it does not scale very well.
+        // In the far or near future we have to migrate this to something different.
         for (key, value) in cursor.iter() {
             let key = LedgerKey::from_slice(key);
             if key.is_meta() {
@@ -108,6 +113,42 @@ impl<'a, S: Db> Ledger<'a, S> {
             }
         }
         Ok(out)
+    }
+
+    /// Returns a list of all existing ledgers
+    pub fn all_paginated(
+        &self,
+        pagination: Pagination,
+    ) -> Result<PaginatedElements<LedgerMetaDto>> {
+        let mut elements = Vec::new();
+        let db_ptr = self.db.open_sub_db(LEDGER_SUB_DB)?;
+        let txn = self.db.begin_ro_txn()?;
+        let mut cursor = txn.ro_cursor(&db_ptr)?;
+
+        let range = pagination.to_range();
+        let mut idx = 0;
+
+        // NOTE: We always iterate over the entire key-space.
+        // As this is all super low level, it is quite efficient,
+        // but honestly it does not scale very well.
+        // In the far or near future we have to migrate this to something different.
+        for (key, value) in cursor.iter() {
+            let key = LedgerKey::from_slice(key);
+            if !key.is_meta() {
+                continue;
+            }
+            if range.start <= idx && idx < range.end {
+                let ledger_meta: LedgerMeta = postcard::from_bytes(value)?;
+                elements.push(ledger_meta.into_dto());
+            }
+            idx += 1;
+        }
+        let paginated = PaginatedElements {
+            elements,
+            total_elements: idx,
+            pagination,
+        };
+        Ok(paginated)
     }
 
     pub fn all_ids(&self) -> Result<Vec<LedgerIds>> {
@@ -124,23 +165,77 @@ impl<'a, S: Db> Ledger<'a, S> {
             }
             last_ledger_id = ledger_id;
             // Read creditor and debitor
-            let c_key = LedgerKey::new(ledger_id, key.line(), "creditor");
-            let d_key = LedgerKey::new(ledger_id, key.line(), "debitor");
-            let creditor = txn
-                .read(&db_ptr, &c_key)?
-                .and_then(|b| BorderlessId::from_slice(b).ok())
-                .context("missing creditor")?;
-            let debitor = txn
-                .read(&db_ptr, &d_key)?
-                .and_then(|b| BorderlessId::from_slice(b).ok())
-                .context("missing debitor")?;
-            out.push(LedgerIds {
-                creditor,
-                debitor,
-                ledger_id,
-            });
+            let elem = self.get_ledger_id(&txn, &db_ptr, ledger_id, key.line())?;
+            out.push(elem);
         }
         Ok(out)
+    }
+
+    pub fn all_ids_paginated(
+        &self,
+        pagination: Pagination,
+    ) -> Result<PaginatedElements<LedgerIds>> {
+        let mut elements = Vec::new();
+        let db_ptr = self.db.open_sub_db(LEDGER_SUB_DB)?;
+        let txn = self.db.begin_ro_txn()?;
+        let mut cursor = txn.ro_cursor(&db_ptr)?;
+        let mut last_ledger_id = 0;
+
+        let range = pagination.to_range();
+        let mut idx = 0;
+
+        // NOTE: We always iterate over the entire key-space.
+        // As this is all super low level, it is quite efficient,
+        // but honestly it does not scale very well.
+        // In the far or near future we have to migrate this to something different.
+        for (key, _) in cursor.iter() {
+            let key = LedgerKey::from_slice(key);
+            let ledger_id = key.ledger_id();
+            if ledger_id == last_ledger_id {
+                continue;
+            }
+            last_ledger_id = ledger_id;
+
+            if range.start <= idx && idx < range.end {
+                // Read creditor and debitor
+                let elem = self.get_ledger_id(&txn, &db_ptr, ledger_id, key.line())?;
+                elements.push(elem);
+            }
+            idx += 1;
+        }
+        let paginated = PaginatedElements {
+            elements,
+            total_elements: idx,
+            pagination,
+        };
+        Ok(paginated)
+    }
+
+    /// Helper function to obtain the `LedgerIds` from a single line.
+    /// If the line does not exists, it returns an error.
+    fn get_ledger_id(
+        &self,
+        txn: &<S as Db>::RoTx<'_>,
+        db_ptr: &<S as Db>::Handle,
+        ledger_id: u64,
+        line: u64,
+    ) -> Result<LedgerIds> {
+        // Read creditor and debitor
+        let c_key = LedgerKey::new(ledger_id, line, "creditor");
+        let d_key = LedgerKey::new(ledger_id, line, "debitor");
+        let creditor = txn
+            .read(db_ptr, &c_key)?
+            .and_then(|b| BorderlessId::from_slice(b).ok())
+            .context("missing creditor")?;
+        let debitor = txn
+            .read(db_ptr, &d_key)?
+            .and_then(|b| BorderlessId::from_slice(b).ok())
+            .context("missing debitor")?;
+        Ok(LedgerIds {
+            creditor,
+            debitor,
+            ledger_id,
+        })
     }
 }
 

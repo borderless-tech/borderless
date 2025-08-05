@@ -61,25 +61,19 @@ where
             .filter(|s| !s.is_empty())
             .collect();
 
-        // TODO: Add pagination to ledger routes
         let query = req.uri().query();
 
         let controller = Controller::new(&self.db);
-
+        let pagination = Pagination::from_query(query).unwrap_or_default();
         match segs.as_slice() {
             // GET /
             [] => {
-                let meta: Vec<_> = controller
-                    .ledger()
-                    .all()?
-                    .into_iter()
-                    .map(|m| m.into_dto())
-                    .collect();
-                Ok(json_response(&meta))
+                let res = controller.ledger().all_paginated(pagination)?;
+                Ok(json_response(&res))
             }
             // GET /ids
             ["ids"] => {
-                let ids = controller.ledger().all_ids()?;
+                let ids = controller.ledger().all_ids_paginated(pagination)?;
                 Ok(json_response(&ids))
             }
             [id_str] => {
@@ -96,7 +90,6 @@ where
                     Err(e) => return Ok(bad_request(e.to_string())),
                 };
                 let ledger = controller.ledger().select(ledger_id);
-                let pagination = Pagination::from_query(query).unwrap_or_default();
                 let entries = ledger.get_entries_paginated(pagination)?;
                 Ok(json_response(&entries))
             }
