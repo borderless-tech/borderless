@@ -286,9 +286,9 @@ impl<S: Db> VmState<S> {
 
     /// Registers a websocket sender
     #[cfg(feature = "agents")]
-    pub fn register_ws(&mut self, aid: AgentId, ch: mpsc::Sender<Vec<u8>>) -> Result<()> {
+    pub fn register_ws(&mut self, ch: mpsc::Sender<Vec<u8>>) -> Result<()> {
         let state = self._async.as_mut().ok_or_else(|| ErrorKind::NoAsync)?;
-        state.clients.insert(aid, ch);
+        state.ws_sender = Some(ch);
         Ok(())
     }
 }
@@ -297,7 +297,7 @@ impl<S: Db> VmState<S> {
 #[derive(Default)]
 struct AsyncState {
     #[cfg(feature = "agents")]
-    clients: ahash::HashMap<AgentId, mpsc::Sender<Vec<u8>>>,
+    ws_sender: Option<mpsc::Sender<Vec<u8>>>,
 }
 
 /// Helper function to get the linear memory of the wasm module
@@ -777,7 +777,7 @@ pub mod async_abi {
             .as_ref()
             .ok_or_else(|| wasmtime::Error::msg("missing async-state in async runtime"))?;
 
-        match state.clients.get(&agent_id) {
+        match &state.ws_sender {
             Some(ch) => {
                 // We add a timeout here to not create a deadlock in case the channel is full
                 match tokio::time::timeout(Duration::from_secs(10), ch.send(data)).await {

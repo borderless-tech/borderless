@@ -11,14 +11,13 @@ use borderless::{BlockIdentifier, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
 use parking_lot::Mutex;
-use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
+use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module};
 
 use super::vm::{ActiveEntity, Commit};
 use super::{
     code_store::CodeStore,
     vm::{self, VmState},
 };
-use crate::db::action_log::ActionRecord;
 use crate::ACTION_TX_REL_SUB_DB;
 use crate::{
     error::{ErrorKind, Result},

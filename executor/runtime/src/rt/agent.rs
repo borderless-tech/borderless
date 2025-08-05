@@ -11,7 +11,7 @@ use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
 use parking_lot::Mutex as SyncMutex;
 use tokio::sync::{mpsc, Mutex};
-use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
+use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module};
 
 use super::vm::{ActiveEntity, Commit};
 use super::{
@@ -220,10 +220,9 @@ impl<S: Db> Runtime<S> {
     /// Registers a new websocket client
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub fn register_ws(&mut self, aid: AgentId) -> Result<mpsc::Receiver<Vec<u8>>> {
-        // let (tx, rx) = mpsc::channel(4);
-        // self.store.data_mut().register_ws(aid, tx)?;
-        // Ok(rx)
-        todo!("re-implement websockets with short-lived VmState and Store")
+        let (tx, rx) = mpsc::channel(4);
+        self.mutability_lock.insert_ws_sender(&aid, tx);
+        Ok(rx)
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
@@ -356,8 +355,8 @@ impl<S: Db> Runtime<S> {
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
-        let lock = self.mutability_lock.get_lock(aid);
-        let _guard = lock.lock().await;
+        let state = self.mutability_lock.get_lock_state(aid);
+        let _guard = state.lock.lock().await;
 
         // Prepare registers
         store.data_mut().set_register(REGISTER_INPUT, input);
@@ -366,6 +365,11 @@ impl<S: Db> Runtime<S> {
         store
             .data_mut()
             .set_register(REGISTER_EXECUTOR, self.executor.clone().unwrap_or_default());
+
+        // Inject ws-sender (if any)
+        if let Some(tx) = state.ws_sender {
+            store.data_mut().register_ws(tx)?;
+        }
 
         // Call the actual function on the wasm side
         let func = instance.get_typed_func::<(), ()>(&mut store, method)?;
@@ -467,8 +471,8 @@ impl<S: Db> Runtime<S> {
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
-        let lock = self.mutability_lock.get_lock(aid);
-        let _guard = lock.lock().await;
+        let state = self.mutability_lock.get_lock_state(aid);
+        let _guard = state.lock.lock().await;
 
         // NOTE: We cannot convert the payload into a call-action on-spot, as we might call a nested route.
         // To be precise - we *could* do it here, but I think it is cleaner to leave this logic up to the wasm module,
@@ -572,7 +576,12 @@ impl<S: Db> Runtime<S> {
     }
 }
 
-type Lock = Arc<Mutex<()>>;
+// NOTE: We Mis-Use the lock here to also carry persistent state - e.g. for the websocket
+#[derive(Default, Clone)]
+pub struct Lock {
+    lock: Arc<Mutex<()>>,
+    ws_sender: Option<mpsc::Sender<Vec<u8>>>,
+}
 
 /// Global mutability lock for all SW-Agents
 ///
@@ -589,6 +598,9 @@ type Lock = Arc<Mutex<()>>;
 ///
 /// Note: In contrast to [`borderless_runtime::rt::contract::MutLock`],
 /// this version uses asynchronous locks for the agents, and a synchronous lock only for the access of the hashmap.
+///
+/// Additionally, this double-functions as the provider of over-arching state per agent,
+/// e.g. the lock also contains the websocket sender, for agents that use websockets.
 #[derive(Clone, Default)]
 pub struct MutLock {
     map: Arc<SyncMutex<HashMap<AgentId, Lock>>>,
@@ -598,10 +610,23 @@ impl MutLock {
     /// Returns the `RwLock` for the given agent.
     ///
     /// If the agent-id is unknown, a new lock is created.
-    pub fn get_lock(&self, aid: &AgentId) -> Lock {
+    pub fn get_lock_state(&self, aid: &AgentId) -> Lock {
         let mut map = self.map.lock();
         let lock = map.entry(*aid).or_default();
         lock.clone()
+    }
+
+    /// Inserts a new ws-sender for the agent
+    ///
+    /// Panics if the sender already contained a lock
+    pub fn insert_ws_sender(&self, aid: &AgentId, ws_sender: mpsc::Sender<Vec<u8>>) {
+        let mut map = self.map.lock();
+        let lock = map.entry(*aid).or_default();
+        assert!(
+            lock.ws_sender.is_none(),
+            "Cannot register websocket twice on the same agent"
+        );
+        lock.ws_sender = Some(ws_sender);
     }
 }
 
