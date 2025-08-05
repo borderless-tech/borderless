@@ -13,6 +13,7 @@ pub mod serialize {
     pub use serde_json::to_value;
     pub use serde_json::Error;
     pub use serde_json::Value;
+    pub use serde_json::Number;
 }
 
 // Directly export macros, so that the user can write:
