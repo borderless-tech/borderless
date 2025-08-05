@@ -7,9 +7,10 @@ mod agent_actions;
 
 #[borderless::contract]
 pub mod cc_contract {
-    use borderless::events::Events;
+    use borderless::events::{message, Message};
     use borderless::*;
     use serde::{Deserialize, Serialize};
+    use borderless::serialize::{Number, Value};
 
     // --- This is the code that the user writes
     #[derive(State, Serialize, Deserialize, PartialEq, Eq, Debug)]
@@ -26,8 +27,10 @@ pub mod cc_contract {
 
         /// Starts calling the process
         #[action(web_api = true)]
-        pub fn call_next(&mut self) -> Result<Events> {
-            todo!("Use new contract sink concept")
+        pub fn call_next(&mut self) -> Result<Message> {
+            let value = Value::Number(Number::from(self.number + 1));
+            let msg = message("TOPIC").with_value(value);
+            Ok(msg)
         }
     }
 }
