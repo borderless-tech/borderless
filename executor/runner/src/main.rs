@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use borderless::{
-    common::{Introduction, Revocation},
+    common::{Introduction, IntroductionDto, Revocation},
     contracts::TxCtx,
     events::CallAction,
     hash::Hash256,
@@ -194,7 +194,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         ContractAction::Introduce { introduction } => {
             // Parse introduction
             let data = read_to_string(introduction)?;
-            let introduction = Introduction::from_str(&data)?;
+            let introduction: Introduction = IntroductionDto::from_str(&data)?.into();
 
             let cid = introduction.id.as_cid().unwrap();
 
