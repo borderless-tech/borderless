@@ -196,28 +196,27 @@ impl<S: Db> Runtime<S> {
         module_bytes: Vec<u8>,
         state: serde_json::Value,
     ) -> Result<(bool, Vec<String>)> {
-        // let module = Module::new(&self.engine, module_bytes)?;
-        // check_module(&self.engine, &module)?;
-        // let store = self.contract_store.create_store(&self.engine)?;
-        // let instance = self.linker.instantiate(&mut store, &module)?;
+        let module = Module::new(&self.engine, module_bytes)?;
+        check_module(&self.engine, &module)?;
+        let mut store = self.contract_store.create_store(&self.engine)?;
+        let instance = self.linker.instantiate(&mut store, &module)?;
 
-        // // Prepare registers
-        // store
-        //     .data_mut()
-        //     .set_register(REGISTER_INPUT, state.to_string().into_bytes());
+        // Prepare registers
+        store
+            .data_mut()
+            .set_register(REGISTER_INPUT, state.to_string().into_bytes());
 
-        // // Call the actual function on the wasm side
-        // store.data_mut().prepare_exec(ActiveEntity::None)?;
-        // let success = match instance
-        //     .get_typed_func::<(), ()>(&mut store, "parse_state")
-        //     .and_then(|func| func.call(&mut store, ()))
-        // {
-        //     Ok(()) => true,
-        //     Err(_e) => false,
-        // };
-        // let log = store.data_mut().finish_exec(None)?;
-        // Ok((success, log.into_iter().map(|l| l.msg).collect()))
-        todo!()
+        // Call the actual function on the wasm side
+        store.data_mut().prepare_exec(ActiveEntity::None)?;
+        let success = match instance
+            .get_typed_func::<(), ()>(&mut store, "parse_state")
+            .and_then(|func| func.call(&mut store, ()))
+        {
+            Ok(()) => true,
+            Err(_e) => false,
+        };
+        let log = store.data_mut().finish_exec(None)?;
+        Ok((success, log.into_iter().map(|l| l.msg).collect()))
     }
 
     /// Sets the currently active executor

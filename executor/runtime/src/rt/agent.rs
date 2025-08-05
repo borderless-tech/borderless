@@ -174,29 +174,29 @@ impl<S: Db> Runtime<S> {
         module_bytes: Vec<u8>,
         state: serde_json::Value,
     ) -> Result<(bool, Vec<String>)> {
-        // let module = Module::new(&self.engine, module_bytes)?;
-        // check_module(&self.engine, &module)?;
-        // let instance = self.linker.instantiate(&mut self.store, &module)?;
+        let module = Module::new(&self.engine, module_bytes)?;
+        check_module(&self.engine, &module)?;
+        let mut store = self.agent_store.create_store(&self.engine)?;
+        let instance = self.linker.instantiate(&mut store, &module)?;
 
-        // // Prepare registers
-        // self.store
-        //     .data_mut()
-        //     .set_register(REGISTER_INPUT, state.to_string().into_bytes());
+        // Prepare registers
+        store
+            .data_mut()
+            .set_register(REGISTER_INPUT, state.to_string().into_bytes());
 
-        // // Get function
-        // let func = instance.get_typed_func::<(), ()>(&mut self.store, "parse_state")?;
+        // Get function
+        let func = instance.get_typed_func::<(), ()>(&mut store, "parse_state")?;
 
-        // // Prepare execution
-        // self.store.data_mut().prepare_exec(ActiveEntity::None)?;
+        // Prepare execution
+        store.data_mut().prepare_exec(ActiveEntity::None)?;
 
-        // // Call the actual function on the wasm side
-        // let success = match func.call_async(&mut self.store, ()).await {
-        //     Ok(()) => true,
-        //     Err(_e) => false,
-        // };
-        // let log = self.store.data_mut().finish_exec(None)?;
-        // Ok((success, log.into_iter().map(|l| l.msg).collect()))
-        todo!()
+        // Call the actual function on the wasm side
+        let success = match func.call_async(&mut store, ()).await {
+            Ok(()) => true,
+            Err(_e) => false,
+        };
+        let log = store.data_mut().finish_exec(None)?;
+        Ok((success, log.into_iter().map(|l| l.msg).collect()))
     }
 
     /// Sets the currently active executor
@@ -210,13 +210,6 @@ impl<S: Db> Runtime<S> {
         Ok(())
     }
 
-    // TODO: FUCK - making the store a short-lived object breaks all assumptions
-    // that we took for the websocked handling...
-    //
-    // -> Basically, we have to save the websocket subscriptions somewhere else,
-    //    as the VmState will be re-set after each invocation.
-    //    When we create the VmState, we have to rebuild the 'clients' map from where we buffer it.
-    //    The "AsyncState" does not need to be a HashMap then, but only a single sender !
     /// Registers a new websocket client
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub fn register_ws(&mut self, aid: AgentId) -> Result<mpsc::Receiver<Vec<u8>>> {
