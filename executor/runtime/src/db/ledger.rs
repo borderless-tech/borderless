@@ -599,40 +599,12 @@ impl LedgerKey {
         LedgerKey(key)
     }
 
-    /// Generates a bit-mask that matches for all meta-keys: `mask_meta | key == 0xff`
-    pub fn mask_meta() -> [u8; 24] {
-        let mut mask = [0x00; 24];
-        mask[0..8].copy_from_slice(&[0xff; 8]);
-        mask
-    }
-
     /// Creates a ledger-key from a slice (useful when iterating over the kv-store)
     pub fn from_slice(slice: &[u8]) -> Self {
         let mut key = [0; 24];
         key[..].copy_from_slice(slice);
         LedgerKey(key)
     }
-
-    // /// Generates a bit-mask that matches all keys where `len == 0`
-    // pub fn mask_first_entry() -> [u8; 24] {
-    //     let mut mask = [0x00; 24];
-    //     mask[8..16].copy_from_slice(&[0xff; 8]);
-    //     mask
-    // }
-
-    // /// Returns the raw 32-byte representation of the storage key.
-    // pub fn as_bytes(&self) -> &[u8; 24] {
-    //     &self.0
-    // }
-
-    // /// Converts the storage key to a hexadecimal string (for logging/debugging).
-    // pub fn to_hex(&self) -> String {
-    //     use std::fmt::Write;
-    //     self.0.iter().fold(String::new(), |mut output, b| {
-    //         let _ = write!(output, "{b:02x}");
-    //         output
-    //     })
-    // }
 
     /// Reconstructs the 'line' (index) from the ledger-key
     pub fn line(&self) -> u64 {
