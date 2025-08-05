@@ -302,25 +302,19 @@ impl<'a, S: Db> SelectedLedger<'a, S> {
         let db_ptr = self.db.open_sub_db(LEDGER_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
 
-        // Read length via meta
-        let meta_key = LedgerKey::meta(self.ledger_id);
-        let total_elements = match txn
-            .read(&db_ptr, &meta_key)?
-            .and_then(|b| postcard::from_bytes::<LedgerMeta>(b).ok())
-        {
-            Some(meta) => meta.len as usize,
-            None => return Ok(PaginatedElements::empty(pagination)),
-        };
-
+        let mut line = 0;
         let mut idx = 0;
         let mut elements = Vec::new();
         let range = pagination.to_range();
 
-        for line in 0..total_elements {
+        loop {
             // If there are no more lines to read, then break
             match self.check_line(&txn, &db_ptr, line as u64, cid)? {
                 Some(true) => { /* execute the logic below */ }
-                Some(false) => continue,
+                Some(false) => {
+                    line += 1;
+                    continue;
+                }
                 None => break,
             }
             if range.start <= idx && idx < range.end {
@@ -328,14 +322,13 @@ impl<'a, S: Db> SelectedLedger<'a, S> {
                     .get(&txn, &db_ptr, line as u64)?
                     .context("line must exist")?;
                 elements.push(LedgerEntryDto::new(entry, cid, tx_ctx));
-            } else if idx >= range.end {
-                break;
             }
             idx += 1;
+            line += 1;
         }
         Ok(PaginatedElements {
             elements,
-            total_elements,
+            total_elements: idx,
             pagination,
         })
     }

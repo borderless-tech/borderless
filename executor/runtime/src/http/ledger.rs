@@ -103,6 +103,7 @@ where
         if !check_json_content(&parts) {
             return Ok(unsupported_media_type());
         }
+
         // NOTE: We don't have any nested routes here, so we can get away with matching the path
         let path = parts.uri.path();
 
@@ -127,10 +128,12 @@ where
         };
         let ledger = controller.ledger().select(ledger_id);
 
+        // NOTE: We haven't split the path, so the trailing '/' might be important depending on the
+        // web-framework that embeds this service !
         match path {
             // TODO: Incorporate contract-id
-            "" => Ok(json_response(&ledger.meta()?.map(|m| m.into_dto()))),
-            "entries" => match payload.contract_id {
+            "/" | "" => Ok(json_response(&ledger.meta()?.map(|m| m.into_dto()))),
+            "/entries" | "entries" => match payload.contract_id {
                 Some(cid) => Ok(json_response(
                     &ledger.get_contract_paginated(cid, pagination)?,
                 )),
