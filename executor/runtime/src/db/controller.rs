@@ -40,11 +40,6 @@ impl<'a, S: Db> Controller<'a, S> {
         Logger::new(self.db, id)
     }
 
-    /// Returns the ['SubscriptionHandler'] of the contract or agent
-    pub fn messages(&self) -> SubscriptionHandler<'a, S> {
-        SubscriptionHandler::new(self.db)
-    }
-
     /// List of contract-participants
     pub fn contract_participants(&self, cid: &ContractId) -> Result<Option<Vec<Participant>>> {
         self.read_value(
@@ -330,26 +325,28 @@ pub(crate) fn read_system_value<S: Db, D: DeserializeOwned, ID: AsRef<[u8; 16]>>
 #[cfg(any(feature = "contracts", feature = "agents"))]
 pub(crate) fn write_introduction<S: Db>(
     db_ptr: &S::Handle,
+    subs_ptr: &S::Handle,
     txn: &mut <S as Db>::RwTx<'_>,
     introduction: borderless::common::Introduction,
 ) -> Result<()> {
     use borderless::__private::storage_keys::*;
 
     use crate::error::ErrorKind;
-    let cid = introduction.id;
+    let id = introduction.id;
 
-    // NOTE: If the id was already written to disk, this means that the contract has already been written !
+    // NOTE: If the id was already written to disk, it means
+    // that the contract/sw-agent has already been written !
     let check_id =
-        read_system_value::<S, Id, _>(db_ptr, txn, &cid, BASE_KEY_METADATA, META_SUB_KEY_ID)?;
+        read_system_value::<S, Id, _>(db_ptr, txn, &id, BASE_KEY_METADATA, META_SUB_KEY_ID)?;
     if check_id.is_some() {
         return Err(ErrorKind::DoubleIntroduction.into());
     }
 
-    // Write contract-id
+    // Write contract or sw-agent id
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_ID,
         &introduction.id,
@@ -359,7 +356,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_PARTICIPANTS,
         &introduction.participants,
@@ -369,7 +366,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_SINKS,
         &introduction.sinks,
@@ -379,7 +376,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_DESC,
         &introduction.desc,
@@ -389,7 +386,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_META,
         &introduction.meta,
@@ -399,11 +396,21 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_INIT_STATE,
         &introduction.initial_state,
     )?;
+
+    // Write subscriptions
+    match id {
+        Id::Contract { .. } => {} // Not applicable
+        Id::Agent { agent_id } => {
+            for s in introduction.subscriptions {
+                SubscriptionHandler::<S>::subscribe(subs_ptr, txn, agent_id, s)?
+            }
+        }
+    }
 
     // Write package and source (flattened, because postcard does not support untagged enums)
     let (pkg_def, pkg_source) = introduction.package.into_def_and_source();
@@ -413,7 +420,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_PACKAGE_DEF,
         &pkg_def,
@@ -423,7 +430,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_PACKAGE_SOURCE,
         &pkg_source,
