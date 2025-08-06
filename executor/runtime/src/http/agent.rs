@@ -208,6 +208,10 @@ where
                 let sinks = controller.agent_sinks(&agent_id)?;
                 Ok(json_response(&sinks))
             }
+            "subs" => {
+                let subs = controller.agent_subs(&agent_id)?;
+                Ok(json_response(&subs))
+            }
             "desc" => {
                 let desc = controller.agent_desc(&agent_id)?;
                 Ok(json_response_nested(desc, &trunc))
