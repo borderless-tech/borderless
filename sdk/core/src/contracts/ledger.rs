@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Error, Participant, Result, __private::create_ledger_entry};
 
-/// ISO 4217 currencies that account for the vast majority of global FX turnover (BIS 2022).
+/// ISO 4217 currencies that account for the vast majority of global FX turnover (BIS 2022).
 ///
 /// * Each variant name is the three letter ISO code.
 /// * The discriminant is the ISO numeric code (`repr(u32)`).
-/// * `Display` prints the common symbol (or symbol‑like shorthand).
+/// * `Display` prints the common symbol (or symbol like shorthand).
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Currency {
@@ -133,6 +133,13 @@ impl Currency {
         }
     }
 
+    pub const fn fracs(&self) -> u8 {
+        match self {
+            Currency::JPY | Currency::KRW => 0, // no decimals
+            _ => 2,                             // all others use two decimals
+        }
+    }
+
     pub fn to_be_bytes(&self) -> [u8; 4] {
         (*self as u32).to_be_bytes()
     }
@@ -206,12 +213,47 @@ pub struct Money {
 }
 
 impl Money {
-    /// Creates a new money struct
-    pub fn new(currency: Currency, amount_milli: i64) -> Self {
+    /// Creates a new Money struct for the given currency.
+    ///
+    /// The fractions are automatically converted based on the currency.
+    pub fn new(currency: Currency, amount: i64, fracs: u32) -> Self {
+        // This multiplier will be 10 for frac=2, 1 for frac=3 and 1000 for frac=0
+        let mul = 10i64.pow(3u32.saturating_sub(currency.fracs() as u32));
+        let amount_milli = amount.signum() * (amount.abs() * 1000 + mul * fracs as i64);
         Money {
             amount_milli,
             currency,
         }
+    }
+
+    /// Creates a new `Money` struct with currency set to `EUR` ( euro )
+    pub fn euro(euros: i64, cents: u32) -> Self {
+        Money::new(Currency::EUR, euros, cents)
+    }
+
+    /// Creates a new `Money` struct with currency set to `USD` ( US dollar )
+    pub fn usd(dollars: i64, cents: u32) -> Self {
+        Money::new(Currency::USD, dollars, cents)
+    }
+
+    /// Creates a new `Money` struct with currency set to `GBP` ( british pounds )
+    pub fn pound(pounds: i64, pence: u32) -> Self {
+        Money::new(Currency::GBP, pounds, pence)
+    }
+
+    /// Creates a new `Money` struct with currency set to `JPY` ( japanese yen )
+    pub fn yen(yen: i64) -> Self {
+        Money::new(Currency::JPY, yen, 0)
+    }
+
+    /// Creates a new `Money` struct with currency set to `CNY` ( chinese yuan )
+    pub fn yuan(yuan: i64, fen: u32) -> Self {
+        Money::new(Currency::CNY, yuan, fen)
+    }
+
+    /// Creates a new `Money` struct with currency set to `CHR` ( swiss franc )
+    pub fn chf(francs: i64, rappen: u32) -> Self {
+        Money::new(Currency::CHF, francs, rappen)
     }
 
     /// Creates a new `Money` from an *integer* amount of thousandths.
@@ -253,7 +295,8 @@ impl fmt::Display for Money {
             }
         } else {
             let mut frac_str = format!("{:03}", fractional);
-            while frac_str.ends_with('0') {
+            let remove_fracs = 3u8.saturating_sub(self.currency().fracs());
+            for _ in 0..remove_fracs {
                 frac_str.pop();
             }
             if self.amount_milli < 0 {
@@ -609,8 +652,15 @@ mod tests {
     use super::*;
 
     fn random_money() -> Money {
-        let amount_milli: i64 = random_range(-1_000_000_000..1_000_000_000);
         let currency = Currency::ALL[random_range(0..Currency::ALL.len())];
+        // Check fraction and shorten the amount so that it does not represent invalid values for that currency
+        // E.g. cur=€ and amount_milli=1003 would not be valid, as 0.103 € is not representable.
+        let mut amount_milli: i64 = random_range(-1_000_000_000..1_000_000_0);
+        let fracs = 3u32.saturating_sub(currency.fracs() as u32);
+        let mul = 10i64.pow(fracs);
+        amount_milli /= mul; // Integer division - removes fractions
+        amount_milli *= mul; // Multiply again, so e.g. (1003 / 10) * 10 = 100
+
         Money {
             amount_milli,
             currency,
@@ -659,6 +709,17 @@ mod tests {
             assert_eq!(m.currency, Currency::EUR);
         }
         Ok(())
+    }
+
+    #[test]
+    fn currency_constructor_euro() {
+        let euro = Money::euro(100, 10);
+        assert_eq!(euro.amount_milli, 100100);
+        assert_eq!(euro.to_string(), "100.10 €");
+        assert_eq!(euro, Money::new(Currency::EUR, 100, 10));
+        let euro = Money::euro(-100, 10);
+        assert_eq!(euro.amount_milli, -100100);
+        assert_eq!(euro.to_string(), "-100.10 €");
     }
 
     fn prepare_participants() -> (Participant, Participant) {
