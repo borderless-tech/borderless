@@ -721,6 +721,23 @@ mod tests {
     }
 
     #[test]
+    fn print_fractions() -> Result<()> {
+        let m = Money::euro(10, 32);
+        assert_eq!(m.to_string(), "10.32 €");
+        assert_eq!("10,32€".parse::<Money>()?, m);
+        let m = Money::euro(10, 0);
+        assert_eq!(m.to_string(), "10 €");
+        // These are all valid representations of 10€
+        assert_eq!("10,00 €".parse::<Money>()?, m);
+        assert_eq!("10.00 €".parse::<Money>()?, m);
+        assert_eq!("10,0 €".parse::<Money>()?, m);
+        assert_eq!("10.0 €".parse::<Money>()?, m);
+        assert_eq!("10 €".parse::<Money>()?, m);
+        assert_eq!("10€".parse::<Money>()?, m);
+        Ok(())
+    }
+
+    #[test]
     fn currency_constructor_euro() {
         let euro = Money::euro(100, 10);
         assert_eq!(euro.amount_milli, 100100);
