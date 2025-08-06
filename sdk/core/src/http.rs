@@ -343,7 +343,7 @@ pub mod queries {
                     if !value.is_empty() && !key.is_empty() {
                         match key {
                             // Check weather or not we have a special keyword
-                            "page" | "per_page" | "sort" | "order" | "action" => {
+                            "page" | "per_page" | "sort" | "order" | "action" | "reverse" => {
                                 items.insert(key.to_string(), value.to_string());
                             }
                             // Check for contract_id and process_id, as they require special parsing
@@ -374,7 +374,15 @@ pub mod queries {
             let per_page_item = self.items.get("per_page")?;
             let page = usize::from_str(page_item).ok()?;
             let per_page = usize::from_str(per_page_item).ok()?;
-            Some(Pagination { page, per_page })
+            let reverse = match self.items.get("reverse") {
+                Some(r) => bool::from_str(&r).ok()?,
+                None => false,
+            };
+            Some(Pagination {
+                page,
+                per_page,
+                reverse,
+            })
         }
 
         /// Returns sorting element if present
@@ -449,6 +457,10 @@ pub mod queries {
     pub struct Pagination {
         pub page: usize,
         pub per_page: usize,
+        // Don't include the 'reverse', if it is set to false
+        #[serde(default)]
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        pub reverse: bool,
     }
 
     impl Default for Pagination {
@@ -456,6 +468,7 @@ pub mod queries {
             Self {
                 page: 1,
                 per_page: 100,
+                reverse: false,
             }
         }
     }
@@ -472,11 +485,14 @@ pub mod queries {
             let query = query?;
             let mut page_str: Option<&str> = None;
             let mut per_page_str: Option<&str> = None;
+            let mut reverse = false;
             for piece in query.split('&') {
                 if piece.starts_with("page=") {
                     page_str = Some(piece);
                 } else if piece.starts_with("per_page=") || piece.starts_with("per-page") {
                     per_page_str = Some(piece);
+                } else if piece == "reverse=true" || piece == "rev=true" {
+                    reverse = true;
                 }
                 if page_str.is_some() && per_page_str.is_some() {
                     break;
@@ -491,13 +507,18 @@ pub mod queries {
                     let per_page_num: &str = per_page_str.split('=').nth(1)?;
                     let page = usize::from_str(page_num).ok()?;
                     let per_page = usize::from_str(per_page_num).ok()?;
-                    Some(Pagination { page, per_page })
+                    Some(Pagination {
+                        page,
+                        per_page,
+                        reverse,
+                    })
                 }
                 (Some(page_str), None) => {
                     let page_num: &str = page_str.split('=').nth(1)?;
                     let page = usize::from_str(page_num).ok()?;
                     let mut pagination = Pagination::default();
                     pagination.page = page;
+                    pagination.reverse = reverse;
                     Some(pagination)
                 }
                 (None, Some(per_page_str)) => {
@@ -505,9 +526,18 @@ pub mod queries {
                     let per_page = usize::from_str(per_page_num).ok()?;
                     let mut pagination = Pagination::default();
                     pagination.per_page = per_page;
+                    pagination.reverse = reverse;
                     Some(pagination)
                 }
-                _ => None,
+                _ => {
+                    if reverse {
+                        let mut pagination = Pagination::default();
+                        pagination.reverse = true;
+                        Some(pagination)
+                    } else {
+                        None
+                    }
+                }
             }
         }
 

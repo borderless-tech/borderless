@@ -322,12 +322,29 @@ impl<'a, S: Db> SelectedLedger<'a, S> {
         };
 
         let mut elements = Vec::new();
-        for idx in pagination.to_range() {
-            match self.get(&txn, &db_ptr, idx as u64)? {
-                Some((entry, cid, tx_ctx)) => {
-                    elements.push(LedgerEntryDto::new(entry, cid, tx_ctx));
+        if !pagination.reverse {
+            for idx in pagination.to_range() {
+                match self.get(&txn, &db_ptr, idx as u64)? {
+                    Some((entry, cid, tx_ctx)) => {
+                        elements.push(LedgerEntryDto::new(entry, cid, tx_ctx));
+                    }
+                    None => break,
                 }
-                None => break,
+            }
+        } else {
+            let range = pagination.to_range();
+            let mut idx = total_elements.saturating_sub(range.start);
+            while idx > 0 {
+                // NOTE: We start with idx == total_elements if range.start == 0;
+                // So we decrease in advance. Otherwise the idx > 0 would result in us leaving out the last element.
+                idx -= 1;
+                let (entry, cid, tx_ctx) = self
+                    .get(&txn, &db_ptr, idx as u64)?
+                    .context("entry idx < max_len must exist")?;
+                elements.push(LedgerEntryDto::new(entry, cid, tx_ctx));
+                if range.end - range.start <= elements.len() {
+                    break;
+                }
             }
         }
         Ok(PaginatedElements {
@@ -345,29 +362,65 @@ impl<'a, S: Db> SelectedLedger<'a, S> {
         let db_ptr = self.db.open_sub_db(LEDGER_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
 
-        let mut line = 0;
-        let mut idx = 0;
         let mut elements = Vec::new();
         let range = pagination.to_range();
+        let mut idx = 0;
 
-        loop {
-            // If there are no more lines to read, then break
-            match self.check_line(&txn, &db_ptr, line as u64, cid)? {
-                Some(true) => { /* execute the logic below */ }
-                Some(false) => {
-                    line += 1;
+        if !pagination.reverse {
+            // Go forward and ignore all entries, where the contract-id does not match
+            let mut line = 0;
+            loop {
+                // If there are no more lines to read, then break
+                match self.check_line(&txn, &db_ptr, line as u64, cid)? {
+                    Some(true) => { /* execute the logic below */ }
+                    Some(false) => {
+                        line += 1;
+                        continue;
+                    }
+                    None => break,
+                }
+                // Take as many items as fit in the page
+                if range.start <= idx && idx < range.end {
+                    let (entry, cid, tx_ctx) = self
+                        .get(&txn, &db_ptr, line as u64)?
+                        .context("line must exist")?;
+                    elements.push(LedgerEntryDto::new(entry, cid, tx_ctx));
+                }
+                // Keep counting, since we don't know the 'total_elements' in advance
+                idx += 1;
+                line += 1;
+            }
+        } else {
+            // Go backward and ignore all entries, where the contract-id does not match
+            let meta_key = LedgerKey::meta(self.ledger_id);
+            let all_entries = match txn
+                .read(&db_ptr, &meta_key)?
+                .and_then(|b| postcard::from_bytes::<LedgerMeta>(b).ok())
+            {
+                Some(meta) => meta.len as usize,
+                None => return Ok(PaginatedElements::empty(pagination)),
+            };
+
+            let mut line = all_entries;
+            while line > 0 {
+                // NOTE: We start with line == total_elements
+                // So we decrease in advance. Otherwise the line > 0 would result in us leaving out the last element.
+                line -= 1;
+                // if it returns 'false' we want to continue, as this is a line not matching to our contract-id
+                if !self
+                    .check_line(&txn, &db_ptr, line as u64, cid)?
+                    .unwrap_or_default()
+                {
                     continue;
                 }
-                None => break,
+                if range.start <= idx && idx < range.end {
+                    let (entry, cid, tx_ctx) = self
+                        .get(&txn, &db_ptr, line as u64)?
+                        .context("line must exist")?;
+                    elements.push(LedgerEntryDto::new(entry, cid, tx_ctx));
+                }
+                idx += 1;
             }
-            if range.start <= idx && idx < range.end {
-                let (entry, cid, tx_ctx) = self
-                    .get(&txn, &db_ptr, line as u64)?
-                    .context("line must exist")?;
-                elements.push(LedgerEntryDto::new(entry, cid, tx_ctx));
-            }
-            idx += 1;
-            line += 1;
         }
         Ok(PaginatedElements {
             elements,
