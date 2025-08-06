@@ -1,9 +1,8 @@
 use crate::Result;
-use crate::SUBSCRIPTION_REL_SUB_DB;
 use borderless::common::Id;
 use borderless::events::Topic;
 use borderless::{AgentId, Context};
-use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx, Tx};
+use borderless_kv_store::{Db, RawWrite, RwCursor, RwTx};
 use std::str::FromStr;
 
 /// Generates a DB key from a publisher, subscriber and topic
@@ -52,59 +51,43 @@ fn extract_key(key: &[u8]) -> Result<(String, AgentId)> {
     }
 }
 
-pub struct SubscriptionHandler<'a, S: Db> {
-    db: &'a S,
+pub struct SubscriptionHandler<S: Db> {
+    _marker: std::marker::PhantomData<S>,
 }
 
-impl<'a, S: Db> SubscriptionHandler<'a, S> {
-    pub fn new(db: &'a S) -> Self {
-        Self { db }
-    }
-
-    /// Inits the handler by adding the provided subscriptions
-    pub fn init(&mut self, subscriber: Id, subscriptions: Vec<Topic>) -> Result<()> {
-        let subscriber = match subscriber {
-            Id::Contract { .. } => return Ok(()), // Contracts cannot be subscribers
-            Id::Agent { agent_id } => agent_id,
-        };
-        for s in subscriptions {
-            self.subscribe(subscriber, s)?;
-        }
-        Ok(())
-    }
-
-    pub fn subscribe(&self, subscriber: AgentId, topic: Topic) -> Result<()> {
-        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
-        let mut txn = self.db.begin_rw_txn()?;
-
-        let key = generate_key(topic.publisher, topic.topic, Some(subscriber));
+impl<S: Db> SubscriptionHandler<S> {
+    pub fn subscribe(
+        db_ptr: &S::Handle,
+        txn: &mut <S as Db>::RwTx<'_>,
+        subscriber: AgentId,
+        topic: Topic,
+    ) -> Result<()> {
         // TODO Store the subscription's timestamp for debugging purposes?
-        // Apply changes to DB
-        txn.write(&db_ptr, &key, &topic.method)?;
-        txn.commit()?;
+        let key = generate_key(topic.publisher, topic.topic, Some(subscriber));
+        txn.write(db_ptr, &key, &topic.method)?;
         Ok(())
     }
 
-    pub fn unsubscribe(&self, subscriber: AgentId, publisher: Id, topic: String) -> Result<bool> {
-        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
-        let mut txn = self.db.begin_rw_txn()?;
-
+    pub fn unsubscribe(
+        db_ptr: &S::Handle,
+        txn: &mut <S as Db>::RwTx<'_>,
+        subscriber: AgentId,
+        publisher: Id,
+        topic: String,
+    ) -> Result<bool> {
         let key = generate_key(publisher, topic, Some(subscriber));
-        // Apply changes to DB
-        let deleted = txn.delete(&db_ptr, &key).is_ok();
-        txn.commit()?;
+        let deleted = txn.delete(db_ptr, &key).is_ok();
         Ok(deleted)
     }
 
     pub fn get_topic_subscribers(
-        &self,
+        db_ptr: &S::Handle,
+        txn: &mut <S as Db>::RwTx<'_>,
         publisher: Id,
         topic: String,
     ) -> Result<Vec<(AgentId, String)>> {
-        // Access to DB
-        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
-        let txn = self.db.begin_ro_txn()?;
-        let mut cursor = txn.ro_cursor(&db_ptr)?;
+        // Setup DB cursor
+        let mut cursor = txn.rw_cursor(db_ptr)?;
 
         let mut subscribers = Vec::new();
 
@@ -125,19 +108,24 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         }
         // Free up resources
         drop(cursor);
-        drop(txn);
         Ok(subscribers)
     }
 
-    pub fn get_subscribers(&self, publisher: Id) -> Result<Vec<(AgentId, String)>> {
-        self.get_topic_subscribers(publisher, String::default())
+    pub fn get_subscribers(
+        db_ptr: &S::Handle,
+        txn: &mut <S as Db>::RwTx<'_>,
+        publisher: Id,
+    ) -> Result<Vec<(AgentId, String)>> {
+        Self::get_topic_subscribers(db_ptr, txn, publisher, String::default())
     }
 
-    pub fn get_subscriptions(&self, target: AgentId) -> Result<Vec<String>> {
-        // Access to DB
-        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
-        let txn = self.db.begin_ro_txn()?;
-        let mut cursor = txn.ro_cursor(&db_ptr)?;
+    pub fn get_subscriptions(
+        db_ptr: &S::Handle,
+        txn: &mut <S as Db>::RwTx<'_>,
+        target: AgentId,
+    ) -> Result<Vec<String>> {
+        // Setup DB cursor
+        let mut cursor = txn.rw_cursor(db_ptr)?;
 
         let mut topics = Vec::new();
 
@@ -154,7 +142,6 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         }
         // Free up resources
         drop(cursor);
-        drop(txn);
         Ok(topics)
     }
 }
