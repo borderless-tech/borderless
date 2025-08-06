@@ -3,7 +3,7 @@ use super::{
     logger::Logger,
     subscriptions::SubscriptionHandler,
 };
-use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB};
+use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB, SUBSCRIPTION_REL_SUB_DB};
 use borderless::common::Participant;
 use borderless::{
     common::{Description, Metadata, Revocation},
@@ -125,6 +125,12 @@ impl<'a, S: Db> Controller<'a, S> {
         self.read_value(&aid, BASE_KEY_METADATA, META_SUB_KEY_SINKS)
     }
 
+    pub fn agent_subs(&self, aid: &AgentId) -> Result<Vec<String>> {
+        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
+        let mut txn = self.db.begin_rw_txn()?;
+        SubscriptionHandler::<S>::get_subscriptions(&db_ptr, &mut txn, *aid)
+    }
+
     /// Returns the [`Description`] of the contract
     pub fn contract_desc(&self, cid: &ContractId) -> Result<Option<Description>> {
         self.read_value(&Id::contract(*cid), BASE_KEY_METADATA, META_SUB_KEY_DESC)
@@ -153,14 +159,16 @@ impl<'a, S: Db> Controller<'a, S> {
         Ok(Some(ContractInfo { info, desc, meta }))
     }
 
-    /// Returns the full [`ContractInfo`], which bundles info, description and metadata.
+    /// Returns the full [`AgentInfo`], which bundles info, description and metadata.
     pub fn agent_full(&self, aid: &AgentId) -> Result<Option<AgentInfo>> {
         let sinks = self.agent_sinks(aid)?.unwrap_or_default();
+        let subs = self.agent_subs(aid)?;
         let desc = self.agent_desc(aid)?;
         let meta = self.agent_meta(aid)?;
         Ok(Some(AgentInfo {
             agent_id: *aid,
             sinks,
+            subs,
             desc,
             meta,
         }))
