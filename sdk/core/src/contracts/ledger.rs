@@ -702,7 +702,16 @@ mod tests {
 
     #[test]
     fn ignore_whitespace() -> Result<()> {
-        let spaces = ["100 €", "100€", "  100€ ", " 100 €", "1 00, 0 0 €"];
+        let spaces = [
+            "100 €",
+            "100€",
+            "  100€ ",
+            " 100 €",
+            "1 00, 0 0 €",
+            "100.00 €",
+            " 100.00 €",
+            " 100 .00 €",
+        ];
         for s in spaces {
             let m: Money = s.parse()?;
             assert_eq!(m.amount(), 100.0);
