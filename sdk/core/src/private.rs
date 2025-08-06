@@ -1,6 +1,4 @@
 // We have to set the path explicitly, because the module is named "__private", while the directory is named "private"
-#[path = "private/http.rs"]
-pub mod http;
 #[path = "private/registers.rs"]
 pub mod registers;
 #[path = "private/storage_keys.rs"]
@@ -18,8 +16,6 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::error;
 use crate::prelude::ledger::LedgerEntry;
-pub use postcard::from_bytes as from_postcard_bytes;
-pub use postcard::to_allocvec as to_postcard_bytes;
 
 // --- PLAYGROUND FOR NEW ABI STUFF
 
