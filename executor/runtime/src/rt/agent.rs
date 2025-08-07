@@ -160,6 +160,11 @@ impl<S: Db> Runtime<S> {
         Arc::new(Mutex::new(self))
     }
 
+    /// Returns a copy of the underlying db handle
+    pub fn get_db(&self) -> S {
+        self.agent_store.get_db()
+    }
+
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(%agent_id), err))]
     pub fn instantiate_sw_agent(&mut self, agent_id: AgentId, module_bytes: &[u8]) -> Result<()> {
         let module = Module::new(&self.engine, module_bytes)?;
