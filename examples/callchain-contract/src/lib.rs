@@ -8,9 +8,9 @@ mod agent_actions;
 #[borderless::contract]
 pub mod cc_contract {
     use borderless::events::{message, Message};
+    use borderless::prelude::json;
     use borderless::*;
     use serde::{Deserialize, Serialize};
-    use borderless::serialize::{Number, Value};
 
     // --- This is the code that the user writes
     #[derive(State, Serialize, Deserialize, PartialEq, Eq, Debug)]
@@ -28,7 +28,7 @@ pub mod cc_contract {
         /// Starts calling the process
         #[action(web_api = true)]
         pub fn call_next(&mut self) -> Result<Message> {
-            let value = Value::Number(Number::from(self.number + 1));
+            let value = json!({"number": self.number + 1});
             let msg = message("TOPIC").with_value(value);
             Ok(msg)
         }
