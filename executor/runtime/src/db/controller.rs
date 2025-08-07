@@ -133,7 +133,7 @@ impl<'a, S: Db> Controller<'a, S> {
 
     pub fn agent_subs(&self, aid: &AgentId) -> Result<Vec<String>> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
-        let mut txn = self.db.begin_rw_txn()?;
+        let mut txn = self.db.begin_ro_txn()?;
         SubscriptionHandler::<S>::get_subscriptions(&db_ptr, &mut txn, *aid)
     }
 

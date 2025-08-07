@@ -2,7 +2,7 @@ use crate::Result;
 use borderless::common::Id;
 use borderless::events::Topic;
 use borderless::{AgentId, Context};
-use borderless_kv_store::{Db, RawWrite, RwCursor, RwTx};
+use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx};
 use std::str::FromStr;
 
 /// Generates a DB key from a publisher, subscriber and topic
@@ -82,12 +82,12 @@ impl<S: Db> SubscriptionHandler<S> {
 
     pub fn get_topic_subscribers(
         db_ptr: &S::Handle,
-        txn: &mut <S as Db>::RwTx<'_>,
+        txn: &mut <S as Db>::RoTx<'_>,
         publisher: Id,
         topic: String,
     ) -> Result<Vec<(AgentId, String)>> {
         // Setup DB cursor
-        let mut cursor = txn.rw_cursor(db_ptr)?;
+        let mut cursor = txn.ro_cursor(db_ptr)?;
 
         let mut subscribers = Vec::new();
 
@@ -113,7 +113,7 @@ impl<S: Db> SubscriptionHandler<S> {
 
     pub fn get_subscribers(
         db_ptr: &S::Handle,
-        txn: &mut <S as Db>::RwTx<'_>,
+        txn: &mut <S as Db>::RoTx<'_>,
         publisher: Id,
     ) -> Result<Vec<(AgentId, String)>> {
         Self::get_topic_subscribers(db_ptr, txn, publisher, String::default())
@@ -121,11 +121,11 @@ impl<S: Db> SubscriptionHandler<S> {
 
     pub fn get_subscriptions(
         db_ptr: &S::Handle,
-        txn: &mut <S as Db>::RwTx<'_>,
+        txn: &mut <S as Db>::RoTx<'_>,
         target: AgentId,
     ) -> Result<Vec<String>> {
         // Setup DB cursor
-        let mut cursor = txn.rw_cursor(db_ptr)?;
+        let mut cursor = txn.ro_cursor(db_ptr)?;
 
         let mut topics = Vec::new();
 
