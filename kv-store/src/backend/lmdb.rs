@@ -101,7 +101,7 @@ impl Lmdb {
             // NOTE: we have to maintain the map size
             // in future. A mechanism to increase this size
             // is a good idea.
-            .set_map_size(1_099_511_627_776)
+            .set_map_size(1_099_511_627_776) // 1 TB
             .set_max_readers(2048) // allow more concurrent readers
             .set_flags(flags)
             .open(path)?;
@@ -275,7 +275,7 @@ impl<'env> RoTx<'env, lmdb::Database> for lmdb::RoTransaction<'env> {
 /// Provides methods to iterate over the key-value pairs in the database.
 impl<'txn> RoCursor<'txn, lmdb::Database> for lmdb::RoCursor<'txn> {
     /// Type definition for the iterator used in the cursor.
-    type Iter = lmdb::Iter<'txn>;
+    type Iter = Iter<'txn>;
 
     fn get<K, V>(
         &self,
@@ -302,18 +302,18 @@ impl<'txn> RoCursor<'txn, lmdb::Database> for lmdb::RoCursor<'txn> {
     /// ### Returns:
     /// - An iterator over key-value pairs in the database.
     fn iter(&mut self) -> Self::Iter {
-        <Self as lmdb::Cursor>::iter(self)
+        Iter(<Self as lmdb::Cursor>::iter(self))
     }
 
     fn iter_start(&mut self) -> Self::Iter {
-        <Self as lmdb::Cursor>::iter_start(self)
+        Iter(<Self as lmdb::Cursor>::iter_start(self))
     }
 
     fn iter_from<K>(&mut self, key: &K) -> Self::Iter
     where
         K: AsRef<[u8]>,
     {
-        <Self as lmdb::Cursor>::iter_from(self, key)
+        Iter(<Self as lmdb::Cursor>::iter_from(self, key))
     }
 }
 
@@ -465,7 +465,7 @@ impl<'env> RwTx<'env, lmdb::Database> for lmdb::RwTransaction<'env> {
 /// Provides methods to iterate over the key-value pairs in the database.
 impl<'txn> RwCursor<'txn, lmdb::Database> for lmdb::RwCursor<'txn> {
     /// Type definition for the iterator used in the cursor.
-    type Iter = lmdb::Iter<'txn>;
+    type Iter = Iter<'txn>;
 
     fn get<K, V>(
         &self,
@@ -506,18 +506,52 @@ impl<'txn> RwCursor<'txn, lmdb::Database> for lmdb::RwCursor<'txn> {
     /// ### Returns:
     /// - An iterator over key-value pairs in the database.
     fn iter(&mut self) -> Self::Iter {
-        <Self as lmdb::Cursor>::iter(self)
+        Iter(<Self as lmdb::Cursor>::iter(self))
     }
 
     fn iter_start(&mut self) -> Self::Iter {
-        <Self as lmdb::Cursor>::iter_start(self)
+        Iter(<Self as lmdb::Cursor>::iter_start(self))
     }
 
     fn iter_from<K>(&mut self, key: &K) -> Self::Iter
     where
         K: AsRef<[u8]>,
     {
-        <Self as lmdb::Cursor>::iter_from(self, key)
+        Iter(<Self as lmdb::Cursor>::iter_from(self, key))
+    }
+}
+
+pub struct Iter<'txn>(lmdb::Iter<'txn>);
+
+impl<'txn> Iterator for Iter<'txn> {
+    type Item = (&'txn [u8], &'txn [u8]);
+
+    fn next(&mut self) -> Option<(&'txn [u8], &'txn [u8])> {
+        // NOTE: This swallows possible errors, when the iterator fails to get a value.
+        // BUT I don't want to change the interface of the traits to match the Option<Result<(k, v)>> pattern.
+        // This change here was necessary, when we switched from lmdb to the lmdb-rkv crate,
+        // as lmdb simply panics in some iterator functions (because someone thought putting an unwrap there was smart).
+        // Anyway; I think the chances that the database fails *after* obtaining the iterator are low.
+        // Obtaining the iterator has a Result<T>, so if e.g. we cannot read from disk, this operation would fail.
+        // In case there really is a severe db error, all iterators will stop iterating, and the next read/write
+        // will fail with a normal error - for me this behaviour is fine.
+        flatten_opt_result(self.0.next())
+    }
+}
+
+/// A sligtly more efficient variant of `.transpose().ok().flatten()`
+///
+/// This approach avoids the allocation of intermediate `Result<Option<T>, E>` and
+/// `Option<Option<T>>` structures that happen with `.transpose().ok().flatten()`.
+/// It's unclear if those allocations would every happen in real life,
+/// as the compiler might optimize them out, and it's also unclear if this really makes a measurable
+/// difference in most use-cases..
+/// But if this variant is never *less* efficient, and *might* be more efficient, I am happy to roll with it.
+#[inline]
+fn flatten_opt_result<T, E>(opt_res: Option<Result<T, E>>) -> Option<T> {
+    match opt_res {
+        Some(Ok(value)) => Some(value),
+        _ => None,
     }
 }
 

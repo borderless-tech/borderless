@@ -1,6 +1,6 @@
 [package]
 name = "borderless-kv-store"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 description = "Basic kv-storage traits and backend implementations"
 authors = [ "Paul Jökel <paul.joekel@borderless-technologies.com>", "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]
@@ -14,8 +14,8 @@ license-file = "../LICENSE"
 anyhow.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-lmdb = "0.8.0"
-lmdb-sys = "0.8.0"
+lmdb-rkv = "0.14.0"
+lmdb-rkv-sys = "0.11.2"
 
 [dev-dependencies]
 tempfile = "3.14.0"
