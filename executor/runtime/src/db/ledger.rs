@@ -107,6 +107,7 @@ impl<'a, S: Db> Ledger<'a, S> {
         // As this is all super low level, it is quite efficient,
         // but on paper it does not scale very well.
         // In the far or near future we have to migrate this to something different.
+        // (right now - parsing through 3TB of ledger data takes 300ms, so we have some time until this becomes relevant)
         for (key, value) in cursor.iter() {
             let key = LedgerKey::from_slice(key);
             if key.is_meta() {
@@ -134,6 +135,7 @@ impl<'a, S: Db> Ledger<'a, S> {
         // As this is all super low level, it is quite efficient,
         // but on paper it does not scale very well.
         // In the far or near future we have to migrate this to something different.
+        // (right now - parsing through 3TB of ledger data takes 300ms, so we have some time until this becomes relevant)
         for (key, value) in cursor.iter() {
             let key = LedgerKey::from_slice(key);
             if !key.is_meta() {
@@ -190,6 +192,7 @@ impl<'a, S: Db> Ledger<'a, S> {
         // As this is all super low level, it is quite efficient,
         // but on paper it does not scale very well.
         // In the far or near future we have to migrate this to something different.
+        // (right now - parsing through 3TB of ledger data takes 300ms, so we have some time until this becomes relevant)
         for (key, _) in cursor.iter() {
             let key = LedgerKey::from_slice(key);
             let ledger_id = key.ledger_id();
