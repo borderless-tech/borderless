@@ -3,8 +3,6 @@
 /// We do this by initializing a contract with a number, and feeding that number + 1 into a process.
 /// Each processing entity will add +1 to the number, and then we check if the number has increased exactly 3 times
 // This contract is the "sink" at the end and also the "source" -> we go into circles here
-mod agent_actions;
-
 #[borderless::contract]
 pub mod cc_contract {
     use borderless::events::{message, Message};

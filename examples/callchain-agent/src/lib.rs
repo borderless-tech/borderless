@@ -1,5 +1,3 @@
-mod contract_actions;
-
 #[borderless::agent]
 pub mod cc_agent {
     use borderless::contracts::env;
