@@ -9,7 +9,7 @@ homepage = "https://borderless-technologies.com/"
 
 [dependencies]
 anyhow.workspace = true
-borderless.workspace = true
+borderless = { workspace = true, features = ["generate_ids"] }
 borderless-runtime = { workspace = true, features = ["log"] }
 borderless-kv-store.workspace = true
 serde_json.workspace = true

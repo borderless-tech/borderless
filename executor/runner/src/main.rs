@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use borderless::{
-    common::{Introduction, Revocation},
+    common::{Introduction, IntroductionDto, Revocation},
     contracts::TxCtx,
     events::CallAction,
     hash::Hash256,
@@ -23,6 +23,7 @@ use borderless_runtime::{
     },
     contract::{MutLock as ContractLock, Runtime as ContractRuntime},
     db::{
+        action_log::ActionLog,
         controller::Controller,
         logger::{print_log_line, Logger},
     },
@@ -153,7 +154,9 @@ pub fn generate_tx_ctx(
     cid: &ContractId,
 ) -> Result<TxCtx> {
     // We now have to provide additional context when executing the contract
-    let n_actions = rt.len_actions(cid)?;
+    let db = rt.get_db();
+    let n_actions = ActionLog::new(&db, *cid).len()?;
+    // let n_actions = rt.len_actions(cid)?;
     let tx_hash = Hash256::digest(&n_actions.to_be_bytes());
     let tx_ctx = TxCtx {
         tx_id: TxIdentifier::new(0, n_actions, tx_hash),
@@ -194,7 +197,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         ContractAction::Introduce { introduction } => {
             // Parse introduction
             let data = read_to_string(introduction)?;
-            let introduction = Introduction::from_str(&data)?;
+            let introduction: Introduction = IntroductionDto::from_str(&data)?.into();
 
             let cid = introduction.id.as_cid().unwrap();
 

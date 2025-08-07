@@ -210,6 +210,7 @@ impl<'a, S: Db> ActionLog<'a, S> {
         }
     }
 
+    // TODO: Add 'reverse' option
     pub fn get_tx_action_paginated(
         &self,
         pagination: Pagination,

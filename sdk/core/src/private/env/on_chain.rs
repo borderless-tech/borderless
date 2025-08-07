@@ -1,4 +1,4 @@
-use crate::__private::REGISTER_ATOMIC_OP;
+use crate::__private::{LedgerEntry, REGISTER_ATOMIC_OP};
 use crate::error;
 use borderless_abi as abi;
 use std::time::Duration;
@@ -89,6 +89,21 @@ pub fn register_len(register_id: u64) -> Option<u64> {
     }
 }
 
+pub fn create_ledger_entry(entry: LedgerEntry) -> crate::Result<()> {
+    let bytes = entry.to_bytes()?;
+    unsafe {
+        match abi::create_ledger_entry(bytes.as_ptr() as _, bytes.len() as _) {
+            0 => Ok(()),
+            1 => Err(crate::Error::msg("creditor not in participants")),
+            2 => Err(crate::Error::msg("debitor not in participants")),
+            3 => Err(crate::Error::msg(
+                "creditor and debitor not in participants",
+            )),
+            _ => Err(crate::Error::msg("failed to create ledger entry")),
+        }
+    }
+}
+
 pub fn abort() -> ! {
     core::arch::wasm32::unreachable()
 }
@@ -97,11 +112,13 @@ pub fn tic() {
     unsafe { abi::tic() }
 }
 
+// TODO: Change this function to not produce side-effects
 pub fn toc() -> Duration {
     let dur = unsafe { abi::toc() };
     Duration::from_nanos(dur)
 }
 
+// TODO: Remove this
 pub fn rand(min: u64, max: u64) -> u64 {
     unsafe { abi::rand(min, max) }
 }

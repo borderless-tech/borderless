@@ -78,6 +78,18 @@ impl Id {
     pub fn agent(agent_id: AgentId) -> Self {
         Id::Agent { agent_id }
     }
+
+    #[cfg(feature = "generate_ids")]
+    pub fn generate(pkg_type: &borderless_pkg::PkgType) -> Self {
+        match pkg_type {
+            borderless_pkg::PkgType::Contract => Id::Contract {
+                contract_id: ContractId::generate(),
+            },
+            borderless_pkg::PkgType::Agent => Id::Agent {
+                agent_id: AgentId::generate(),
+            },
+        }
+    }
 }
 
 impl Display for Id {
@@ -255,11 +267,22 @@ pub struct IntroductionDto {
 
 impl From<IntroductionDto> for Introduction {
     fn from(value: IntroductionDto) -> Self {
-        // Precondition: the caller must populate the value
-        // as the WASM side cannot generate IDs randomly
-        assert!(value.id.is_some());
+        let id = {
+            #[cfg(feature = "generate_ids")]
+            {
+                Id::generate(&value.package.pkg_type)
+            }
+            #[cfg(not(feature = "generate_ids"))]
+            {
+                assert!(
+                    value.id.is_some(),
+                    "ID must be set - enable feature 'generate_ids' to autogenerate an ID"
+                );
+                value.id.unwrap()
+            }
+        };
         Self {
-            id: value.id.unwrap(),
+            id,
             participants: value.participants,
             initial_state: value.initial_state,
             sinks: value.sinks,
@@ -268,6 +291,14 @@ impl From<IntroductionDto> for Introduction {
             meta: Default::default(),
             package: value.package,
         }
+    }
+}
+
+impl FromStr for IntroductionDto {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_json::from_str(s)
     }
 }
 

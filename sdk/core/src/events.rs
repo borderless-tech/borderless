@@ -259,7 +259,7 @@ pub struct Message {
 /// Convenience function to generate messages
 ///
 /// Returns a [`MsgBuilder`], which can be used to generate messages:
-/// ```
+/// ```no_run
 /// # use borderless::prelude::*;
 /// // Build a new message for topic "/base/nested"
 /// let msg = message("/base/nested")

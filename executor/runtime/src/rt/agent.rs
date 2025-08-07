@@ -11,7 +11,7 @@ use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
 use parking_lot::Mutex as SyncMutex;
 use tokio::sync::{mpsc, Mutex};
-use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module, Store};
+use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module};
 
 use super::vm::{ActiveEntity, Commit};
 use super::{
@@ -33,23 +33,23 @@ where
     S: Db,
 {
     linker: Linker<VmState<S>>,
-    store: Store<VmState<S>>,
     engine: Engine,
     agent_store: CodeStore<S>,
     mutability_lock: MutLock,
+    executor: Option<Vec<u8>>,
 }
 
 impl<S: Db> Runtime<S> {
     pub fn new(storage: &S, agent_store: CodeStore<S>, lock: MutLock) -> Result<Self> {
-        let db_ptr = storage.create_sub_db(AGENT_SUB_DB)?;
         let start = Instant::now();
-        let state = VmState::new_async(storage.clone(), db_ptr);
+        // Create agent sub-db (in case it does not exist)
+        let _ = storage.create_sub_db(AGENT_SUB_DB)?;
 
+        // Generate engine ( with async enabled )
         let mut config = Config::new();
         config.cranelift_opt_level(wasmtime::OptLevel::Speed);
         config.async_support(true); // <- BIG difference
         let engine = Engine::new(&config)?;
-        // let module = Module::from_file(&engine, contract_path)?;
 
         let mut linker: Linker<VmState<S>> = Linker::new(&engine);
 
@@ -144,16 +144,14 @@ impl<S: Db> Runtime<S> {
 
         linker.func_wrap("env", "timestamp", vm::timestamp)?;
 
-        let store = Store::new(&engine, state);
-
         info!("Initialized runtime in: {:?}", start.elapsed());
 
         Ok(Self {
             linker,
-            store,
             engine,
             agent_store,
             mutability_lock: lock,
+            executor: None,
         })
     }
 
@@ -178,35 +176,37 @@ impl<S: Db> Runtime<S> {
     ) -> Result<(bool, Vec<String>)> {
         let module = Module::new(&self.engine, module_bytes)?;
         check_module(&self.engine, &module)?;
-        let instance = self.linker.instantiate(&mut self.store, &module)?;
+        let mut store = self.agent_store.create_store(&self.engine)?;
+        let instance = self.linker.instantiate(&mut store, &module)?;
 
         // Prepare registers
-        self.store
+        store
             .data_mut()
             .set_register(REGISTER_INPUT, state.to_string().into_bytes());
 
         // Get function
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, "parse_state")?;
+        let func = instance.get_typed_func::<(), ()>(&mut store, "parse_state")?;
 
         // Prepare execution
-        self.store.data_mut().prepare_exec(ActiveEntity::None)?;
+        store.data_mut().prepare_exec(ActiveEntity::None)?;
 
         // Call the actual function on the wasm side
-        let success = match func.call_async(&mut self.store, ()).await {
+        let success = match func.call_async(&mut store, ()).await {
             Ok(()) => true,
             Err(_e) => false,
         };
-        let log = self.store.data_mut().finish_exec(None)?;
+        let log = store.data_mut().finish_exec(None)?;
         Ok((success, log.into_iter().map(|l| l.msg).collect()))
     }
 
     /// Sets the currently active executor
     ///
-    /// This writes the [`BorderlessId`] of the executor to the dedicated register, so that the wasm side can query it.
+    /// This buffers the [`BorderlessId`] of the executor, to later write it into the dedicated register,
+    /// so that the wasm side can query it.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(%executor_id), err))]
     pub fn set_executor(&mut self, executor_id: BorderlessId) -> Result<()> {
         let bytes = executor_id.into_bytes().to_vec();
-        self.store.data_mut().set_register(REGISTER_EXECUTOR, bytes);
+        self.executor = Some(bytes);
         Ok(())
     }
 
@@ -214,29 +214,34 @@ impl<S: Db> Runtime<S> {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub fn register_ws(&mut self, aid: AgentId) -> Result<mpsc::Receiver<Vec<u8>>> {
         let (tx, rx) = mpsc::channel(4);
-        self.store.data_mut().register_ws(aid, tx)?;
+        self.mutability_lock.insert_ws_sender(&aid, tx);
         Ok(rx)
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid), err))]
     pub async fn initialize(&mut self, aid: &AgentId) -> Result<Init> {
-        let instance = self
+        let (instance, mut store) = self
             .agent_store
-            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
+            .get_agent(aid, &self.engine, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
+        // Buffered registers
+        store
+            .data_mut()
+            .set_register(REGISTER_EXECUTOR, self.executor.clone().unwrap_or_default());
+
         // Call the actual function on the wasm side
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, "on_init")?;
-        self.store
+        let func = instance.get_typed_func::<(), ()>(&mut store, "on_init")?;
+        store
             .data_mut()
             .prepare_exec(ActiveEntity::agent(*aid, false))?;
 
-        if let Err(e) = func.call_async(&mut self.store, ()).await {
+        if let Err(e) = func.call_async(&mut store, ()).await {
             warn!("initialize failed with error: {e}");
         }
-        let output = self.store.data().get_register(REGISTER_OUTPUT);
-        self.store.data_mut().finish_exec(None)?;
+        let output = store.data().get_register(REGISTER_OUTPUT);
+        store.data_mut().finish_exec(None)?;
 
         // Return output events
         let bytes = output.ok_or_else(|| ErrorKind::MissingRegisterValue("init-output"))?;
@@ -270,8 +275,6 @@ impl<S: Db> Runtime<S> {
 
     // TODO: If the initial state from the introduction cannot be parsed, the agent should *not* be saved !!
     // Currently, this creates an agent, where decoding the state will constantly explode during runtime !!!
-    //
-    // DONE: Calling process introduction on an already introduced agent should generate an error
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %introduction.id), err))]
     pub async fn process_introduction(&mut self, introduction: Introduction) -> Result<()> {
         let aid = match introduction.id {
@@ -339,33 +342,43 @@ impl<S: Db> Runtime<S> {
         method: &'static str,
         commit: Commit,
     ) -> Result<Option<Events>> {
-        let instance = self
+        let (instance, mut store) = self
             .agent_store
-            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
+            .get_agent(aid, &self.engine, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
-        let lock = self.mutability_lock.get_lock(aid);
-        let _guard = lock.lock().await;
+        let state = self.mutability_lock.get_lock_state(aid);
+        let _guard = state.lock.lock().await;
 
         // Prepare registers
-        self.store.data_mut().set_register(REGISTER_INPUT, input);
+        store.data_mut().set_register(REGISTER_INPUT, input);
+
+        // Buffered registers
+        store
+            .data_mut()
+            .set_register(REGISTER_EXECUTOR, self.executor.clone().unwrap_or_default());
+
+        // Inject ws-sender (if any)
+        if let Some(tx) = state.ws_sender {
+            store.data_mut().register_ws(tx)?;
+        }
 
         // Call the actual function on the wasm side
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, method)?;
-        self.store
+        let func = instance.get_typed_func::<(), ()>(&mut store, method)?;
+        store
             .data_mut()
             .prepare_exec(ActiveEntity::agent(*aid, true))?;
 
-        let commit = match func.call_async(&mut self.store, ()).await {
+        let commit = match func.call_async(&mut store, ()).await {
             Ok(()) => Some(commit),
             Err(e) => {
                 warn!("{method} failed with error: {e}");
                 None
             }
         };
-        let output = self.store.data().get_register(REGISTER_OUTPUT);
-        let _logs = self.store.data_mut().finish_exec(commit)?;
+        let output = store.data().get_register(REGISTER_OUTPUT);
+        let _logs = store.data_mut().finish_exec(commit)?;
 
         // Return output events
         match output {
@@ -379,34 +392,39 @@ impl<S: Db> Runtime<S> {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid, %path), err))]
     pub async fn http_get_state(&mut self, aid: &AgentId, path: String) -> Result<(u16, Vec<u8>)> {
         // Get instance
-        let instance = self
+        let (instance, mut store) = self
             .agent_store
-            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
+            .get_agent(aid, &self.engine, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
         // Prepare registers
-        self.store
+        store
             .data_mut()
             .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());
 
+        // Buffered registers
+        store
+            .data_mut()
+            .set_register(REGISTER_EXECUTOR, self.executor.clone().unwrap_or_default());
+
         // Get function
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, "http_get_state")?;
+        let func = instance.get_typed_func::<(), ()>(&mut store, "http_get_state")?;
 
         // Prepare execution
-        self.store
+        store
             .data_mut()
             .prepare_exec(ActiveEntity::agent(*aid, false))?;
 
         // Call the function
-        if let Err(e) = func.call_async(&mut self.store, ()).await {
+        if let Err(e) = func.call_async(&mut store, ()).await {
             warn!("http_get_state failed with error: {e}");
         }
-        let status = self.store.data().get_register(REGISTER_OUTPUT_HTTP_STATUS);
-        let result = self.store.data().get_register(REGISTER_OUTPUT_HTTP_RESULT);
+        let status = store.data().get_register(REGISTER_OUTPUT_HTTP_STATUS);
+        let result = store.data().get_register(REGISTER_OUTPUT_HTTP_RESULT);
 
         // Finish the execution ( and commit nothing )
-        let _log = self.store.data_mut().finish_exec(None)?;
+        let _log = store.data_mut().finish_exec(None)?;
 
         // Parse status
         let status = status.ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
@@ -438,51 +456,56 @@ impl<S: Db> Runtime<S> {
         aid: &AgentId,
         path: String,
         payload: Vec<u8>,
-        writer: &BorderlessId,
+        writer: &BorderlessId, // TODO: I think the writer makes no sense here and is an artifact
     ) -> Result<std::result::Result<(Events, CallAction), (u16, String)>> {
-        let instance = self
+        let (instance, mut store) = self
             .agent_store
-            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
+            .get_agent(aid, &self.engine, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
-        let lock = self.mutability_lock.get_lock(aid);
-        let _guard = lock.lock().await;
+        let state = self.mutability_lock.get_lock_state(aid);
+        let _guard = state.lock.lock().await;
 
         // NOTE: We cannot convert the payload into a call-action on-spot, as we might call a nested route.
         // To be precise - we *could* do it here, but I think it is cleaner to leave this logic up to the wasm module,
         // as otherwise we may have to duplicate the logic here (and if it changes in the macro, we have to sync this with the code of the runtime etc.).
-        self.store
+        store
             .data_mut()
             .set_register(REGISTER_INPUT_HTTP_PATH, path.into_bytes());
 
-        self.store
+        store
             .data_mut()
             .set_register(REGISTER_INPUT_HTTP_PAYLOAD, payload);
 
-        self.store
+        store
             .data_mut()
             .set_register(REGISTER_WRITER, writer.into_bytes().into());
 
+        // Buffered registers
+        store
+            .data_mut()
+            .set_register(REGISTER_EXECUTOR, self.executor.clone().unwrap_or_default());
+
         // Prepare mutable execution
-        self.store
+        store
             .data_mut()
             .prepare_exec(ActiveEntity::agent(*aid, true))?;
 
         // Get function
-        let func = instance.get_typed_func::<(), ()>(&mut self.store, "http_post_action")?;
+        let func = instance.get_typed_func::<(), ()>(&mut store, "http_post_action")?;
 
         // Call the function
-        if let Err(e) = func.call_async(&mut self.store, ()).await {
+        if let Err(e) = func.call_async(&mut store, ()).await {
             warn!("http_get_state failed with error: {e}");
         }
-        let status = self.store.data().get_register(REGISTER_OUTPUT_HTTP_STATUS);
-        let result = self.store.data().get_register(REGISTER_OUTPUT_HTTP_RESULT);
-        let output = self.store.data().get_register(REGISTER_OUTPUT);
+        let status = store.data().get_register(REGISTER_OUTPUT_HTTP_STATUS);
+        let result = store.data().get_register(REGISTER_OUTPUT_HTTP_RESULT);
+        let output = store.data().get_register(REGISTER_OUTPUT);
 
         // Finish the execution
         // NOTE: This will clear all the registers !
-        let _log = self.store.data_mut().finish_exec(Some(Commit::Other))?;
+        let _log = store.data_mut().finish_exec(Some(Commit::Other))?;
 
         // Parse status
         let status = status.ok_or_else(|| ErrorKind::MissingRegisterValue("http-status"))?;
@@ -515,23 +538,23 @@ impl<S: Db> Runtime<S> {
 
     /// Returns the symbols of the contract
     pub async fn get_symbols(&mut self, aid: &AgentId) -> Result<Option<Symbols>> {
-        let instance = self
+        let (instance, mut store) = self
             .agent_store
-            .get_agent(aid, &self.engine, &mut self.store, &mut self.linker)
+            .get_agent(aid, &self.engine, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
-        self.store.data_mut().prepare_exec(ActiveEntity::None)?;
+        store.data_mut().prepare_exec(ActiveEntity::None)?;
 
         // In case the contract does not export any symbols, just return 'None'
         if let Err(e) = instance
-            .get_typed_func::<(), ()>(&mut self.store, "get_symbols")
-            .and_then(|func| func.call(&mut self.store, ()))
+            .get_typed_func::<(), ()>(&mut store, "get_symbols")
+            .and_then(|func| func.call(&mut store, ()))
         {
             error!("get_symbols failed with error: {e}");
         }
-        let output = self.store.data().get_register(REGISTER_OUTPUT);
-        self.store.data_mut().finish_exec(None)?;
+        let output = store.data().get_register(REGISTER_OUTPUT);
+        store.data_mut().finish_exec(None)?;
 
         let bytes = match output {
             Some(b) => b,
@@ -546,7 +569,12 @@ impl<S: Db> Runtime<S> {
     }
 }
 
-type Lock = Arc<Mutex<()>>;
+// NOTE: We Mis-Use the lock here to also carry persistent state - e.g. for the websocket
+#[derive(Default, Clone)]
+pub struct Lock {
+    lock: Arc<Mutex<()>>,
+    ws_sender: Option<mpsc::Sender<Vec<u8>>>,
+}
 
 /// Global mutability lock for all SW-Agents
 ///
@@ -563,6 +591,9 @@ type Lock = Arc<Mutex<()>>;
 ///
 /// Note: In contrast to [`borderless_runtime::rt::contract::MutLock`],
 /// this version uses asynchronous locks for the agents, and a synchronous lock only for the access of the hashmap.
+///
+/// Additionally, this double-functions as the provider of over-arching state per agent,
+/// e.g. the lock also contains the websocket sender, for agents that use websockets.
 #[derive(Clone, Default)]
 pub struct MutLock {
     map: Arc<SyncMutex<HashMap<AgentId, Lock>>>,
@@ -572,10 +603,23 @@ impl MutLock {
     /// Returns the `RwLock` for the given agent.
     ///
     /// If the agent-id is unknown, a new lock is created.
-    pub fn get_lock(&self, aid: &AgentId) -> Lock {
+    pub fn get_lock_state(&self, aid: &AgentId) -> Lock {
         let mut map = self.map.lock();
         let lock = map.entry(*aid).or_default();
         lock.clone()
+    }
+
+    /// Inserts a new ws-sender for the agent
+    ///
+    /// Panics if the sender already contained a lock
+    pub fn insert_ws_sender(&self, aid: &AgentId, ws_sender: mpsc::Sender<Vec<u8>>) {
+        let mut map = self.map.lock();
+        let lock = map.entry(*aid).or_default();
+        assert!(
+            lock.ws_sender.is_none(),
+            "Cannot register websocket twice on the same agent"
+        );
+        lock.ws_sender = Some(ws_sender);
     }
 }
 

@@ -1,10 +1,11 @@
-use std::future::Future;
+use std::{convert::Infallible, future::Future};
 
 use anyhow::Result;
 use axum::{
     body::{to_bytes, Body},
     extract::State,
     http::{Request, Response},
+    routing::method_routing,
     Router,
 };
 use borderless::{events::CallAction, hash::Hash256, BorderlessId, ContractId};
@@ -14,6 +15,7 @@ use borderless_runtime::{
     http::{
         agent::{EventHandler, RecursiveEventHandler, SwAgentService},
         contract::{ActionWriter, ContractService},
+        ledger::LedgerService,
         Service,
     },
     SharedContractRuntime,
@@ -22,11 +24,16 @@ use log::info;
 
 use crate::generate_tx_ctx;
 
-/// Wraps the contract service
-async fn contract_handler(
-    State(mut srv): State<ContractService<impl ActionWriter, impl Db + 'static>>,
-    req: Request<Body>,
-) -> Response<Body> {
+/// Generalized wrapper - this is how you can bake the tower-service into any specific web-framework
+async fn wrap_service<S>(State(mut srv): State<S>, req: Request<Body>) -> Response<Body>
+where
+    S: Service<
+        borderless_runtime::http::Request,
+        Error = Infallible,
+        Response = borderless_runtime::http::Response,
+    >,
+{
+    // We simply have to transform the request and response types here
     let (parts, body) = req.into_parts();
 
     // 10MB upper limit
@@ -37,23 +44,32 @@ async fn contract_handler(
     res.map(|bytes| bytes.into())
 }
 
+/// Wraps the contract service
+async fn contract_handler(
+    state: State<ContractService<impl ActionWriter, impl Db + 'static>>,
+    req: Request<Body>,
+) -> Response<Body> {
+    wrap_service(state, req).await
+}
+
+/// Wraps the ledger service
+async fn ledger_handler(
+    state: State<LedgerService<impl Db + 'static>>,
+    req: Request<Body>,
+) -> Response<Body> {
+    wrap_service(state, req).await
+}
+
 /// Wraps the agent service
 async fn agent_handler<E, S>(
-    State(mut srv): State<SwAgentService<E, S>>,
+    state: State<SwAgentService<E, S>>,
     req: Request<Body>,
 ) -> Response<Body>
 where
     E: EventHandler + 'static,
     S: Db + 'static,
 {
-    let (parts, body) = req.into_parts();
-
-    // 10MB upper limit
-    let bytes = to_bytes(body, 10_000_000).await.unwrap_or_default();
-
-    let req = Request::from_parts(parts, bytes);
-    let res = srv.call(req).await.expect("infallible");
-    res.map(|bytes| bytes.into())
+    wrap_service(state, req).await
 }
 
 /// A dummy action-writer, that instantly applies the actions to the runtime
@@ -96,12 +112,23 @@ pub async fn start_contract_server<DB: Db + 'static>(
         rt: rt.clone(),
         writer,
     };
-    let srv = ContractService::with_shared(db, rt, action_writer, writer);
+    let contract_srv = ContractService::with_shared(db.clone(), rt, action_writer, writer);
+    let ledger_srv = LedgerService::new(db);
 
     // Create a router and attach the custom service to a route
-    let contract = Router::new().fallback(contract_handler).with_state(srv);
+    let contract = Router::new()
+        .route("/", method_routing::any(contract_handler))
+        .route("/{*any}", method_routing::any(contract_handler))
+        .with_state(contract_srv);
 
-    let app = Router::new().nest("/v0/contract", contract);
+    let ledger = Router::new()
+        .route("/", method_routing::any(ledger_handler))
+        .route("/{*any}", method_routing::any(ledger_handler))
+        .with_state(ledger_srv);
+
+    let app = Router::new()
+        .nest("/v0/contract", contract)
+        .nest("/v0/ledger", ledger);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
     info!("Listening on {}", listener.local_addr()?);

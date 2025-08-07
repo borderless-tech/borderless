@@ -210,6 +210,7 @@ impl<'a, S: Db> Logger<'a, S> {
         Ok(meta.end)
     }
 
+    // TODO: Add 'reverse' option
     /// Retrieves log lines for the given page and the total number of pages.
     pub fn get_logs_paginated(&self, pagination: Pagination) -> Result<PaginatedElements<LogLine>> {
         let page = pagination.page as u64;

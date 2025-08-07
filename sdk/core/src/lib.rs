@@ -12,8 +12,8 @@ pub mod serialize {
     pub use serde_json::json;
     pub use serde_json::to_value;
     pub use serde_json::Error;
-    pub use serde_json::Value;
     pub use serde_json::Number;
+    pub use serde_json::Value;
 }
 
 // Directly export macros, so that the user can write:
@@ -39,7 +39,7 @@ pub use borderless_pkg as pkg;
 
 pub mod prelude {
     pub use crate::common::*;
-    pub use crate::contracts::TxCtx;
+    pub use crate::contracts::{ledger, TxCtx};
     pub use crate::events::*;
     pub use crate::serialize::json;
     /// Re-Export of `serde_json::json` macro as `value!`
@@ -77,6 +77,49 @@ impl private_trait::Sealed for AgentId {}
 impl CallMethod for AgentId {
     fn call_method(&self, _method_name: &str) -> events::CallBuilder<CBInit> {
         todo!("Remove this")
+    }
+}
+
+pub trait Participant: Sized + private_trait::Sealed {
+    fn get_participant(elem: Self) -> Result<BorderlessId>;
+}
+
+impl private_trait::Sealed for BorderlessId {}
+impl Participant for BorderlessId {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participants()
+            .into_iter()
+            .find(|p| p.id == elem)
+            .map(|p| p.id)
+            .with_context(|| format!("Found no participant with id={elem}"))
+    }
+}
+
+impl private_trait::Sealed for String {}
+impl Participant for String {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participant(elem)
+    }
+}
+
+impl private_trait::Sealed for &str {}
+impl Participant for &str {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participant(elem)
+    }
+}
+
+impl private_trait::Sealed for &common::Participant {}
+impl Participant for &common::Participant {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participant(&elem.alias)
+    }
+}
+
+impl private_trait::Sealed for common::Participant {}
+impl Participant for common::Participant {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        Participant::get_participant(&elem)
     }
 }
 

@@ -1,11 +1,6 @@
 [workspace]
 members = [
-  "examples/collections",
-  "examples/flipper-agent",
-  "examples/flipper-contract",
-  "examples/callchain-agent",
-  "examples/callchain-contract",
-  "examples/hello-agent",
+  "examples/*",
   "executor/runner",
   "executor/runtime",
   "json-proof",
@@ -25,13 +20,11 @@ resolver = "2"
 borderless = { version = "0.1.3", path = "sdk/core" }
 borderless-abi = { version = "0.1.0", path = "sdk/abi" }
 borderless-sdk-macros = { version = "0.2.0", path = "sdk/macros" }
-borderless-id-types = { version = "0.1.2", path = "primitives/id-types" }
+borderless-id-types = { version = "0.1.5", path = "primitives/id-types" }
 borderless-hash = { version = "1.0.0", path = "primitives/hash" }
-borderless-kv-store = { version = "1.0.0", path = "kv-store" }
+borderless-kv-store = { version = "1.1.0", path = "kv-store" }
 borderless-pkg = { version = "0.1.0", path = "primitives/pkg" }
 borderless-runtime = { version = "0.2.0", path = "executor/runtime" }
-borderless-registry = { version = "0.1.0", path = "registry" }
-json-proof = { version = "1.0.0", path = "json-proof" }
 
 # External dependencies
 anyhow = "1.0"

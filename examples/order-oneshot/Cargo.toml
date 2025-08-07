@@ -1,0 +1,12 @@
+[package]
+name = "order-oneshot"
+version = "0.1.0"
+edition = "2021"
+authors = ["Christian Hammermeister <c.hammermeister@borderless-technologies.com>"]
+
+[dependencies]
+serde = "1.0"
+borderless.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
