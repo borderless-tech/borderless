@@ -40,11 +40,7 @@ pub mod flipper {
             let call = env::sink("flipper")?
                 .call_method("set_switch")
                 .with_value(value!({ "switch": switch }))
-                //.with_writer("alpha")?
                 .build()?;
-
-            // Or emit messages:
-            //let msg = message("/foo/baa").with_value(value! { switch });
             Ok(call)
         }
     }
