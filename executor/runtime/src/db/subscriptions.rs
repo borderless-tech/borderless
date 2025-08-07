@@ -1,5 +1,5 @@
-use crate::Result;
-use borderless::common::Id;
+use crate::{Result, SUBSCRIPTION_REL_SUB_DB};
+use borderless::common::{Id, Introduction};
 use borderless::events::Topic;
 use borderless::{AgentId, Context};
 use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx};
@@ -51,43 +51,63 @@ fn extract_key(key: &[u8]) -> Result<(String, AgentId)> {
     }
 }
 
-pub struct SubscriptionHandler<S: Db> {
-    _marker: std::marker::PhantomData<S>,
+pub struct SubscriptionHandler<'a, S: Db> {
+    db: &'a S,
 }
 
-impl<S: Db> SubscriptionHandler<S> {
+impl<'a, S: Db> SubscriptionHandler<'a, S> {
+    pub fn new(db: &'a S) -> Self {
+        Self { db }
+    }
+
+    pub fn init(&self, txn: &mut <S as Db>::RwTx<'_>, introduction: Introduction) -> Result<()> {
+        // Write static subscriptions
+        match introduction.id {
+            Id::Contract { .. } => {} // Not applicable
+            Id::Agent { agent_id } => {
+                for s in introduction.subscriptions {
+                    self.subscribe(txn, agent_id, s)?
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn subscribe(
-        db_ptr: &S::Handle,
+        &self,
         txn: &mut <S as Db>::RwTx<'_>,
         subscriber: AgentId,
         topic: Topic,
     ) -> Result<()> {
+        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         // TODO Store the subscription's timestamp for debugging purposes?
         let key = generate_key(topic.publisher, topic.topic, Some(subscriber));
-        txn.write(db_ptr, &key, &topic.method)?;
+        txn.write(&db_ptr, &key, &topic.method)?;
         Ok(())
     }
 
     pub fn unsubscribe(
-        db_ptr: &S::Handle,
+        &self,
         txn: &mut <S as Db>::RwTx<'_>,
         subscriber: AgentId,
         publisher: Id,
         topic: String,
     ) -> Result<bool> {
+        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let key = generate_key(publisher, topic, Some(subscriber));
-        let deleted = txn.delete(db_ptr, &key).is_ok();
+        let deleted = txn.delete(&db_ptr, &key).is_ok();
         Ok(deleted)
     }
 
     pub fn get_topic_subscribers(
-        db_ptr: &S::Handle,
-        txn: &mut <S as Db>::RoTx<'_>,
+        &self,
         publisher: Id,
         topic: String,
     ) -> Result<Vec<(AgentId, String)>> {
         // Setup DB cursor
-        let mut cursor = txn.ro_cursor(db_ptr)?;
+        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
+        let txn = self.db.begin_ro_txn()?;
+        let mut cursor = txn.ro_cursor(&db_ptr)?;
 
         let mut subscribers = Vec::new();
 
@@ -111,21 +131,15 @@ impl<S: Db> SubscriptionHandler<S> {
         Ok(subscribers)
     }
 
-    pub fn get_subscribers(
-        db_ptr: &S::Handle,
-        txn: &mut <S as Db>::RoTx<'_>,
-        publisher: Id,
-    ) -> Result<Vec<(AgentId, String)>> {
-        Self::get_topic_subscribers(db_ptr, txn, publisher, String::default())
+    pub fn get_subscribers(&self, publisher: Id) -> Result<Vec<(AgentId, String)>> {
+        self.get_topic_subscribers(publisher, String::default())
     }
 
-    pub fn get_subscriptions(
-        db_ptr: &S::Handle,
-        txn: &mut <S as Db>::RoTx<'_>,
-        target: AgentId,
-    ) -> Result<Vec<String>> {
+    pub fn get_subscriptions(&self, target: AgentId) -> Result<Vec<String>> {
         // Setup DB cursor
-        let mut cursor = txn.ro_cursor(db_ptr)?;
+        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
+        let txn = self.db.begin_ro_txn()?;
+        let mut cursor = txn.ro_cursor(&db_ptr)?;
 
         let mut topics = Vec::new();
 

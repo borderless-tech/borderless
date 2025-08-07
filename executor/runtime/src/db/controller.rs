@@ -4,7 +4,7 @@ use super::{
     logger::Logger,
     subscriptions::SubscriptionHandler,
 };
-use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB, SUBSCRIPTION_REL_SUB_DB};
+use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB};
 use borderless::common::Participant;
 use borderless::{
     common::{Description, Metadata, Revocation},
@@ -44,6 +44,11 @@ impl<'a, S: Db> Controller<'a, S> {
     /// Returns the [`Ledger`]
     pub fn ledger(&self) -> Ledger<'a, S> {
         Ledger::new(self.db)
+    }
+
+    /// Returns the ['SubscriptionHandler']
+    pub fn messages(&self) -> SubscriptionHandler<'a, S> {
+        SubscriptionHandler::new(self.db)
     }
 
     /// List of contract-participants
@@ -132,9 +137,7 @@ impl<'a, S: Db> Controller<'a, S> {
     }
 
     pub fn agent_subs(&self, aid: &AgentId) -> Result<Vec<String>> {
-        let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
-        let mut txn = self.db.begin_ro_txn()?;
-        SubscriptionHandler::<S>::get_subscriptions(&db_ptr, &mut txn, *aid)
+        self.messages().get_subscriptions(*aid)
     }
 
     /// Returns the [`Description`] of the contract
@@ -339,7 +342,6 @@ pub(crate) fn read_system_value<S: Db, D: DeserializeOwned, ID: AsRef<[u8; 16]>>
 #[cfg(any(feature = "contracts", feature = "agents"))]
 pub(crate) fn write_introduction<S: Db>(
     db_ptr: &S::Handle,
-    subs_ptr: &S::Handle,
     txn: &mut <S as Db>::RwTx<'_>,
     introduction: borderless::common::Introduction,
 ) -> Result<()> {
@@ -415,16 +417,6 @@ pub(crate) fn write_introduction<S: Db>(
         META_SUB_KEY_INIT_STATE,
         &introduction.initial_state,
     )?;
-
-    // Write subscriptions
-    match id {
-        Id::Contract { .. } => {} // Not applicable
-        Id::Agent { agent_id } => {
-            for s in introduction.subscriptions {
-                SubscriptionHandler::<S>::subscribe(subs_ptr, txn, agent_id, s)?
-            }
-        }
-    }
 
     // Write package and source (flattened, because postcard does not support untagged enums)
     let (pkg_def, pkg_source) = introduction.package.into_def_and_source();

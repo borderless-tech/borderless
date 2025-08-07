@@ -34,7 +34,7 @@ use crate::{
     db::logger::Logger,
     error::ErrorKind,
     log_shim::*,
-    Error, Result, SUBSCRIPTION_REL_SUB_DB,
+    Error, Result,
 };
 
 /// Virtual-Machine State
@@ -223,8 +223,11 @@ impl<S: Db> VmState<S> {
                 assert_eq!(introduction.id, id);
                 introduction.meta.active_since = timestamp;
                 introduction.meta.tx_ctx_introduction = tx_ctx;
-                let subs_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
-                write_introduction::<S>(&self.db_ptr, &subs_ptr, &mut txn, introduction.clone())?;
+                write_introduction::<S>(&self.db_ptr, &mut txn, introduction.clone())?;
+                // Write static subscriptions (coming from the introduction)
+                Controller::new(&self.db)
+                    .messages()
+                    .init(&mut txn, introduction)?;
             }
             Commit::Revocation(revocation) => {
                 assert_eq!(revocation.id, id);
