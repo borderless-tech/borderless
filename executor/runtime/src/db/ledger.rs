@@ -552,8 +552,8 @@ pub struct LedgerEntryDto {
 
 impl LedgerEntryDto {
     pub fn new(entry: LedgerEntry, contract_id: ContractId, tx_ctx: TxCtx) -> LedgerEntryDto {
-        let amount = Money::new(entry.currency, entry.amount_milli).to_string();
-        let tax = Money::new(entry.currency, entry.tax_milli).to_string();
+        let amount = Money::from_milli(entry.currency, entry.amount_milli).to_string();
+        let tax = Money::from_milli(entry.currency, entry.tax_milli).to_string();
         LedgerEntryDto {
             creditor: entry.creditor,
             debitor: entry.debitor,

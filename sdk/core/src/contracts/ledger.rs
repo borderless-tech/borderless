@@ -226,6 +226,13 @@ impl Money {
         }
     }
 
+    pub fn from_milli(currency: Currency, amount_milli: i64) -> Self {
+        Money {
+            amount_milli,
+            currency,
+        }
+    }
+
     /// Creates a new `Money` struct with currency set to `EUR` ( euro )
     pub fn euro(euros: i64, cents: u32) -> Self {
         Money::new(Currency::EUR, euros, cents)
