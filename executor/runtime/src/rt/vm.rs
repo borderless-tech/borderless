@@ -28,7 +28,6 @@ use tokio::sync::mpsc;
 
 use crate::db::controller::Controller;
 use crate::db::ledger::Ledger;
-use crate::db::subscriptions::SubscriptionHandler;
 use crate::{
     db::action_log::{ActionLog, ActionRecord},
     db::controller::{write_introduction, write_revocation},
