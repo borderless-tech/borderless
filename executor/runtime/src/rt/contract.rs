@@ -18,12 +18,12 @@ use super::{
     code_store::CodeStore,
     vm::{self, VmState},
 };
-use crate::ACTION_TX_REL_SUB_DB;
 use crate::{
     error::{ErrorKind, Result},
     CONTRACT_SUB_DB,
 };
 use crate::{log_shim::*, LEDGER_SUB_DB};
+use crate::{ACTION_TX_REL_SUB_DB, SUBSCRIPTION_REL_SUB_DB};
 
 pub type SharedRuntime<S> = Arc<Mutex<Runtime<S>>>;
 
@@ -56,6 +56,7 @@ impl<S: Db> Runtime<S> {
         let _ = storage.create_sub_db(CONTRACT_SUB_DB)?;
         let _ = storage.create_sub_db(ACTION_TX_REL_SUB_DB)?;
         let _ = storage.create_sub_db(LEDGER_SUB_DB)?;
+        let _ = storage.create_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
 
         // Generate engine ( without async support )
         let mut config = Config::new();
