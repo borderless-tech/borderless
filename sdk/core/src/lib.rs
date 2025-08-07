@@ -12,7 +12,6 @@ pub mod serialize {
     pub use serde_json::json;
     pub use serde_json::to_value;
     pub use serde_json::Error;
-    pub use serde_json::Number;
     pub use serde_json::Value;
 }
 
