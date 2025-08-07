@@ -62,9 +62,10 @@ impl<S: Db> EventHandler for RecursiveEventHandler<S> {
 
     async fn handle_events(&self, events: Events) -> Result<(), Self::Error> {
         let mut rt = self.rt.lock().await;
-        let mut agent_events = VecDeque::with_capacity(events.local.len());
-        agent_events.extend(events.local);
+        let db = rt.get_db();
+        let sub_handler = Controller::new(&db).messages();
 
+        let mut agent_events: VecDeque<_> = events.local.into();
         // Handle events one by one
         while let Some(Message {
             publisher,
@@ -72,11 +73,15 @@ impl<S: Db> EventHandler for RecursiveEventHandler<S> {
             value,
         }) = agent_events.pop_front()
         {
-            // TODO Do the magic here
-            // Queue all process events and apply them again
-            // if let Some(events) = rt.process_action(&agent_id, action).await? {
-            //    agent_events.extend(events.local);
-            // }
+            let subscribers = sub_handler.get_topic_subscribers(publisher, topic)?;
+
+            for (subscriber, method) in subscribers {
+                let action = CallAction::by_method(method, value.clone());
+                // Queue all process events and apply them again
+                if let Some(events) = rt.process_action(&subscriber, action).await? {
+                    agent_events.extend(events.local);
+                }
+            }
         }
         Ok(())
     }
