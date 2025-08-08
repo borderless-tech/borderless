@@ -335,24 +335,26 @@ mod tests {
 
         // Setup: subscriber is a sw-agent and publishers are smart-contracts
         let subscriber = AgentId::generate();
-        let publishers: Vec<Id> = std::iter::repeat_with(|| Id::agent(AgentId::generate()))
-            .take(N)
-            .collect();
         let topics = vec!["Soccer", "Tennis", "Golf", "Basketball", "Football"];
 
+        let mut full_topic: Vec<String> = Vec::new();
+        // Generate subscriptions
+        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
-            let topic = Topic::new(
-                publishers[i],
-                topics[i % 5].to_string(),
-                "method".to_string(),
-            );
+            let p = AgentId::generate();
+            let topic = topics[i % 5].to_string();
+            full_topic.push(format!("/{}/{}", p, topic.to_ascii_lowercase()));
             // Subscribe to topic
-            // handler.subscribe(subscriber, topic)?;
+            let topic = Topic::new(Id::agent(p), topic, "method".to_string());
+            handler.subscribe(&mut txn, subscriber, topic)?;
         }
-        // TODO Finish this after discussing if returning the full topic or just the topic
-        //let mut output = handler.get_subscriptions(subscriber)?;
-        //output.sort();
-        //assert_eq!(topics, output, "Mismatch in subscriptions");
+        txn.commit()?;
+
+        // Fetch subscriptions
+        let mut output = handler.get_subscriptions(subscriber)?;
+        output.sort();
+        full_topic.sort();
+        assert_eq!(full_topic, output, "Mismatch in subscriptions");
         Ok(())
     }
 }
