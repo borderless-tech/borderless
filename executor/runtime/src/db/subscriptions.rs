@@ -260,7 +260,6 @@ mod tests {
         // Setup dummy DB
         let lmdb = open_tmp_lmdb();
         let handler = SubscriptionHandler::new(&lmdb);
-        let mut txn = lmdb.begin_rw_txn()?;
 
         // Setup: subscribers are sw-agents and publisher is a smart-contract
         let mut subscribers: Vec<AgentId> = std::iter::repeat_with(|| AgentId::generate())
@@ -269,17 +268,26 @@ mod tests {
         let publisher = Id::contract(ContractId::generate());
         let topic = "tennis";
 
+        // Generate subscriptions
+        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let topic = Topic::new(publisher, topic.to_string(), "method".to_string());
             // Subscribe to topic
             handler.subscribe(&mut txn, subscribers[i], topic)?;
         }
-        txn.abort();
-        let mut output = handler.get_topic_subscribers(publisher, topic.to_string())?;
+        txn.commit()?;
+
+        // Fetch topic subscribers
+        let mut output: Vec<AgentId> = handler
+            .get_topic_subscribers(publisher, topic.to_string())?
+            .iter()
+            .map(|(aid, _)| aid)
+            .cloned()
+            .collect();
         // Check output
         subscribers.sort();
         output.sort();
-        // assert_eq!(subscribers, output, "Mismatch in topic subscribers");
+        assert_eq!(subscribers, output, "Mismatch in topic subscribers");
         Ok(())
     }
 
