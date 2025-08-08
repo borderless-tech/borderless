@@ -304,16 +304,26 @@ mod tests {
         let publisher = Id::contract(ContractId::generate());
         let topics = vec!["Soccer", "Tennis", "Golf", "Basketball", "Football"];
 
+        // Generate subscriptions
+        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let topic = Topic::new(publisher, topics[i % 5].to_string(), "method".to_string());
             // Subscribe to topic
-            //handler.subscribe(subscribers[i], topic)?;
+            handler.subscribe(&mut txn, subscribers[i], topic)?;
         }
-        let mut output = handler.get_subscribers(publisher)?;
+        txn.commit()?;
+
+        // Fetch subscribers
+        let mut output: Vec<AgentId> = handler
+            .get_subscribers(publisher)?
+            .iter()
+            .map(|(aid, _)| aid)
+            .cloned()
+            .collect();
         // Check output
         subscribers.sort();
         output.sort();
-        // assert_eq!(subscribers, output, "Mismatch in subscribers");
+        assert_eq!(subscribers, output, "Mismatch in subscribers");
         Ok(())
     }
 
