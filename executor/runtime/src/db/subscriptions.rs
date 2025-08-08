@@ -348,7 +348,7 @@ mod tests {
             let topic = Topic::new(Id::agent(p), topic, "method".to_string());
             handler.subscribe(&mut txn, subscriber, topic)?;
         }
-        txn.commit()?;
+        txn.commit()?;f
 
         // Fetch subscriptions
         let mut output = handler.get_subscriptions(subscriber)?;
