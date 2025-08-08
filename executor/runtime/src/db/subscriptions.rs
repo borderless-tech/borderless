@@ -235,6 +235,7 @@ mod tests {
             .collect();
         let topic = "MyTopic";
 
+        // Generate subscriptions
         let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let topic = Topic::new(publishers[i], topic.to_string(), "method".to_string());
@@ -243,6 +244,7 @@ mod tests {
         }
         txn.commit()?;
 
+        // Check that unsubscriptions are successful
         let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let s = subscribers[i];
