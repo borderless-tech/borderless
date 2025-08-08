@@ -225,7 +225,6 @@ mod tests {
         // Setup dummy DB
         let lmdb = open_tmp_lmdb();
         let handler = SubscriptionHandler::new(&lmdb);
-        let mut txn = lmdb.begin_rw_txn()?;
 
         // Setup: both subscribers and publishers are sw-agents
         let subscribers: Vec<AgentId> = std::iter::repeat_with(|| AgentId::generate())
@@ -236,12 +235,15 @@ mod tests {
             .collect();
         let topic = "MyTopic";
 
+        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let topic = Topic::new(publishers[i], topic.to_string(), "method".to_string());
             // Subscribe to topic
             handler.subscribe(&mut txn, subscribers[i], topic)?;
         }
+        txn.commit()?;
 
+        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let s = subscribers[i];
             let p = publishers[i];
