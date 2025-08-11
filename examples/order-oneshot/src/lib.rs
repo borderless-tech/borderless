@@ -35,7 +35,7 @@ pub mod order_oneshot {
 
         #[action]
         pub fn cancel_last(&mut self) -> Result<()> {
-            ledger::settle_debt("buyer", "seller")
+            ledger::cancellation("buyer", "seller")
                 .with_amount("85 €".parse()?)
                 .with_tag(format!("cancel item-{}", self.cnt.saturating_sub(1)))
                 .execute()?;
