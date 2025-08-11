@@ -2,6 +2,9 @@
 name = "currency-4217"
 version = "0.1.0"
 edition = "2021"
+description = "ISO-4217 compliant definition of 'money' and 'currency'"
+authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]
+repository = "https://github.com/borderless-tech/borderless"
 
 [dependencies]
 serde = { workspace = true, features = ["derive"], optional = true }
