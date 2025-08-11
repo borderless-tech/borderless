@@ -11,6 +11,8 @@ members = [
   "primitives/hash",
   "primitives/id-types",
   "primitives/pkg",
+  "primitives/commerce-types",
+  "primitives/currency-4217",
   "registry",
 ]
 resolver = "2"
@@ -26,11 +28,16 @@ borderless-kv-store = { version = "1.1.0", path = "kv-store" }
 borderless-pkg = { version = "0.1.0", path = "primitives/pkg" }
 borderless-runtime = { version = "0.2.0", path = "executor/runtime" }
 
+# Non-Borderless prefixed crates
+currency-4217 = { version = "0.1.0", path = "primitives/currency-4217" }
+commerce-types = { version = "0.1.0", path = "primitives/commerce-types" }
+
 # External dependencies
 anyhow = "1.0"
 log = "0.4"
 postcard = { version = "1.1", features = ["alloc"] }
 rand = "0.9"
+schemars = "1.0"
 serde = "1.0"
 serde_json = "1.0"
 serde_bytes = "0.11"

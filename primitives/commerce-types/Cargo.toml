@@ -1,0 +1,10 @@
+[package]
+name = "commerce-types"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+schemars = { workspace = true, features = ["chrono04"] }
+currency-4217 = { workspace = true, features = ["serde"] }
