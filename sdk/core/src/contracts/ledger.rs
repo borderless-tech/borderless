@@ -147,6 +147,17 @@ where
         }
     }
 
+    pub fn with_tax_opt(self, maybe_tax: Option<Money>) -> Self {
+        Self {
+            creditor: self.creditor,
+            debitor: self.debitor,
+            amount: self.amount,
+            tax: maybe_tax,
+            kind: self.kind,
+            tag: self.tag,
+        }
+    }
+
     pub fn with_tag(self, tag: impl AsRef<str>) -> Self {
         Self {
             creditor: self.creditor,
