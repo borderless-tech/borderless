@@ -204,14 +204,13 @@ impl fmt::Display for Currency {
 
 /// Monetary value stored as an *integer number of thousandths* (1/1000) of the currency’s major unit.
 ///
-/// Using thousandths lets us represent all ISO 4217 currencies (the largest fraction
-/// in normal use is the Bahraini dinar’s 3 decimal places) without loss.
+/// Using thousandths lets us represent all ISO 4217 currencies (the largest fraction in normal use is the Bahraini dinar’s 3 decimal places) without loss.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Money {
-    /// Number of thousandths of a unit (can be negative).
-    amount_milli: i64,
-    currency: Currency,
+    /// Amount in thousandths of a unit (can be negative).
+    pub amount_milli: i64,
+    pub currency: Currency,
 }
 
 impl Money {
@@ -273,16 +272,6 @@ impl Money {
         }
     }
 
-    /// Returns the currency of this value.
-    pub const fn currency(&self) -> Currency {
-        self.currency
-    }
-
-    /// Returns the stored amount in thousandths.
-    pub const fn amount_thousandths(&self) -> i64 {
-        self.amount_milli
-    }
-
     /// Returns the decimal value as `f64` (possible loss of precision for very large values).
     pub fn amount(&self) -> f64 {
         self.amount_milli as f64 / 1000.0
@@ -304,7 +293,7 @@ impl fmt::Display for Money {
             }
         } else {
             let mut frac_str = format!("{:03}", fractional);
-            let remove_fracs = 3u8.saturating_sub(self.currency().fracs());
+            let remove_fracs = 3u8.saturating_sub(self.currency.fracs());
             for _ in 0..remove_fracs {
                 frac_str.pop();
             }
