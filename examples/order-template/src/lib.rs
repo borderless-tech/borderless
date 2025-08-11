@@ -1,5 +1,6 @@
 #[borderless::contract]
 pub mod order_oneshot {
+    use borderless::prelude::ledger::{settle_debt, transfer};
     use borderless::prelude::*;
     use borderless::{collections::HashMap, time::timestamp};
     use commerce_types::OrderRequest;
@@ -52,6 +53,11 @@ pub mod order_oneshot {
                 .orders
                 .get_mut(order_id.clone())
                 .context(format!("found no order with id={order_id}"))?;
+
+            // Cannot confirm order twice
+            if state.confirmed.is_some() {
+                return Err(new_error!("order {order_id} is already confirmed"));
+            }
             state.confirmed = Some(order);
             Ok(())
         }
@@ -62,7 +68,21 @@ pub mod order_oneshot {
                 .orders
                 .get_mut(order_id.clone())
                 .context(format!("found no order with id={order_id}"))?;
+
+            // Cannot receive order before it is confirmed
+            if state.confirmed.is_none() {
+                return Err(new_error!("order {order_id} is not confirmed yet"));
+            }
             state.order_received = Some(timestamp());
+
+            // Create a debt equal to the total cost of the order
+            let header = &state.confirmed.as_ref().unwrap().header;
+            transfer("buyer", "seller")
+                .with_amount(header.total)
+                .with_tax_opt(header.tax)
+                .with_tag(order_id)
+                .execute()?;
+
             Ok(())
         }
 
@@ -72,6 +92,11 @@ pub mod order_oneshot {
                 .orders
                 .get_mut(order_id.clone())
                 .context(format!("found no order with id={order_id}"))?;
+
+            // Cannot receive invoice before order is confirmed
+            if state.confirmed.is_none() {
+                return Err(new_error!("order {order_id} is not confirmed yet"));
+            }
             state.invoice_received = Some(timestamp());
             Ok(())
         }
@@ -82,7 +107,20 @@ pub mod order_oneshot {
                 .orders
                 .get_mut(order_id.clone())
                 .context(format!("found no order with id={order_id}"))?;
+
+            // Cannot pay twice
+            if state.paid.is_some() {
+                return Err(new_error!("order {order_id} is already paid for"));
+            }
             state.paid = Some(timestamp());
+
+            // Settle the created debt from this contract
+            let header = &state.confirmed.as_ref().unwrap().header;
+            settle_debt("buyer", "seller")
+                .with_amount(header.total)
+                .with_tax_opt(header.tax)
+                .with_tag(order_id)
+                .execute()?;
             Ok(())
         }
     }
