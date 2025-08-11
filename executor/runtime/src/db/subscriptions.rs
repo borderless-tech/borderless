@@ -151,7 +151,6 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
                 continue;
             }
             // Push the full topic
-            // TODO Return topic or full topic?
             topics.push(full_topic);
         }
         // Free up resources
