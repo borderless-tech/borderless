@@ -1,5 +1,5 @@
 [package]
-name = "order-oneshot"
+name = "ledger-test"
 version = "0.1.0"
 edition = "2021"
 authors = ["Christian Hammermeister <c.hammermeister@borderless-technologies.com>"]
