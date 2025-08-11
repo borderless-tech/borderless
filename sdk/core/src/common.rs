@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context};
 use borderless_id_types::{AgentId, Uuid};
-use borderless_pkg::WasmPkg;
+use borderless_pkg::{PkgType, WasmPkg};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::BTreeMap, fmt::Display, str::FromStr};
@@ -281,6 +281,15 @@ impl TryFrom<IntroductionDto> for Introduction {
                 })?
             }
         };
+
+        // Verify that the ID matches the package type
+        let valid = match value.package.pkg_type {
+            PkgType::Contract => id.as_cid().is_some(),
+            PkgType::Agent => id.as_aid().is_some(),
+        };
+        if !valid {
+            return Err(anyhow!("Mismatch between provided ID and package type"));
+        }
 
         let sinks: Vec<Sink> = value.sinks.into_iter().map(|s| s.into()).collect();
         match id {
