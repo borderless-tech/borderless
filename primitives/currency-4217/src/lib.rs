@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum Currency {
     USD = 840,
     EUR = 978,
@@ -207,6 +208,7 @@ impl fmt::Display for Currency {
 /// Using thousandths lets us represent all ISO 4217 currencies (the largest fraction in normal use is the Bahraini dinar’s 3 decimal places) without loss.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct Money {
     /// Amount in thousandths of a unit (can be negative).
     pub amount_milli: i64,

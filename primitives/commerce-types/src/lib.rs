@@ -1,4 +1,5 @@
 use chrono::{DateTime, NaiveDate, Utc};
+use currency_4217::Money;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -94,15 +95,6 @@ pub struct ItemDetail {
 
     /// Services: detailed info (labor/fee/travel), like in cXML `<SpendDetail>`
     pub spend_detail: Option<SpendDetail>,
-}
-
-/// ISO-4217 compliant money definition
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct Money {
-    /// Amount encoded as fixed-point decimal
-    pub amount: u32,
-    /// ISO-4217 currency string
-    pub currency: String,
 }
 
 /// Address definition

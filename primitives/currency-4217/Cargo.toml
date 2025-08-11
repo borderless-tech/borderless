@@ -8,9 +8,11 @@ repository = "https://github.com/borderless-tech/borderless"
 
 [dependencies]
 serde = { workspace = true, features = ["derive"], optional = true }
+schemars = { workspace = true, optional = true }
 
 [dev-dependencies]
 rand.workspace = true
 
 [features]
 serde = [ "dep:serde" ]
+json-schema = [ "dep:schemars" ]

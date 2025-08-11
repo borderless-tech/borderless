@@ -800,6 +800,7 @@ name = "currency-4217"
 version = "0.1.0"
 dependencies = [
  "rand 0.9.0",
+ "schemars",
  "serde",
 ]
 
