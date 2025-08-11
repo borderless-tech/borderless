@@ -251,7 +251,7 @@ pub struct IntroductionDto {
     /// List of available sinks
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub sinks: Vec<Sink>,
+    pub sinks: Vec<SinkDto>,
 
     /// List of available topics
     #[serde(default)]
@@ -281,11 +281,18 @@ impl From<IntroductionDto> for Introduction {
                 value.id.unwrap()
             }
         };
+
+        let sinks: Vec<Sink> = value.sinks.into_iter().map(|s| s.into()).collect();
+        assert!(
+            id.as_cid().is_some() && sinks.iter().any(|s| s.writer.is_empty()),
+            "Sinks defined in a smart contract must contain a writer"
+        );
+
         Self {
             id,
             participants: value.participants,
             initial_state: value.initial_state,
-            sinks: value.sinks,
+            sinks,
             subscriptions: value.subscriptions,
             desc: value.desc,
             meta: Default::default(),
@@ -299,6 +306,35 @@ impl FromStr for IntroductionDto {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         serde_json::from_str(s)
+    }
+}
+
+/// Digital-Tranfer-Object (Dto) of a [`Sink`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SinkDto {
+    /// Contract-ID of the sink
+    pub contract_id: ContractId,
+
+    /// Alias for the sink
+    ///
+    /// Sinks can be accessed by their alias, allowing an easier lookup.
+    pub alias: String,
+
+    /// Participant-Alias of the writer
+    ///
+    /// All transactions for this `Sink` will be written by this writer.
+    /// Sinks defined in a sw-agent have no writers, as agents have no participants
+    pub writer: Option<String>,
+}
+
+impl From<SinkDto> for Sink {
+    fn from(value: SinkDto) -> Self {
+        Self {
+            contract_id: value.contract_id,
+            alias: value.alias,
+            // Defaults to empty string if no writer is provided
+            writer: value.writer.unwrap_or_default(),
+        }
     }
 }
 
