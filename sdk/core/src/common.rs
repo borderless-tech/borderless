@@ -1,9 +1,9 @@
-use std::{collections::BTreeMap, fmt::Display, str::FromStr};
-
+use anyhow::{anyhow, Context};
 use borderless_id_types::{AgentId, Uuid};
 use borderless_pkg::WasmPkg;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::{collections::BTreeMap, fmt::Display, str::FromStr};
 
 pub use borderless_pkg as pkg;
 
@@ -265,8 +265,10 @@ pub struct IntroductionDto {
     pub package: WasmPkg,
 }
 
-impl From<IntroductionDto> for Introduction {
-    fn from(value: IntroductionDto) -> Self {
+impl TryFrom<IntroductionDto> for Introduction {
+    type Error = crate::Error;
+
+    fn try_from(value: IntroductionDto) -> Result<Self, Self::Error> {
         let id = {
             #[cfg(feature = "generate_ids")]
             {
@@ -274,21 +276,31 @@ impl From<IntroductionDto> for Introduction {
             }
             #[cfg(not(feature = "generate_ids"))]
             {
-                assert!(
-                    value.id.is_some(),
+                value.id.with_context(|| {
                     "ID must be set - enable feature 'generate_ids' to autogenerate an ID"
-                );
-                value.id.unwrap()
+                })?
             }
         };
 
         let sinks: Vec<Sink> = value.sinks.into_iter().map(|s| s.into()).collect();
-        assert!(
-            id.as_cid().is_some() && sinks.iter().any(|s| s.writer.is_empty()),
-            "Sinks defined in a smart contract must contain a writer"
-        );
+        match id {
+            Id::Contract { .. } => {
+                if sinks.iter().any(|s| s.writer.is_empty()) {
+                    return Err(anyhow!(
+                        "Sinks defined in a smart contract must contain a writer"
+                    ));
+                }
+            }
+            Id::Agent { .. } => {
+                if sinks.iter().any(|s| !s.writer.is_empty()) {
+                    return Err(anyhow!(
+                        "Sinks defined in a sw-agent must NOT contain a writer"
+                    ));
+                }
+            }
+        }
 
-        Self {
+        Ok(Self {
             id,
             participants: value.participants,
             initial_state: value.initial_state,
@@ -297,7 +309,7 @@ impl From<IntroductionDto> for Introduction {
             desc: value.desc,
             meta: Default::default(),
             package: value.package,
-        }
+        })
     }
 }
 

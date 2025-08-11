@@ -197,7 +197,7 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         ContractAction::Introduce { introduction } => {
             // Parse introduction
             let data = read_to_string(introduction)?;
-            let introduction: Introduction = IntroductionDto::from_str(&data)?.into();
+            let introduction: Introduction = IntroductionDto::from_str(&data)?.try_into()?;
 
             let cid = introduction.id.as_cid().unwrap();
 
