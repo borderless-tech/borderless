@@ -37,6 +37,7 @@ impl ActionFn {
     /// Generates an enum field for the Actions-Enum
     ///
     /// An action like `fn set_switch(&mut self, switch: bool)` would become `SetSwitch { switch: bool }`
+    #[allow(unused)]
     pub fn gen_field(&self) -> TokenStream2 {
         let fields = self.args.iter().map(|a| a.0.clone());
         let types = self.args.iter().map(|a| a.1.clone());
@@ -56,6 +57,7 @@ impl ActionFn {
     ///     CallAction::by_method("set_switch", args_value)
     /// }
     /// ```
+    #[allow(unused)]
     pub fn gen_field_match(&self) -> TokenStream2 {
         let fields: Vec<_> = self.args.iter().map(|a| a.0.clone()).collect();
         let field_ident = self.field_ident();
@@ -184,6 +186,7 @@ impl ActionFn {
     /// Returns the identifier for the enum fields
     ///
     /// Converts from snake_case to PascalCase
+    #[allow(unused)]
     fn field_ident(&self) -> Ident {
         format_ident!("{}", self.ident.to_string().to_case(Case::Pascal))
     }

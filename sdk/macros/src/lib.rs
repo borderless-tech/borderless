@@ -50,8 +50,7 @@ pub fn contract(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         }
     }
 
-    // let wasm_exports = contract::generate_wasm_exports(&module.ident);
-    let wasm_exports = quote! {};
+    let wasm_exports = contract::generate_wasm_exports(&module.ident);
 
     // Generate a new module from the content of the original module
     let new_module = ItemMod {
