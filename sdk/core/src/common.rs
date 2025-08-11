@@ -290,12 +290,21 @@ impl TryFrom<IntroductionDto> for Introduction {
                         "Sinks defined in a smart contract must contain a writer"
                     ));
                 }
+                if value.participants.is_empty() {
+                    return Err(anyhow!("Smart contracts must contain participants"));
+                }
+                if !value.subscriptions.is_empty() {
+                    return Err(anyhow!("Smart contracts do not support subscriptions"));
+                }
             }
             Id::Agent { .. } => {
                 if sinks.iter().any(|s| !s.writer.is_empty()) {
                     return Err(anyhow!(
                         "Sinks defined in a sw-agent must NOT contain a writer"
                     ));
+                }
+                if !value.participants.is_empty() {
+                    return Err(anyhow!("Sw-Agents must NOT contain participants"));
                 }
             }
         }
