@@ -1,7 +1,7 @@
 #[borderless::contract]
 pub mod order_oneshot {
-    use borderless::collections::HashMap;
     use borderless::prelude::*;
+    use borderless::{collections::HashMap, time::timestamp};
     use commerce_types::OrderRequest;
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
@@ -10,9 +10,21 @@ pub mod order_oneshot {
     pub struct OrderState {
         pub created: OrderRequest,
         pub confirmed: Option<OrderRequest>,
-        pub order_received: Option<u64>, // timestamp - use chrono here
-        pub invoice_received: Option<u64>, // use invoice model here
-        pub paid: Option<u64>,
+        pub order_received: Option<i64>, // timestamp - use chrono here
+        pub invoice_received: Option<i64>, // use invoice model here
+        pub paid: Option<i64>,
+    }
+
+    impl OrderState {
+        pub fn new(order: OrderRequest) -> Self {
+            OrderState {
+                created: order,
+                confirmed: None,
+                order_received: None,
+                invoice_received: None,
+                paid: None,
+            }
+        }
     }
 
     #[derive(State)]
@@ -22,35 +34,55 @@ pub mod order_oneshot {
 
     impl Order {
         #[action(web_api = true, roles = "buyer")]
-        pub fn create_order(&mut self, order: OrderState) -> Result<()> {
-            ledger::transfer("buyer", "seller")
-                .with_amount("85 €".parse()?)
-                .with_tax("16,15 €".parse()?)
-                .execute()?;
+        pub fn create_order(&mut self, order: OrderRequest) -> Result<()> {
+            let order_id = order.header.order_id.clone();
+            // Return error if order-id does already exist
+            if self.orders.contains_key(&order_id) {
+                return Err(Error::msg("cannot create order - duplicate order-id"));
+            }
+            let state = OrderState::new(order);
+            self.orders.insert(order_id, state);
             Ok(())
         }
 
         #[action(web_api = true, roles = "seller")]
-        pub fn confirm_order(&self, item_no: u64) -> Result<()> {
-            ledger::settle_debt("buyer", "seller")
-                .with_amount("85 €".parse()?)
-                .with_tag(format!("settle item-{}", item_no))
-                .execute()?;
+        pub fn confirm_order(&mut self, order: OrderRequest) -> Result<()> {
+            let order_id = order.header.order_id.clone();
+            let mut state = self
+                .orders
+                .get_mut(order_id.clone())
+                .context(format!("found no order with id={order_id}"))?;
+            state.confirmed = Some(order);
             Ok(())
         }
 
         #[action(web_api = true, roles = "buyer")]
-        pub fn confirm_receival(&mut self) -> Result<()> {
+        pub fn confirm_receival(&mut self, order_id: String) -> Result<()> {
+            let mut state = self
+                .orders
+                .get_mut(order_id.clone())
+                .context(format!("found no order with id={order_id}"))?;
+            state.order_received = Some(timestamp());
             Ok(())
         }
 
         #[action(web_api = true, roles = "buyer")]
-        pub fn confirm_invoice(&mut self) -> Result<()> {
+        pub fn confirm_invoice(&mut self, order_id: String) -> Result<()> {
+            let mut state = self
+                .orders
+                .get_mut(order_id.clone())
+                .context(format!("found no order with id={order_id}"))?;
+            state.invoice_received = Some(timestamp());
             Ok(())
         }
 
         #[action(web_api = true, roles = "seller")]
-        pub fn confirm_payment(&mut self) -> Result<()> {
+        pub fn confirm_payment(&mut self, order_id: String) -> Result<()> {
+            let mut state = self
+                .orders
+                .get_mut(order_id.clone())
+                .context(format!("found no order with id={order_id}"))?;
+            state.paid = Some(timestamp());
             Ok(())
         }
     }
