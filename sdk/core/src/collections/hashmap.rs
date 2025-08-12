@@ -44,8 +44,8 @@ impl<K, V> Sealed for HashMap<K, V> {}
 
 impl<K, V> storage_traits::ToPayload for HashMap<K, V>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq + Debug,
-    V: Serialize + DeserializeOwned + Debug,
+    K: Serialize + DeserializeOwned + Hash + Eq,
+    V: Serialize + DeserializeOwned,
 {
     fn to_payload(&self, path: &str) -> anyhow::Result<Option<String>> {
         use serde_json::to_string as to_str;
@@ -72,7 +72,6 @@ where
             // Nest to the next to_payload()
             return value.map_or(Ok(None), |val| (*val).to_payload(remainder));
         };
-        println!("path empty");
         // We build the json output manually to save performance
         let n_items = self.len();
         if n_items == 0 {
