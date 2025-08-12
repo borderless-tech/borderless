@@ -1,9 +1,12 @@
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use borderless_id_types::{AgentId, Uuid};
 use borderless_pkg::{PkgType, WasmPkg};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::BTreeMap, fmt::Display, str::FromStr};
+
+#[cfg(not(feature = "generate_ids"))]
+use anyhow::Context;
 
 pub use borderless_pkg as pkg;
 
