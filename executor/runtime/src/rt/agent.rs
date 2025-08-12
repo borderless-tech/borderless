@@ -143,7 +143,9 @@ impl<S: Db> Runtime<S> {
             },
         )?;
 
-        linker.func_wrap("env", "timestamp", vm::timestamp)?;
+        linker.func_wrap("env", "timestamp", |caller: Caller<'_, VmState<S>>| {
+            vm::timestamp(caller)
+        })?;
 
         info!("Initialized runtime in: {:?}", start.elapsed());
 

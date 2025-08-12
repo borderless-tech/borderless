@@ -3,6 +3,8 @@
 //! This module contains the state of the virtual machine, that is shared across host function invocations,
 //! and the concrete implementation of the ABI host functions, that are linked to the webassembly module by the runtime.
 
+use borderless::contracts::BlockCtx;
+use borderless::Context;
 use borderless::__private::registers::*;
 use borderless::common::Id;
 use borderless::prelude::ledger::LedgerEntry;
@@ -723,14 +725,30 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
 /// Host function to returns the milliseconds since unix-epoch.
 ///
 /// This is the host implementation of `borderless_abi::timestamp` and must be linked by the runtime.
-#[cfg(feature = "agents")]
-pub fn timestamp() -> wasmtime::Result<i64> {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)?
-        .as_millis()
-        .try_into()
-        .expect("i64 should fit for 292471208 years");
-    Ok(timestamp)
+pub fn timestamp(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<i64> {
+    match caller.data().active {
+        ActiveEntity::Contract { .. } => {
+            // For contracts, we use the block-timestamp from the block-ctx
+            // NOTE: This is not very efficient, as we have to decode the block-ctx everytime - but today I absolutely do not care.
+            // The only other option would be to carry a Option<BlockCtx> around in the VmState, and I also don't like that
+            let data = caller
+                .data()
+                .get_register(REGISTER_BLOCK_CTX)
+                .context("missing block-ctx")?;
+            let ctx = BlockCtx::from_bytes(&data).context("invalid block-ctx in register")?;
+            Ok(ctx.timestamp as i64)
+        }
+        ActiveEntity::Agent { .. } => {
+            // For agents, simply use the unix timestamp of the system-clock
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)?
+                .as_millis()
+                .try_into()
+                .expect("i64 should fit for 292471208 years");
+            Ok(timestamp)
+        }
+        ActiveEntity::None => return Err(wasmtime::Error::msg("no active entity set")),
+    }
 }
 
 /// Async (agent) ABI implementation

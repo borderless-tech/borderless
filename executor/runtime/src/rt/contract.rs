@@ -129,6 +129,11 @@ impl<S: Db> Runtime<S> {
         )?;
         linker.func_wrap("env", "storage_gen_sub_key", vm::storage_gen_sub_key)?;
 
+        // NOTE: The timestamp uses the timestamp from the block-ctx, so no side-effect here
+        linker.func_wrap("env", "timestamp", |caller: Caller<'_, VmState<S>>| {
+            vm::timestamp(caller)
+        })?;
+
         // -- Ledger-API
         linker.func_wrap(
             "env",
