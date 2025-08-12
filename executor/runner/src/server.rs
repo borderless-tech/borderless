@@ -93,7 +93,21 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
 
         let mut rt = self.rt.lock();
         let result = match rt.process_transaction(&cid, action, &self.writer, tx_ctx) {
-            Ok(_events) => Ok(hash),
+            Ok(events) => {
+                let events = events.unwrap_or_default();
+                // TODO: Recursively apply output events
+
+                // Print messages ( since there are no agents )
+                for msg in events.local {
+                    info!(
+                        "publish message to topic {}/{}: {}",
+                        msg.publisher,
+                        msg.topic.trim_matches('/'),
+                        serde_json::to_string_pretty(&msg.value).unwrap_or_default()
+                    );
+                }
+                Ok(hash)
+            }
             Err(e) => Err(e),
         };
 
