@@ -64,6 +64,11 @@ pub mod contract {
                 return Err(new_error!("order {order_id} is already confirmed"));
             }
 
+            // TODO: Add validation; not all things can change if an order is confirmed !
+            // Things like shipping address etc. must be identical.
+            // The differences are in the amount of items that were ordered (if some things are out of stock),
+            // and in the delivery date.
+
             // Prepare message
             let msg = message("/order/confirm").with_content(&order)?;
 
@@ -116,6 +121,13 @@ pub mod contract {
             if state.confirmed.is_none() {
                 return Err(new_error!("order {order_id} is not confirmed yet"));
             }
+
+            if state.invoice_received.is_some() {
+                return Err(new_error!(
+                    "order {order_id} already has the invoice confirmed"
+                ));
+            }
+
             let timestamp = timestamp();
             state.invoice_received = Some(timestamp);
 
