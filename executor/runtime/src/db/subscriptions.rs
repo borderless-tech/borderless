@@ -62,6 +62,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         Self { db }
     }
 
+    /// Loads the subscriptions from a software agent introduction
     pub fn init(&self, txn: &mut <S as Db>::RwTx<'_>, introduction: Introduction) -> Result<()> {
         // Write static subscriptions
         match introduction.id {
@@ -75,6 +76,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         Ok(())
     }
 
+    /// Subscribes an ['AgentId'] to a topic from a specific publisher
     pub fn subscribe(
         &self,
         txn: &mut <S as Db>::RwTx<'_>,
@@ -87,6 +89,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         Ok(())
     }
 
+    /// Unsubscribes an ['AgentId'] from a topic
     pub fn unsubscribe(
         &self,
         txn: &mut <S as Db>::RwTx<'_>,
@@ -100,6 +103,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         Ok(deleted)
     }
 
+    /// Fetches the active subscribers for a full topic (publisher + topic)
     pub fn get_topic_subscribers(
         &self,
         publisher: Id,
@@ -132,10 +136,12 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         Ok(subscribers)
     }
 
+    /// Fetches all active subscribers to topics from the given publisher
     pub fn get_subscribers(&self, publisher: Id) -> Result<Vec<(AgentId, String)>> {
         self.get_topic_subscribers(publisher, String::default())
     }
 
+    /// Fetches all active subscriptions for the specified ['AgentId']
     pub fn get_subscriptions(&self, target: AgentId) -> Result<Vec<String>> {
         // Setup DB cursor
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
