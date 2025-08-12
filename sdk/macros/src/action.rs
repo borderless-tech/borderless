@@ -34,6 +34,10 @@ pub struct ActionFn {
 }
 
 impl ActionFn {
+    /// Generates an enum field for the Actions-Enum
+    ///
+    /// An action like `fn set_switch(&mut self, switch: bool)` would become `SetSwitch { switch: bool }`
+    #[allow(unused)]
     pub fn gen_field(&self) -> TokenStream2 {
         let fields = self.args.iter().map(|a| a.0.clone());
         let types = self.args.iter().map(|a| a.1.clone());
@@ -43,6 +47,17 @@ impl ActionFn {
         }
     }
 
+    /// Generates the match block for the Actions-Enum
+    ///
+    /// An action like `fn set_switch(&mut self, switch: bool)` would become:
+    /// ```no_compile
+    /// Actions::SetSwitch { switch } => {
+    ///     let args = SetSwitchArgs { switch };
+    ///     let args_value = to_value(&args);
+    ///     CallAction::by_method("set_switch", args_value)
+    /// }
+    /// ```
+    #[allow(unused)]
     pub fn gen_field_match(&self) -> TokenStream2 {
         let fields: Vec<_> = self.args.iter().map(|a| a.0.clone()).collect();
         let field_ident = self.field_ident();
@@ -57,6 +72,9 @@ impl ActionFn {
         }
     }
 
+    /// Generates the arguments struct from the action
+    ///
+    /// An action like `fn set_switch(&mut self, switch: bool)` would generate `pub(crate) __SetSwitchArgs { switch: bool }`
     pub fn gen_type_tokens(&self) -> TokenStream2 {
         let args_ident = self.args_ident();
         let fields = self.args.iter().map(|a| a.0.clone());
@@ -93,7 +111,7 @@ impl ActionFn {
             quote! {
                 #access_check
                 let result = #state_ident::#fn_ident(#mut_state);
-                <#return_type as ::borderless::events::ActionOutEvent>::convert_out_events(result)
+                <#return_type as ::borderless::events::ActionOutput>::convert_out_events(result)
             }
         } else {
             let arg_idents = self.args.iter().map(|a| a.0.clone());
@@ -101,7 +119,7 @@ impl ActionFn {
                 #access_check
                 let args: __derived::#args_ident = ::borderless::serialize::from_value(action.params)?;
                 let result = #state_ident::#fn_ident(#mut_state, #(args.#arg_idents),*);
-                <#return_type as ::borderless::events::ActionOutEvent>::convert_out_events(result)
+                <#return_type as ::borderless::events::ActionOutput>::convert_out_events(result)
             }
         }
     }
@@ -158,10 +176,17 @@ impl ActionFn {
         }
     }
 
+    /// Returns the identifier for the generated arguments struct of the action
+    ///
+    /// An action like `fn set_switch(&mut self, switch: bool)` would generate `__SetSwitchArgs { switch: bool }`
     fn args_ident(&self) -> Ident {
         format_ident!("__{}Args", self.ident.to_string().to_case(Case::Pascal))
     }
 
+    /// Returns the identifier for the enum fields
+    ///
+    /// Converts from snake_case to PascalCase
+    #[allow(unused)]
     fn field_ident(&self) -> Ident {
         format_ident!("{}", self.ident.to_string().to_case(Case::Pascal))
     }
@@ -344,30 +369,30 @@ pub fn calc_method_id(state_ident: &Ident, action_ident: &Ident, rename: Option<
     xxh3_64(full_name.as_bytes()) as u32
 }
 
-pub fn impl_actions_enum(actions: &[ActionFn]) -> TokenStream2 {
-    let fields = actions.iter().map(ActionFn::gen_field);
-    let match_items = actions.iter().map(ActionFn::gen_field_match);
-    quote! {
-        #[allow(private_interfaces)]
-        pub enum Actions {
-            #( #fields ),*
-        }
+// pub fn impl_actions_enum(actions: &[ActionFn]) -> TokenStream2 {
+//     let fields = actions.iter().map(ActionFn::gen_field);
+//     let match_items = actions.iter().map(ActionFn::gen_field_match);
+//     quote! {
+//         #[allow(private_interfaces)]
+//         pub enum Actions {
+//             #( #fields ),*
+//         }
 
-        #[automatically_derived]
-        impl TryFrom<Actions> for ::borderless::events::CallAction {
-            type Error = ::borderless::serialize::Error;
+//         #[automatically_derived]
+//         impl TryFrom<Actions> for ::borderless::events::CallAction {
+//             type Error = ::borderless::serialize::Error;
 
-            fn try_from(value: Actions) -> ::std::result::Result<::borderless::events::CallAction, Self::Error> {
-                let action = match value {
-                    #(
-                    #match_items
-                    )*
-                };
-                Ok(action)
-            }
-        }
-    }
-}
+//             fn try_from(value: Actions) -> ::std::result::Result<::borderless::events::CallAction, Self::Error> {
+//                 let action = match value {
+//                     #(
+//                     #match_items
+//                     )*
+//                 };
+//                 Ok(action)
+//             }
+//         }
+//     }
+// }
 
 // #[derive(Debug, FromMeta)]
 // pub struct ActionArgs {

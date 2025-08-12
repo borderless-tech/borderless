@@ -1,6 +1,4 @@
 // We have to set the path explicitly, because the module is named "__private", while the directory is named "private"
-#[path = "private/http.rs"]
-pub mod http;
 #[path = "private/registers.rs"]
 pub mod registers;
 #[path = "private/storage_keys.rs"]
@@ -9,7 +7,7 @@ pub mod storage_keys;
 pub mod storage_traits;
 
 #[path = "private/env.rs"]
-mod env;
+pub mod env;
 
 use borderless_abi as abi;
 
@@ -17,8 +15,7 @@ use registers::*;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::error;
-pub use postcard::from_bytes as from_postcard_bytes;
-pub use postcard::to_allocvec as to_postcard_bytes;
+use crate::prelude::ledger::LedgerEntry;
 
 // --- PLAYGROUND FOR NEW ABI STUFF
 
@@ -265,6 +262,18 @@ pub fn abort() -> ! {
     #[cfg(not(target_arch = "wasm32"))]
     {
         panic!();
+    }
+}
+
+pub fn create_ledger_entry(entry: LedgerEntry) -> crate::Result<()> {
+    let _bytes = entry.to_bytes();
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::create_ledger_entry(entry)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env::off_chain::create_ledger_entry(entry)
     }
 }
 

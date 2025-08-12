@@ -85,13 +85,6 @@ pub const BASE_KEY_LOGS: u64 = 2;
 /// These work similar to the logs by using a ring-buffer that is stored in sub-keys.
 pub const BASE_KEY_METRICS: u64 = 3;
 
-// TODO: Instead of embedding this in the contract keyspace,
-// we could use a global ledger between parties for all contracts.
-/// Reserved key-space for ledgers
-///
-/// Everything from in the range from 2^16 to 2^63 is reserved to store the ledgers of a contract.
-pub const BASE_KEY_MASK_LEDGER: u64 = 0x0FFFFFFFFFFF0000;
-
 /// Reserved Base-Key - indicating the maximum possible system-key
 ///
 /// Everything between `0` and `BASE_KEY_RESERVED` can be used to store special
@@ -100,17 +93,12 @@ pub const BASE_KEY_RESERVED: u64 = u64::MAX & !(1 << 63); // max. possible syste
 
 // --- NOTE: The META_SUB_*-keys are basically the values of the introduction
 /// Sub-Key to store the contract-id
-pub const META_SUB_KEY_CONTRACT_ID: u64 = 0;
+pub const META_SUB_KEY_ID: u64 = 0;
 
 /// Sub-Key to store the list of participants
 ///
-/// Expected data-model: `Vec<BorderlessId>`
+/// Expected data-model: `Vec<Participant>`
 pub const META_SUB_KEY_PARTICIPANTS: u64 = 1;
-
-/// Sub-Key to store the list of roles
-///
-/// Expected data-model: `Vec<Role>`
-pub const META_SUB_KEY_ROLES: u64 = 2;
 
 /// Sub-Key to store the list of available sinks
 ///

@@ -1,7 +1,15 @@
+use super::{
+    action_log::{ActionLog, ActionRecord, RelTxAction},
+    ledger::Ledger,
+    logger::Logger,
+    subscriptions::SubscriptionHandler,
+};
+use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB};
+use borderless::common::Participant;
 use borderless::{
     common::{Description, Metadata, Revocation},
     contracts::Info,
-    BorderlessId, ContractId,
+    ContractId,
     __private::storage_keys::*,
     events::Sink,
     hash::Hash256,
@@ -12,12 +20,6 @@ use borderless::{
 };
 use borderless_kv_store::*;
 use serde::de::DeserializeOwned;
-
-use super::{
-    action_log::{ActionLog, ActionRecord, RelTxAction},
-    logger::Logger,
-};
-use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB};
 
 /// Model-controller to retrieve information about a contract from the key-value storage.
 pub struct Controller<'a, S: Db> {
@@ -39,8 +41,18 @@ impl<'a, S: Db> Controller<'a, S> {
         Logger::new(self.db, id)
     }
 
+    /// Returns the [`Ledger`]
+    pub fn ledger(&self) -> Ledger<'a, S> {
+        Ledger::new(self.db)
+    }
+
+    /// Returns the ['SubscriptionHandler']
+    pub fn messages(&self) -> SubscriptionHandler<'a, S> {
+        SubscriptionHandler::new(self.db)
+    }
+
     /// List of contract-participants
-    pub fn contract_participants(&self, cid: &ContractId) -> Result<Option<Vec<BorderlessId>>> {
+    pub fn contract_participants(&self, cid: &ContractId) -> Result<Option<Vec<Participant>>> {
         self.read_value(
             &Id::contract(*cid),
             BASE_KEY_METADATA,
@@ -51,22 +63,14 @@ impl<'a, S: Db> Controller<'a, S> {
     /// Returns `true` if the contract exists
     pub fn contract_exists(&self, cid: &ContractId) -> Result<bool> {
         Ok(self
-            .read_value::<ContractId>(
-                &Id::contract(*cid),
-                BASE_KEY_METADATA,
-                META_SUB_KEY_CONTRACT_ID,
-            )?
+            .read_value::<ContractId>(&Id::contract(*cid), BASE_KEY_METADATA, META_SUB_KEY_ID)?
             .is_some())
     }
 
     /// Returns `true` if the contract exists
     pub fn agent_exists(&self, aid: &AgentId) -> Result<bool> {
         Ok(self
-            .read_value::<AgentId>(
-                &Id::agent(*aid),
-                BASE_KEY_METADATA,
-                META_SUB_KEY_CONTRACT_ID,
-            )?
+            .read_value::<AgentId>(&Id::agent(*aid), BASE_KEY_METADATA, META_SUB_KEY_ID)?
             .is_some())
     }
 
@@ -112,13 +116,11 @@ impl<'a, S: Db> Controller<'a, S> {
     pub fn contract_info(&self, cid: &ContractId) -> Result<Option<Info>> {
         let id = Id::contract(*cid);
         let participants = self.read_value(&id, BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS)?;
-        let roles = self.read_value(&id, BASE_KEY_METADATA, META_SUB_KEY_ROLES)?;
         let sinks = self.read_value(&id, BASE_KEY_METADATA, META_SUB_KEY_SINKS)?;
-        match (participants, roles, sinks) {
-            (Some(participants), Some(roles), Some(sinks)) => Ok(Some(Info {
+        match (participants, sinks) {
+            (Some(participants), Some(sinks)) => Ok(Some(Info {
                 contract_id: *cid,
                 participants,
-                roles,
                 sinks,
             })),
             _ => Ok(None),
@@ -132,6 +134,10 @@ impl<'a, S: Db> Controller<'a, S> {
     pub fn agent_sinks(&self, aid: &AgentId) -> Result<Option<Vec<Sink>>> {
         let aid = Id::agent(*aid);
         self.read_value(&aid, BASE_KEY_METADATA, META_SUB_KEY_SINKS)
+    }
+
+    pub fn agent_subs(&self, aid: &AgentId) -> Result<Vec<String>> {
+        self.messages().get_subscriptions(*aid)
     }
 
     /// Returns the [`Description`] of the contract
@@ -162,14 +168,16 @@ impl<'a, S: Db> Controller<'a, S> {
         Ok(Some(ContractInfo { info, desc, meta }))
     }
 
-    /// Returns the full [`ContractInfo`], which bundles info, description and metadata.
+    /// Returns the full [`AgentInfo`], which bundles info, description and metadata.
     pub fn agent_full(&self, aid: &AgentId) -> Result<Option<AgentInfo>> {
         let sinks = self.agent_sinks(aid)?.unwrap_or_default();
+        let subs = self.agent_subs(aid)?;
         let desc = self.agent_desc(aid)?;
         let meta = self.agent_meta(aid)?;
         Ok(Some(AgentInfo {
             agent_id: *aid,
             sinks,
+            subs,
             desc,
             meta,
         }))
@@ -340,27 +348,23 @@ pub(crate) fn write_introduction<S: Db>(
     use borderless::__private::storage_keys::*;
 
     use crate::error::ErrorKind;
-    let cid = introduction.id;
+    let id = introduction.id;
 
-    // NOTE: If the id was already written to disk, this means that the contract has already been written !
-    let check_id = read_system_value::<S, Id, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_CONTRACT_ID,
-    )?;
+    // NOTE: If the id was already written to disk, it means
+    // that the contract/sw-agent has already been written !
+    let check_id =
+        read_system_value::<S, Id, _>(db_ptr, txn, &id, BASE_KEY_METADATA, META_SUB_KEY_ID)?;
     if check_id.is_some() {
         return Err(ErrorKind::DoubleIntroduction.into());
     }
 
-    // Write contract-id
+    // Write contract or sw-agent id
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
-        META_SUB_KEY_CONTRACT_ID,
+        META_SUB_KEY_ID,
         &introduction.id,
     )?;
 
@@ -368,27 +372,17 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_PARTICIPANTS,
         &introduction.participants,
-    )?;
-
-    // Write roles list
-    write_system_value::<S, _, _>(
-        db_ptr,
-        txn,
-        &cid,
-        BASE_KEY_METADATA,
-        META_SUB_KEY_ROLES,
-        &introduction.roles,
     )?;
 
     // Write sink list
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_SINKS,
         &introduction.sinks,
@@ -398,7 +392,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_DESC,
         &introduction.desc,
@@ -408,7 +402,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_META,
         &introduction.meta,
@@ -418,7 +412,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_INIT_STATE,
         &introduction.initial_state,
@@ -432,7 +426,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_PACKAGE_DEF,
         &pkg_def,
@@ -442,7 +436,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_PACKAGE_SOURCE,
         &pkg_source,

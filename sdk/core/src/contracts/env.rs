@@ -1,35 +1,59 @@
-use borderless_id_types::{BlockIdentifier, TxIdentifier};
+use anyhow::Context;
+use borderless_id_types::{cid_prefix, BlockIdentifier, TxIdentifier, Uuid};
 
+use super::{BlockCtx, Sink, TxCtx};
+use crate::common::Participant;
 use crate::{
     BorderlessId, ContractId,
     __private::{
         read_field, read_register,
-        registers::{REGISTER_BLOCK_CTX, REGISTER_EXECUTOR, REGISTER_TX_CTX, REGISTER_WRITER},
+        registers::{REGISTER_BLOCK_CTX, REGISTER_TX_CTX, REGISTER_WRITER},
         storage_keys::*,
     },
     common::{Description, Metadata},
 };
 
-use super::{BlockCtx, Role, Sink, TxCtx};
+/// Checks whether the current running program is a smart-contract
+pub fn is_contract() -> bool {
+    let id: Uuid = read_field(BASE_KEY_METADATA, META_SUB_KEY_ID).expect("id not in metadata");
+    cid_prefix(id.as_bytes())
+}
 
 /// Returns the contract-id of the current contract
 pub fn contract_id() -> ContractId {
-    read_field(BASE_KEY_METADATA, META_SUB_KEY_CONTRACT_ID).expect("contract-id not in metadata")
+    read_field(BASE_KEY_METADATA, META_SUB_KEY_ID).expect("contract-id not in metadata")
 }
 
 /// Returns the contract participants
-pub fn participants() -> Vec<BorderlessId> {
+pub fn participants() -> Vec<Participant> {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS).expect("participants not in metadata")
 }
 
-/// Returns the roles that are assigned in this contract
-pub fn roles() -> Vec<Role> {
-    read_field(BASE_KEY_METADATA, META_SUB_KEY_ROLES).expect("roles not in metadata")
+pub fn participant(alias: impl AsRef<str>) -> crate::Result<BorderlessId> {
+    participants()
+        .into_iter()
+        .find(|p| p.alias.eq_ignore_ascii_case(alias.as_ref()))
+        .map(|p| p.id)
+        .with_context(|| format!("failed to find participant with alias '{}'", alias.as_ref()))
 }
 
 /// Returns the available sinks of this contract
 pub fn sinks() -> Vec<Sink> {
     read_field(BASE_KEY_METADATA, META_SUB_KEY_SINKS).expect("sinks not in metadata")
+}
+
+/// Returns the sink based on its alias
+pub fn sink(alias: impl AsRef<str>) -> crate::Result<Sink> {
+    // Search through all sinks
+    sinks()
+        .into_iter()
+        .find(|s| s.has_alias(alias.as_ref()))
+        .with_context(|| format!("failed to find sink with alias '{}'", alias.as_ref()))
+}
+
+/// Returns the contract-id of a sink based on its alias
+pub fn sink_id(alias: impl AsRef<str>) -> crate::Result<ContractId> {
+    sink(alias).map(|s| s.contract_id)
 }
 
 /// Returns the [`Description`] of a contract
@@ -48,19 +72,22 @@ pub fn writer() -> BorderlessId {
     BorderlessId::from_bytes(bytes.try_into().expect("caller must be a borderless-id"))
 }
 
-/// Returns the writer of the current transaction
-pub(crate) fn executor() -> BorderlessId {
-    let bytes = read_register(REGISTER_EXECUTOR).expect("executor not present");
-    BorderlessId::from_bytes(bytes.try_into().expect("executor must be a borderless-id"))
-}
+///// Returns the writer of the current transaction
+//pub(crate) fn executor() -> BorderlessId {
+//    let bytes = read_register(REGISTER_EXECUTOR).expect("executor not present");
+//    BorderlessId::from_bytes(bytes.try_into().expect("executor must be a borderless-id"))
+//}
 
 /// Returns the roles that are assigned to the writer of the current transaction
 pub fn writer_roles() -> Vec<String> {
     let writer = writer();
-    roles()
+    let participants = participants();
+
+    participants
         .into_iter()
-        .filter(|r| r.participant_id == writer)
-        .map(|r| r.role)
+        .filter(|p| p.id == writer)
+        .map(|p| p.roles)
+        .flatten()
         .collect()
 }
 

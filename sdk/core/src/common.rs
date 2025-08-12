@@ -1,17 +1,13 @@
-use std::{collections::BTreeMap, fmt::Display, str::FromStr};
-
+use anyhow::{anyhow, Context};
 use borderless_id_types::{AgentId, Uuid};
-use borderless_pkg::WasmPkg;
+use borderless_pkg::{PkgType, WasmPkg};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::{collections::BTreeMap, fmt::Display, str::FromStr};
 
 pub use borderless_pkg as pkg;
 
-use crate::{
-    contracts::{Role, TxCtx},
-    events::Sink,
-    BorderlessId, ContractId,
-};
+use crate::{contracts::TxCtx, events::Sink, events::Topic, BorderlessId, ContractId};
 
 /// High level description and information about the contract or agent itself
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -82,6 +78,18 @@ impl Id {
     pub fn agent(agent_id: AgentId) -> Self {
         Id::Agent { agent_id }
     }
+
+    #[cfg(feature = "generate_ids")]
+    pub fn generate(pkg_type: &borderless_pkg::PkgType) -> Self {
+        match pkg_type {
+            borderless_pkg::PkgType::Contract => Id::Contract {
+                contract_id: ContractId::generate(),
+            },
+            borderless_pkg::PkgType::Agent => Id::Agent {
+                agent_id: AgentId::generate(),
+            },
+        }
+    }
 }
 
 impl Display for Id {
@@ -132,17 +140,15 @@ impl From<AgentId> for Id {
     }
 }
 
-// NOTE: We could re-write the participant logic like this
-//
-// But that's maybe something for later.
-//
-// pub struct Participant {
-//     pub borderless_id: BorderlessId,
-//     pub alias: String,
-//     pub roles: Vec<String>,
-//     pub sinks: Vec<String>,
-// }
-// { "borderless-id": "4bec7f8e-5074-49a5-9b94-620fb13f12c0", "alias": null, roles": [ "Flipper" ], "sinks": [ "OTHERFLIPPER" ] },
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Participant {
+    pub id: BorderlessId,
+    pub alias: String,
+    /// Roles of the user (only relevant for contracts)
+    #[serde(default)]
+    pub roles: Vec<String>,
+}
+// { "borderless-id": "4bec7f8e-5074-49a5-9b94-620fb13f12c0", "alias": null, roles": [ "Flipper" ]},
 
 /*
  * Ok, spitballing here:
@@ -167,22 +173,20 @@ pub struct Introduction {
 
     /// List of participants
     #[serde(default)]
-    pub participants: Vec<BorderlessId>,
+    pub participants: Vec<Participant>,
 
     /// Initial state as JSON value
     ///
     /// This will be parsed by the implementors of the contract or agent
     pub initial_state: Value,
 
-    /// Mapping between users and roles.
-    ///
-    /// Only relevant for contracts
-    #[serde(default)]
-    pub roles: Vec<Role>,
-
-    /// List of available sinks
+    /// List of available sinks (only relevant for contracts)
     #[serde(default)]
     pub sinks: Vec<Sink>,
+
+    /// List of available subscriptions (only relevant for agents)
+    #[serde(default)]
+    pub subscriptions: Vec<Topic>,
 
     /// High-Level description of the contract or agent
     pub desc: Description,
@@ -237,24 +241,22 @@ pub struct IntroductionDto {
     /// List of participants
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub participants: Vec<BorderlessId>,
+    pub participants: Vec<Participant>,
 
     /// Initial state as JSON value
     ///
     /// This will be parsed by the implementors of the contract or agent
     pub initial_state: Value,
 
-    /// Mapping between users and roles.
-    ///
-    /// Only relevant for contracts
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub roles: Vec<Role>,
-
     /// List of available sinks
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub sinks: Vec<Sink>,
+    pub sinks: Vec<SinkDto>,
+
+    /// List of available topics
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub subscriptions: Vec<Topic>,
 
     /// High-Level description of the contract or agent
     pub desc: Description,
@@ -263,7 +265,108 @@ pub struct IntroductionDto {
     pub package: WasmPkg,
 }
 
-// TODO: Implement conversion from DTO to Introduction
+impl TryFrom<IntroductionDto> for Introduction {
+    type Error = crate::Error;
+
+    fn try_from(value: IntroductionDto) -> Result<Self, Self::Error> {
+        let id = {
+            #[cfg(feature = "generate_ids")]
+            {
+                Id::generate(&value.package.pkg_type)
+            }
+            #[cfg(not(feature = "generate_ids"))]
+            {
+                value.id.with_context(|| {
+                    "ID must be set - enable feature 'generate_ids' to autogenerate an ID"
+                })?
+            }
+        };
+
+        // Verify that the ID matches the package type
+        let valid = match value.package.pkg_type {
+            PkgType::Contract => id.as_cid().is_some(),
+            PkgType::Agent => id.as_aid().is_some(),
+        };
+        if !valid {
+            return Err(anyhow!("Mismatch between provided ID and package type"));
+        }
+
+        let sinks: Vec<Sink> = value.sinks.into_iter().map(|s| s.into()).collect();
+        match id {
+            Id::Contract { .. } => {
+                if sinks.iter().any(|s| s.writer.is_empty()) {
+                    return Err(anyhow!(
+                        "Sinks defined in a smart contract must contain a writer"
+                    ));
+                }
+                if value.participants.is_empty() {
+                    return Err(anyhow!("Smart contracts must contain participants"));
+                }
+                if !value.subscriptions.is_empty() {
+                    return Err(anyhow!("Smart contracts do not support subscriptions"));
+                }
+            }
+            Id::Agent { .. } => {
+                if sinks.iter().any(|s| !s.writer.is_empty()) {
+                    return Err(anyhow!(
+                        "Sinks defined in a sw-agent must NOT contain a writer"
+                    ));
+                }
+                if !value.participants.is_empty() {
+                    return Err(anyhow!("Sw-Agents must NOT contain participants"));
+                }
+            }
+        }
+
+        Ok(Self {
+            id,
+            participants: value.participants,
+            initial_state: value.initial_state,
+            sinks,
+            subscriptions: value.subscriptions,
+            desc: value.desc,
+            meta: Default::default(),
+            package: value.package,
+        })
+    }
+}
+
+impl FromStr for IntroductionDto {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_json::from_str(s)
+    }
+}
+
+/// Digital-Tranfer-Object (Dto) of a [`Sink`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SinkDto {
+    /// Contract-ID of the sink
+    pub contract_id: ContractId,
+
+    /// Alias for the sink
+    ///
+    /// Sinks can be accessed by their alias, allowing an easier lookup.
+    pub alias: String,
+
+    /// Participant-Alias of the writer
+    ///
+    /// All transactions for this `Sink` will be written by this writer.
+    /// Sinks defined in a sw-agent have no writers, as agents have no participants
+    pub writer: Option<String>,
+}
+
+impl From<SinkDto> for Sink {
+    fn from(value: SinkDto) -> Self {
+        Self {
+            contract_id: value.contract_id,
+            alias: value.alias,
+            // Defaults to empty string if no writer is provided
+            writer: value.writer.unwrap_or_default(),
+        }
+    }
+}
 
 /// Contract revocation
 #[derive(Debug, Clone, Serialize, Deserialize)]

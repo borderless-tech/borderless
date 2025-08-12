@@ -1,0 +1,24 @@
+{
+  "contract_id": "cc8ca79c-3bbb-89d2-bb28-29636c170387",
+  "participants": [
+    {
+      "id": "bbcd81bb-b90c-8806-8341-fe95b8ede45a",
+      "alias": "buyer"
+    },
+    {
+      "id": "baaa81bb-b90c-8806-8341-fe95b8ede54b",
+      "alias": "seller"
+    }
+  ],
+  "initial_state": {
+    "cnt": 0
+  },
+  "sinks": [],
+  "desc": {
+    "display_name": "ledger-test",
+    "summary": "ledger test",
+    "legal": null
+  },
+  "meta": {},
+  "package": {}
+}

@@ -192,8 +192,8 @@ where
         self.len() == 0
     }
 
-    pub fn contains_key(&self, sub_key: K) -> bool {
-        let sub_key = Self::hash_key(&sub_key);
+    pub fn contains_key(&self, sub_key: &K) -> bool {
+        let sub_key = Self::hash_key(sub_key);
         self.read(sub_key).is_some()
     }
 

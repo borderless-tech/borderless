@@ -27,6 +27,9 @@ extern "C" {
     pub fn storage_next_subkey(base_key: u64, from_sub_key: u64) -> u64;
     pub fn storage_query_subkey_range(base_key: u64, sub_key_start: u64, sub_key_end: u64) -> u64;
 
+    // --- Ledger-API
+    pub fn create_ledger_entry(wasm_ptr: u64, wasm_len: u64) -> u64;
+
     // Profiling
     pub fn tic(); // matlab style
     pub fn toc() -> u64; // << TODO: Let's not do that, but instead print out the result, so we don't create side-effects
@@ -53,6 +56,10 @@ extern "C" {
 
     // Send a message via websocket
     pub fn send_ws_msg(msg_ptr: u64, msg_len: u64) -> u64;
+
+    pub fn subscribe(id_ptr: u64, topic_ptr: u64, topic_len: u64) -> u64;
+
+    pub fn unsubscribe(id_ptr: u64, topic_ptr: u64, topic_len: u64) -> u64;
 }
 
 #[derive(Debug)]

@@ -1,272 +1,336 @@
-#![allow(unused)]
-use std::collections::HashMap;
+use core::fmt;
 
-use anyhow::anyhow;
 use borderless_id_types::BorderlessId;
 use serde::{Deserialize, Serialize};
 
-use crate::__private::{read_field, storage_keys::BASE_KEY_MASK_LEDGER, write_field};
+use crate::{Error, Participant, Result, __private::create_ledger_entry};
 
-use super::TxCtx;
+pub use currency_4217::{Currency, Money};
 
-// TODO: I don't like this design.
-//
-// Couldn't we do something that let's us do EUR( 32_50 ) ?
-// Or use parse trait ... "32,50€".parse()?
+#[derive(Debug)]
+pub struct EntryTypeErr;
+impl fmt::Display for EntryTypeErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("invalid entry-type")
+    }
+}
+impl std::error::Error for EntryTypeErr {}
+
+/// A ledger entry on the guest side
+#[derive(Clone, Serialize, Deserialize)]
+pub struct LedgerEntry {
+    pub creditor: BorderlessId,
+    pub debitor: BorderlessId,
+    pub amount_milli: i64,
+    pub tax_milli: i64,
+    pub currency: Currency,
+    pub kind: EntryType,
+    pub tag: String,
+}
+
+impl fmt::Display for LedgerEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}, {}->{}, amount={}, tax={}, cur={}, tag={}",
+            self.kind,
+            self.debitor,
+            self.creditor,
+            self.amount_milli,
+            self.tax_milli,
+            self.currency,
+            self.tag
+        )
+    }
+}
+
+impl LedgerEntry {
+    pub fn get_money(&self) -> Money {
+        Money {
+            amount_milli: self.amount_milli,
+            currency: self.currency,
+        }
+    }
+
+    pub fn to_bytes(&self) -> std::result::Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(&self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+
+    pub fn execute(self) -> Result<()> {
+        create_ledger_entry(self)
+    }
+}
+
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Currency {
-    /// Albanian Lek
-    ALL = 8,
-    /// Azerbaijani Manat
-    AZN = 944,
-    /// Belarusian Ruble
-    BYN = 933,
-    /// Bosnian Convertible Mark
-    BAM = 977,
-    /// British Pound Sterling
-    GBP = 826,
-    /// Bulgarian Lev
-    BGN = 975,
-    /// Czech Koruna
-    CZK = 203,
-    /// Danish Krone
-    DKK = 208,
-    /// Euro
-    EUR = 978,
-    /// Hungarian Forint
-    HUF = 348,
-    /// Icelandic Krona
-    ISK = 352,
-    /// Norwegian Krone
-    NOK = 578,
-    /// Polish Zloty
-    PLN = 985,
-    /// Romanian Leu
-    RON = 946,
-    /// Russian Ruble
-    RUB = 643,
-    /// Serbian Dinar
-    RSD = 941,
-    /// Swiss Franc
-    CHF = 756,
-    /// Turkish Lira
-    TRY = 949,
-    /// Ukrainian Hryvnia
-    UAH = 980,
-    /// US Dollar
-    USD = 840,
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum EntryType {
+    /// A new debt is created
+    CREATE = 0,
+    /// An existing debt is settled and thus removed
+    SETTLE = 1,
+    /// Cancels / removes an existing debt
+    CANCEL = 2,
 }
 
-impl Currency {
-    pub fn currency_name(&self) -> &'static str {
+impl EntryType {
+    pub fn to_be_bytes(&self) -> [u8; 4] {
+        (*self as u32).to_be_bytes()
+    }
+
+    pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
+        let b = bytes.try_into().ok()?;
+        let num = u32::from_be_bytes(b);
+        num.try_into().ok()
+    }
+}
+
+impl TryFrom<u32> for EntryType {
+    type Error = EntryTypeErr;
+
+    fn try_from(value: u32) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0 => Ok(EntryType::CREATE),
+            1 => Ok(EntryType::SETTLE),
+            2 => Ok(EntryType::CANCEL),
+            _ => Err(EntryTypeErr),
+        }
+    }
+}
+
+impl fmt::Display for EntryType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Currency::ALL => "Albanian Lek",
-            Currency::AZN => "Azerbaijani Manat",
-            Currency::BYN => "Belarusian Ruble",
-            Currency::BAM => "Bosnian Convertible Mark",
-            Currency::GBP => "British Pound Sterling",
-            Currency::BGN => "Bulgarian Lev",
-            Currency::CZK => "Czech Koruna",
-            Currency::DKK => "Danish Krone",
-            Currency::EUR => "Euro",
-            Currency::HUF => "Hungarian Forint",
-            Currency::ISK => "Icelandic Krona",
-            Currency::NOK => "Norwegian Krone",
-            Currency::PLN => "Polish Zloty",
-            Currency::RON => "Romanian Leu",
-            Currency::RUB => "Russian Ruble",
-            Currency::RSD => "Serbian Dinar",
-            Currency::CHF => "Swiss Franc",
-            Currency::TRY => "Turkish Lira",
-            Currency::UAH => "Ukrainian Hryvnia",
-            Currency::USD => "US Dollar",
-        }
-    }
-
-    pub const fn symbol(&self) -> &'static str {
-        match self {
-            Currency::ALL => "Lek",
-            Currency::AZN => "₼",
-            Currency::BYN => "Br",
-            Currency::BAM => "KM",
-            Currency::GBP => "£",
-            Currency::BGN => "лв",
-            Currency::CZK => "Kč",
-            Currency::DKK => "kr",
-            Currency::EUR => "€",
-            Currency::HUF => "Ft",
-            Currency::ISK => "kr",
-            Currency::NOK => "kr",
-            Currency::PLN => "zł",
-            Currency::RON => "lei",
-            Currency::RUB => "₽",
-            Currency::RSD => "Дин.",
-            Currency::CHF => "CHF",
-            Currency::TRY => "₺",
-            Currency::UAH => "₴",
-            Currency::USD => "$",
+            EntryType::CREATE => f.write_str("CREATE"),
+            EntryType::SETTLE => f.write_str("SETTLE"),
+            EntryType::CANCEL => f.write_str("CANCEL"),
         }
     }
 }
 
-pub trait Account: Copy {
-    /// Settles the debt of some debitor
-    fn settle_debt(&self, debitor: Self) -> TransferBuilder<Self> {
-        TransferBuilder {
-            party_a: *self,
-            party_b: debitor,
+pub struct EntryBuilder<C, D> {
+    creditor: C,
+    debitor: D,
+    amount: Option<Money>,
+    tax: Option<Money>,
+    kind: EntryType,
+    tag: Option<String>,
+}
+
+impl<C, D> EntryBuilder<C, D>
+where
+    C: Participant,
+    D: Participant,
+{
+    pub fn with_amount(self, money: Money) -> Self {
+        Self {
+            creditor: self.creditor,
+            debitor: self.debitor,
+            amount: Some(money),
+            tax: self.tax,
+            kind: self.kind,
+            tag: self.tag,
         }
     }
 
-    /// Transfer a fixed amount of some currency to someone else
-    fn transfer(&self, other: Self) -> TransferBuilder<Self> {
-        TransferBuilder {
-            party_a: other,
-            party_b: *self,
-        }
-    }
-}
-
-impl Account for BorderlessId {
-    fn settle_debt(&self, debitor: Self) -> TransferBuilder<Self> {
-        TransferBuilder {
-            party_a: *self,
-            party_b: debitor,
+    pub fn with_tax(self, tax: Money) -> Self {
+        Self {
+            creditor: self.creditor,
+            debitor: self.debitor,
+            amount: self.amount,
+            tax: Some(tax),
+            kind: self.kind,
+            tag: self.tag,
         }
     }
 
-    fn transfer(&self, other: Self) -> TransferBuilder<Self> {
-        TransferBuilder {
-            party_a: other,
-            party_b: *self,
-        }
-    }
-}
-
-pub struct TransferBuilder<A: Account> {
-    party_a: A,
-    party_b: A,
-}
-
-impl TransferBuilder<BorderlessId> {
-    pub fn amount(self, amount: i64, currency: Currency) -> crate::Result<()> {
-        Ledger::open(self.party_a, self.party_b).push(amount, currency)
-    }
-}
-
-pub struct Ledger {
-    party_a: BorderlessId,
-    party_b: BorderlessId,
-    base_key: u64,
-}
-
-const SUB_KEY_STATE: u64 = 0;
-const SUB_KEY_LEN: u64 = u64::MAX;
-
-impl Ledger {
-    pub fn open(party_a: BorderlessId, party_b: BorderlessId) -> Self {
-        let base_key = party_a.merge_compact(&party_b) & BASE_KEY_MASK_LEDGER;
-        Ledger {
-            party_a,
-            party_b,
-            base_key,
+    pub fn with_tax_opt(self, maybe_tax: Option<Money>) -> Self {
+        Self {
+            creditor: self.creditor,
+            debitor: self.debitor,
+            amount: self.amount,
+            tax: maybe_tax,
+            kind: self.kind,
+            tag: self.tag,
         }
     }
 
-    pub fn state(&self) -> LedgerState {
-        if let Some(state) = read_field(self.base_key, SUB_KEY_STATE) {
-            state
-        } else {
-            // Return default value
-            LedgerState {
-                party_a: self.party_a,
-                party_b: self.party_b,
-                currency: Currency::EUR,
-                balance: 0,
+    pub fn with_tag(self, tag: impl AsRef<str>) -> Self {
+        Self {
+            creditor: self.creditor,
+            debitor: self.debitor,
+            amount: self.amount,
+            tax: self.tax,
+            kind: self.kind,
+            tag: Some(tag.as_ref().to_string()),
+        }
+    }
+    pub fn build(self) -> Result<LedgerEntry> {
+        let creditor = C::get_participant(self.creditor)?;
+        let debitor = D::get_participant(self.debitor)?;
+        let tag = self.tag.unwrap_or_default();
+
+        let (amount, tax_milli) = match (self.amount, self.tax) {
+            (Some(a), Some(t)) => {
+                if a.currency != t.currency {
+                    return Err(Error::msg("amount and tax must use same currency"));
+                }
+                (a, t.amount_milli)
             }
-        }
-    }
-
-    pub fn len(&self) -> u64 {
-        read_field(self.base_key, SUB_KEY_LEN).unwrap_or_default()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    // TODO: This could be its own error type tbh
-    pub fn push(&mut self, amount: i64, currency: Currency) -> crate::Result<()> {
-        let prev = self.state();
-        if prev.currency != currency {
-            return Err(anyhow!("ledger currency mismatch"));
-        }
-
-        // Record the new state
-        let new_state = LedgerState {
-            party_a: prev.party_a,
-            party_b: prev.party_b,
-            currency,
-            balance: prev.balance + amount,
+            (Some(a), None) => (a, 0),
+            (None, _) => return Err(Error::msg("missing amount")),
         };
-        write_field(self.base_key, SUB_KEY_STATE, &new_state);
 
-        // Record the transfer plus the metadata
-        let transfer = LedgerStateMeta {
-            transfer: LedgerState {
-                party_a: prev.party_a,
-                party_b: prev.party_b,
-                currency,
-                balance: amount,
-            },
-            tx_ctx: super::env::tx_ctx(),
-            block_ts: super::env::block_timestamp(),
+        let ledger_entry = LedgerEntry {
+            debitor,
+            creditor,
+            amount_milli: amount.amount_milli,
+            tax_milli,
+            currency: amount.currency,
+            kind: self.kind,
+            tag,
         };
-        let sub_key = self.len() + 1;
-        write_field(self.base_key, sub_key, &transfer);
+        Ok(ledger_entry)
+    }
 
-        // Adjust len ( the sub_key for the record is the new len )
-        write_field(self.base_key, SUB_KEY_LEN, &sub_key);
+    pub fn execute(self) -> Result<()> {
+        let entry = self.build()?;
+        create_ledger_entry(entry)
+    }
+}
+
+pub fn transfer<C, D>(from: D, to: C) -> EntryBuilder<C, D>
+where
+    C: Participant,
+    D: Participant,
+{
+    EntryBuilder {
+        creditor: to,
+        debitor: from,
+        amount: None,
+        tax: None,
+        kind: EntryType::CREATE,
+        tag: None,
+    }
+}
+
+pub fn settle_debt<C, D>(from: D, to: C) -> EntryBuilder<C, D>
+where
+    C: Participant,
+    D: Participant,
+{
+    EntryBuilder {
+        creditor: to,
+        debitor: from,
+        amount: None,
+        tax: None,
+        kind: EntryType::SETTLE,
+        tag: None,
+    }
+}
+
+pub fn cancellation<C, D>(from: D, to: C) -> EntryBuilder<C, D>
+where
+    C: Participant,
+    D: Participant,
+{
+    EntryBuilder {
+        creditor: to,
+        debitor: from,
+        amount: None,
+        tax: None,
+        kind: EntryType::CANCEL,
+        tag: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        __private::storage_keys::{BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS},
+        common::Participant,
+    };
+
+    use super::*;
+
+    fn prepare_participants() -> (Participant, Participant) {
+        use crate::__private::env::off_chain::storage_write;
+
+        let debitor = Participant {
+            id: BorderlessId::generate(),
+            alias: "buyer".to_string(),
+            roles: Vec::new(),
+        };
+        let creditor = Participant {
+            id: BorderlessId::generate(),
+            alias: "seller".to_string(),
+            roles: Vec::new(),
+        };
+        let participants = vec![debitor.clone(), creditor.clone()];
+        let bytes = postcard::to_allocvec(&participants).unwrap();
+
+        // Prepare participants:
+        storage_write(BASE_KEY_METADATA, META_SUB_KEY_PARTICIPANTS, &bytes);
+
+        (creditor, debitor)
+    }
+
+    #[test]
+    fn create_ledger_entry() -> Result<()> {
+        let (creditor, debitor) = prepare_participants();
+        let entry = transfer(debitor, creditor)
+            .with_amount("100 €".parse()?)
+            .with_tax("19 €".parse()?)
+            .with_tag("test-transfer")
+            .build()?;
+        assert_eq!(entry.amount_milli, 100_000);
+        assert_eq!(entry.tax_milli, 19_000);
+        assert_eq!(entry.currency, Currency::EUR);
+        assert_eq!(entry.tag, "test-transfer");
         Ok(())
     }
 
-    pub fn get_transfer(&self, idx: usize) -> Option<LedgerStateMeta> {
-        todo!()
+    #[test]
+    fn participant_logic() -> Result<()> {
+        let (creditor, debitor) = prepare_participants();
+        let e1 = transfer(&debitor, &creditor)
+            .with_amount("100 €".parse()?)
+            .with_tax("19 €".parse()?)
+            .build()?;
+
+        let e2 = transfer(debitor.id, creditor.id)
+            .with_amount("100 €".parse()?)
+            .with_tax("19 €".parse()?)
+            .build()?;
+
+        let e3 = transfer(debitor.alias, creditor.alias)
+            .with_amount("100 €".parse()?)
+            .with_tax("19 €".parse()?)
+            .build()?;
+
+        assert_eq!(e1.to_bytes()?, e2.to_bytes()?);
+        assert_eq!(e2.to_bytes()?, e3.to_bytes()?);
+        assert_eq!(e1.to_bytes()?, e3.to_bytes()?);
+        Ok(())
     }
-}
 
-// TODO: We could use a structure similar to a lazyvec here;
-// Basically a list, that remembers a state
-// (e.g. each time a transfer is happening, the state is updated, but we nonetheless keep the list).
-// this would allow us to keep track of all transfers, while accessing the last item in an instant
-
-// NOTE: This is not only a ledger, but also the datamodel of a single transfer :D
-//
-// -> Let's create a ledger structure as described above
-/// Simple ledger between two parties
-#[derive(Serialize, Deserialize)]
-pub struct LedgerState {
-    /// First party of the ledger
-    party_a: BorderlessId,
-
-    /// Second party of the ledger
-    party_b: BorderlessId,
-
-    /// Currency, that the ledger is in
-    currency: Currency,
-
-    /// Actual balance between `a` and `b`, specified in the smallest unit of the currency
-    ///
-    /// E.g. for `Currency::EUR` the smalles unit is a `cent`, therefore an amount of `3249` would
-    /// mean `32,49€`.
-    /// Note: Since this is a balance, it means that `a` has a credit of `32,49€` while `b` has the same amount as debit.
-    balance: i64,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct LedgerStateMeta {
-    transfer: LedgerState,
-    tx_ctx: TxCtx,
-    block_ts: u64,
+    #[test]
+    fn encode_decode() -> Result<()> {
+        let (creditor, debitor) = prepare_participants();
+        let entry = transfer(debitor, creditor)
+            .with_amount("100 €".parse()?)
+            .with_tax("19 €".parse()?)
+            .with_tag("test-transfer")
+            .build()?;
+        let bytes = entry.to_bytes()?;
+        let decoded = LedgerEntry::from_bytes(&bytes)?;
+        assert_eq!(decoded.amount_milli, 100_000);
+        assert_eq!(decoded.tax_milli, 19_000);
+        assert_eq!(decoded.currency, Currency::EUR);
+        assert_eq!(decoded.tag, "test-transfer");
+        Ok(())
+    }
 }

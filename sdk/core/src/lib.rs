@@ -9,6 +9,7 @@ pub use anyhow::{anyhow as new_error, ensure, Context, Error, Result};
 pub mod serialize {
     pub use serde_json::from_slice;
     pub use serde_json::from_value;
+    pub use serde_json::json;
     pub use serde_json::to_value;
     pub use serde_json::Error;
     pub use serde_json::Value;
@@ -16,7 +17,7 @@ pub mod serialize {
 
 // Directly export macros, so that the user can write:
 // #[borderless::contract], #[borderless::agent] and #[borderless::action]
-pub use borderless_sdk_macros::{action, agent, contract, schedule, NamedSink, State};
+pub use borderless_sdk_macros::{action, agent, contract, schedule, State};
 
 /// This module is **not** part of the public API.
 /// It exists, because the procedural macros and some internal implementations (like the contract runtime) rely on it.
@@ -36,10 +37,13 @@ pub use borderless_hash as hash;
 pub use borderless_pkg as pkg;
 
 pub mod prelude {
-    pub use crate::agents::*;
     pub use crate::common::*;
-    pub use crate::contracts::*;
+    pub use crate::contracts::{ledger, TxCtx};
     pub use crate::events::*;
+    pub use crate::serialize::json;
+    /// Re-Export of `serde_json::json` macro as `value!`
+    pub use crate::serialize::json as value;
+    pub use crate::CallMethod;
     pub use crate::{ensure, new_error, Context, Error, Result};
     pub use borderless_sdk_macros::*;
 }
@@ -48,16 +52,71 @@ pub mod common;
 pub mod events;
 pub mod http;
 
-/// Trait that must be implemented on the `Sink` enum inside a contract module.
-///
-/// Implementing this trait ensures, that you can split the sink into a static string
-/// (which represents the 'alias'-string we use to match sinks) and a CallAction object,
-/// which will be used to generate the output transaction.
-pub trait NamedSink {
-    /// Splits the sink into its alias and the encoded CallAction object.
-    ///
-    /// Errors while converting the action should be converted into a wasm trap.
-    fn into_action(self) -> (&'static str, events::CallAction);
+use crate::events::CBInit;
+
+pub trait CallMethod: Sized + private_trait::Sealed {
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<CBInit>;
+}
+
+impl private_trait::Sealed for ContractId {}
+impl CallMethod for ContractId {
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<CBInit> {
+        events::CallBuilder::new(*self, method_name)
+    }
+}
+
+impl private_trait::Sealed for events::Sink {}
+impl CallMethod for events::Sink {
+    fn call_method(&self, method_name: &str) -> events::CallBuilder<CBInit> {
+        events::CallBuilder::new_with_writer(self.contract_id, method_name, &self.writer)
+    }
+}
+
+pub trait Participant: Sized + private_trait::Sealed {
+    fn get_participant(elem: Self) -> Result<BorderlessId>;
+}
+
+impl private_trait::Sealed for BorderlessId {}
+impl Participant for BorderlessId {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participants()
+            .into_iter()
+            .find(|p| p.id == elem)
+            .map(|p| p.id)
+            .with_context(|| format!("Found no participant with id={elem}"))
+    }
+}
+
+impl private_trait::Sealed for String {}
+impl Participant for String {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participant(elem)
+    }
+}
+
+impl private_trait::Sealed for &str {}
+impl Participant for &str {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participant(elem)
+    }
+}
+
+impl private_trait::Sealed for &common::Participant {}
+impl Participant for &common::Participant {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        contracts::env::participant(&elem.alias)
+    }
+}
+
+impl private_trait::Sealed for common::Participant {}
+impl Participant for common::Participant {
+    fn get_participant(elem: Self) -> Result<BorderlessId> {
+        Participant::get_participant(&elem)
+    }
+}
+
+mod private_trait {
+    pub trait Sealed {}
 }
 
 pub mod time {

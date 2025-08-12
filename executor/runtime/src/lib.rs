@@ -34,6 +34,12 @@ pub const WASM_CODE_SUB_DB: &str = "wasm-code-db";
 /// Sub-Database to store the relationship between an action and a transaction
 pub const ACTION_TX_REL_SUB_DB: &str = "rel-tx-action-db";
 
+/// Sub-Database to store the relationship between contracts and agents, and vice-versa
+pub const SUBSCRIPTION_REL_SUB_DB: &str = "rel-subscription-db";
+
+/// Sub-Database, where the ledger information is stored
+pub const LEDGER_SUB_DB: &str = "ledger-db";
+
 // TODO: Tracing vs Logging !
 // We should make this toggleable via feature switch.
 

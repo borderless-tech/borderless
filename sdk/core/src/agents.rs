@@ -1,8 +1,12 @@
+/// Agent Environment
+pub mod env;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
     __private::send_ws_msg,
-    events::{ActionOutput, CallAction, MethodOrId},
+    events::Events,
+    events::{CallAction, MethodOrId},
 };
 
 /// Schedules are functions that are executed periodically.
@@ -77,21 +81,21 @@ pub trait WebsocketHandler {
     fn open_ws(&self) -> WsConfig;
 
     /// Called whenever a message is received from the client.
-    fn on_message(&mut self, msg: Vec<u8>) -> Result<Option<ActionOutput>, Self::Err>;
+    fn on_message(&mut self, msg: Vec<u8>) -> Result<Option<Events>, Self::Err>;
 
     /// Called when a new connection is established (before any messages are exchanged).
-    fn on_open(&mut self) -> Result<Option<ActionOutput>, Self::Err> {
+    fn on_open(&mut self) -> Result<Option<Events>, Self::Err> {
         Ok(None)
     }
 
     /// Called when an error occurs on the connection.
-    fn on_error(&mut self) -> Result<Option<ActionOutput>, Self::Err> {
+    fn on_error(&mut self) -> Result<Option<Events>, Self::Err> {
         crate::error!("Websocket error - connection closed.");
         self.on_close()
     }
 
     /// Called when the connection is cleanly closed (e.g., by the client).
-    fn on_close(&mut self) -> Result<Option<ActionOutput>, Self::Err> {
+    fn on_close(&mut self) -> Result<Option<Events>, Self::Err> {
         Ok(None)
     }
 

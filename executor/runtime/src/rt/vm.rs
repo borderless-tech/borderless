@@ -5,6 +5,7 @@
 
 use borderless::__private::registers::*;
 use borderless::common::Id;
+use borderless::prelude::ledger::LedgerEntry;
 use borderless::{
     __private::storage_keys::StorageKey,
     common::{Introduction, Revocation},
@@ -25,6 +26,8 @@ use wasmtime::{Caller, Extern, Memory};
 #[cfg(feature = "agents")]
 use tokio::sync::mpsc;
 
+use crate::db::controller::Controller;
+use crate::db::ledger::Ledger;
 use crate::{
     db::action_log::{ActionLog, ActionRecord},
     db::controller::{write_introduction, write_revocation},
@@ -157,13 +160,14 @@ impl<S: Db> VmState<S> {
         };
 
         // Check active entity
-        let (id, db_txns, tx_ctx) = match active {
+        let (id, db_txns, ledger_entries, tx_ctx) = match active {
             ActiveEntity::Contract {
                 cid,
                 db_txns,
+                ledger_entries,
                 tx_ctx,
-            } => (Id::contract(cid), db_txns, tx_ctx),
-            ActiveEntity::Agent { aid, db_txns } => (Id::agent(aid), db_txns, None),
+            } => (Id::contract(cid), db_txns, ledger_entries, tx_ctx),
+            ActiveEntity::Agent { aid, db_txns } => (Id::agent(aid), db_txns, None, None),
             ActiveEntity::None => return Ok(log_output),
         };
 
@@ -187,6 +191,18 @@ impl<S: Db> VmState<S> {
             }
         }
 
+        // Update ledger for each ledger entry
+        // NOTE: We assume that the check, if the creditor or debitor are actually participants has been done
+        let ledger = Ledger::new(&self.db);
+        for entry in ledger_entries.unwrap_or_default() {
+            ledger.commit_entry(
+                &mut txn,
+                &entry,
+                id.as_cid().expect("ledgers only exist in contracts"),
+                &tx_ctx.as_ref().expect("ledgers are only modified by txs"),
+            )?;
+        }
+
         // Current timestamp ( milliseconds since epoch )
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -207,11 +223,16 @@ impl<S: Db> VmState<S> {
                 assert_eq!(introduction.id, id);
                 introduction.meta.active_since = timestamp;
                 introduction.meta.tx_ctx_introduction = tx_ctx;
-                write_introduction::<S>(&self.db_ptr, &mut txn, introduction)?;
+                write_introduction::<S>(&self.db_ptr, &mut txn, introduction.clone())?;
+                // Write static subscriptions (coming from the introduction)
+                Controller::new(&self.db)
+                    .messages()
+                    .init(&mut txn, introduction)?;
             }
             Commit::Revocation(revocation) => {
                 assert_eq!(revocation.id, id);
                 write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, timestamp, tx_ctx)?;
+                // TODO Cancel subscriptions
             }
             Commit::Other => { /* nothing to do */ }
         }
@@ -268,9 +289,9 @@ impl<S: Db> VmState<S> {
 
     /// Registers a websocket sender
     #[cfg(feature = "agents")]
-    pub fn register_ws(&mut self, aid: AgentId, ch: mpsc::Sender<Vec<u8>>) -> Result<()> {
+    pub fn register_ws(&mut self, ch: mpsc::Sender<Vec<u8>>) -> Result<()> {
         let state = self._async.as_mut().ok_or_else(|| ErrorKind::NoAsync)?;
-        state.clients.insert(aid, ch);
+        state.ws_sender = Some(ch);
         Ok(())
     }
 }
@@ -279,7 +300,7 @@ impl<S: Db> VmState<S> {
 #[derive(Default)]
 struct AsyncState {
     #[cfg(feature = "agents")]
-    clients: ahash::HashMap<AgentId, mpsc::Sender<Vec<u8>>>,
+    ws_sender: Option<mpsc::Sender<Vec<u8>>>,
 }
 
 /// Helper function to get the linear memory of the wasm module
@@ -639,6 +660,55 @@ pub fn storage_gen_sub_key() -> wasmtime::Result<u64> {
     Ok(rng.random())
 }
 
+/// Host function to create a ledger entry
+///
+/// This is the host implementation of `borderless_abi::create_ledger_entry` and must be linked by the runtime.
+pub fn create_ledger_entry(
+    mut caller: Caller<'_, VmState<impl Db>>,
+    wasm_ptr: u64,
+    wasm_len: u64,
+) -> wasmtime::Result<u64> {
+    if caller.data().active.is_immutable() {
+        return Ok(0);
+    }
+    // Get memory
+    let memory = get_memory(&mut caller)?;
+
+    // Read value
+    let value = copy_wasm_memory(&mut caller, &memory, wasm_ptr, wasm_len)?;
+    let entry = LedgerEntry::from_bytes(&value)?;
+
+    // Check, if the entry is only modifying a contract participant
+    let cid = caller
+        .data()
+        .active
+        .is_contract()
+        .ok_or_else(|| Error::msg("ledger-entry can only be created in contracts"))?;
+
+    let participants = Controller::new(&caller.data().db)
+        .contract_participants(&cid)?
+        .unwrap_or_default();
+
+    let creditor = participants
+        .iter()
+        .find(|p| p.id == entry.creditor)
+        .is_some();
+    let debitor = participants
+        .iter()
+        .find(|p| p.id == entry.debitor)
+        .is_some();
+    if creditor && debitor {
+        caller.data_mut().active.push_ledger(entry)?;
+        Ok(0)
+    } else if !creditor && debitor {
+        Ok(1)
+    } else if creditor && !debitor {
+        Ok(2)
+    } else {
+        Ok(3)
+    }
+}
+
 /// Host function to generate a random number between `min` and `max`
 ///
 /// Should only be used in tests or for software-agents, as randomness would introduce side-effects in the contracts.
@@ -710,7 +780,7 @@ pub mod async_abi {
             .as_ref()
             .ok_or_else(|| wasmtime::Error::msg("missing async-state in async runtime"))?;
 
-        match state.clients.get(&agent_id) {
+        match &state.ws_sender {
             Some(ch) => {
                 // We add a timeout here to not create a deadlock in case the channel is full
                 match tokio::time::timeout(Duration::from_secs(10), ch.send(data)).await {
@@ -1026,6 +1096,8 @@ pub enum ActiveEntity {
         cid: ContractId,
         // 'None', if immutable
         db_txns: Option<Vec<StorageOp>>,
+        // 'None', if immutable
+        ledger_entries: Option<Vec<LedgerEntry>>,
         // 'None' for immutable http calls
         tx_ctx: Option<TxCtx>,
     },
@@ -1040,9 +1112,11 @@ pub enum ActiveEntity {
 impl ActiveEntity {
     pub fn contract_tx(cid: ContractId, mutable: bool, tx_ctx: TxCtx) -> Self {
         let db_txns = if mutable { Some(Vec::new()) } else { None };
+        let ledger_entries = if mutable { Some(Vec::new()) } else { None };
         ActiveEntity::Contract {
             cid,
             db_txns,
+            ledger_entries,
             tx_ctx: Some(tx_ctx),
         }
     }
@@ -1051,6 +1125,7 @@ impl ActiveEntity {
         ActiveEntity::Contract {
             cid,
             db_txns: None,
+            ledger_entries: None,
             tx_ctx: None,
         }
     }
@@ -1075,6 +1150,13 @@ impl ActiveEntity {
     fn is_agent(&self) -> Option<AgentId> {
         match self {
             ActiveEntity::Agent { aid, .. } => Some(*aid),
+            _ => None,
+        }
+    }
+
+    fn is_contract(&self) -> Option<ContractId> {
+        match self {
+            ActiveEntity::Contract { cid, .. } => Some(*cid),
             _ => None,
         }
     }
@@ -1113,6 +1195,25 @@ impl ActiveEntity {
                 }
             }
             ActiveEntity::None => Err(ErrorKind::NoActiveEntity.into()),
+        }
+    }
+
+    /// Pushes an entry to a ledger
+    ///
+    /// Returns an error if the active entity is not a contract or immutable.
+    fn push_ledger(&mut self, entry: LedgerEntry) -> Result<()> {
+        match self {
+            ActiveEntity::Contract { ledger_entries, .. } => {
+                if let Some(ledger) = ledger_entries {
+                    ledger.push(entry);
+                    Ok(())
+                } else {
+                    Err(ErrorKind::Immutable.into())
+                }
+            }
+            ActiveEntity::Agent { .. } | ActiveEntity::None => {
+                Err(ErrorKind::NoActiveEntity.into())
+            }
         }
     }
 }

@@ -123,10 +123,11 @@ pub mod code_store {
     use borderless_kv_store::{Db, RawRead, RawWrite, Tx};
     use lru::LruCache;
     use parking_lot::Mutex;
+    use std::time::Instant;
     use std::{num::NonZeroUsize, sync::Arc};
     use wasmtime::{Engine, Instance, Linker, Module, Store};
 
-    use crate::log_shim::*;
+    use crate::{log_shim::*, AGENT_SUB_DB, CONTRACT_SUB_DB};
     use crate::{Result, WASM_CODE_SUB_DB};
 
     /// Generalized ID - this is either a Contract-ID or an Agent-ID
@@ -136,7 +137,7 @@ pub mod code_store {
     #[derive(Clone)]
     pub struct CodeStore<S: Db> {
         db: S,
-        cache: Arc<Mutex<LruCache<Id, Instance, ahash::RandomState>>>,
+        cache: Arc<Mutex<LruCache<Id, Module, ahash::RandomState>>>,
     }
 
     impl<S: Db> CodeStore<S> {
@@ -151,6 +152,19 @@ pub mod code_store {
                 db: db.clone(),
                 cache: Arc::new(Mutex::new(cache)),
             })
+        }
+
+        pub fn create_store(&self, engine: &Engine) -> Result<Store<VmState<S>>> {
+            // TODO: Select correct sub-db based on entity type
+            // ( do we want to use the engine here ? )
+            let db_ptr = if engine.is_async() {
+                self.db.open_sub_db(AGENT_SUB_DB)?
+            } else {
+                self.db.open_sub_db(CONTRACT_SUB_DB)?
+            };
+            let state = VmState::new(self.db.clone(), db_ptr);
+            let store = Store::new(&engine, state);
+            Ok(store)
         }
 
         pub fn insert_contract(&self, cid: ContractId, module: Module) -> Result<()> {
@@ -176,27 +190,21 @@ pub mod code_store {
             &mut self,
             cid: &ContractId,
             engine: &Engine,
-            store: &mut Store<VmState<S>>,
             linker: &mut Linker<VmState<S>>,
-        ) -> Result<Option<Instance>> {
-            let start = std::time::Instant::now();
-            if let Some(instance) = self.cache.lock().get(cid.as_bytes()) {
-                let elapsed = start.elapsed();
-                debug!("Served cached module in {elapsed:?}");
-                return Ok(Some(*instance));
-            }
-            let module = match self.read_module(cid, engine)? {
+        ) -> Result<Option<(Instance, Store<VmState<S>>)>> {
+            let start = Instant::now();
+            let module = match self.read_module(cid.as_bytes(), engine)? {
                 Some(m) => m,
                 None => return Ok(None),
             };
             let elapsed = start.elapsed();
             debug!("Read module in {elapsed:?}");
-            let start = std::time::Instant::now();
-            let instance = linker.instantiate(store, &module)?;
-            self.cache.lock().push(*cid.as_bytes(), instance);
+            let start = Instant::now();
+            let mut store = self.create_store(engine)?;
+            let instance = linker.instantiate(&mut store, &module)?;
             let elapsed = start.elapsed();
             debug!("Instantiated module in {elapsed:?}");
-            Ok(Some(instance))
+            Ok(Some((instance, store)))
         }
 
         #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(agent_id = %aid)))]
@@ -204,27 +212,21 @@ pub mod code_store {
             &mut self,
             aid: &AgentId,
             engine: &Engine,
-            store: &mut Store<VmState<S>>,
             linker: &mut Linker<VmState<S>>,
-        ) -> Result<Option<Instance>> {
-            let start = std::time::Instant::now();
-            if let Some(instance) = self.cache.lock().get(aid.as_bytes()) {
-                let elapsed = start.elapsed();
-                debug!("Served cached module in {elapsed:?}");
-                return Ok(Some(*instance));
-            }
-            let module = match self.read_module(aid, engine)? {
+        ) -> Result<Option<(Instance, Store<VmState<S>>)>> {
+            let start = Instant::now();
+            let module = match self.read_module(aid.as_bytes(), engine)? {
                 Some(m) => m,
                 None => return Ok(None),
             };
             let elapsed = start.elapsed();
             debug!("Read module in {elapsed:?}");
-            let start = std::time::Instant::now();
-            let instance = linker.instantiate_async(store, &module).await?;
-            self.cache.lock().push(*aid.as_bytes(), instance);
+            let start = Instant::now();
+            let mut store = self.create_store(engine)?;
+            let instance = linker.instantiate_async(&mut store, &module).await?;
             let elapsed = start.elapsed();
             debug!("Instantiated module in {elapsed:?}");
-            Ok(Some(instance))
+            Ok(Some((instance, store)))
         }
 
         /// Helper function to read a module from the kv-storage
@@ -232,11 +234,10 @@ pub mod code_store {
         /// Note: This helper function is required, because otherwise the compiler might complain
         /// that `RoTx` does not implement `Send`, as it cannot figure out on its own,
         /// that the transaction is dropped before the next `.await` point.
-        fn read_module(
-            &mut self,
-            key: impl AsRef<[u8]>,
-            engine: &Engine,
-        ) -> Result<Option<Module>> {
+        fn read_module(&mut self, key: &[u8; 16], engine: &Engine) -> Result<Option<Module>> {
+            if let Some(module) = self.cache.lock().get(key.as_ref()) {
+                return Ok(Some(module.clone()));
+            }
             let db_ptr = self.db.open_sub_db(WASM_CODE_SUB_DB)?;
             let txn = self.db.begin_ro_txn()?;
             let module_bytes = txn.read(&db_ptr, &key)?;
@@ -245,6 +246,8 @@ pub mod code_store {
                 None => return Ok(None),
             };
             txn.commit()?;
+            // Insert module into cache
+            self.cache.lock().push(*key, module.clone());
             Ok(Some(module))
         }
 
@@ -286,6 +289,11 @@ pub mod code_store {
             drop(cursor);
             txn.commit()?;
             Ok(out)
+        }
+
+        /// Returns a copy of the underlying db-handle
+        pub fn get_db(&self) -> S {
+            self.db.clone()
         }
     }
 }

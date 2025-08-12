@@ -1,10 +1,12 @@
+use crate::agents::env::{agent_id, executor};
+use crate::common::Id;
+use crate::contracts::env::{contract_id, is_contract, participant, sinks};
+use crate::events::private::Sealed;
 use anyhow::anyhow;
-use borderless_id_types::{AgentId, BorderlessId, ContractId};
+use borderless_id_types::{BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{fmt::Display, str::FromStr};
-
-use crate::{debug, error, NamedSink};
+use std::{fmt::Debug, fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -96,35 +98,234 @@ impl CallAction {
     }
 }
 
-// /// Represents a target that should execute some action.
-// ///
-// /// Since contracts and software-agents both use the [`CallAction`] struct,
-// /// but also use different ID types, this enum can be used in cases where a `CallAction`
-// /// is bundled with either a [`ContractId`] or [`AgentId`].
-// pub enum TargetId {
-//     Agent(AgentId),
-//     Contract(ContractId),
-// }
+pub struct CBInit;
+pub struct CBWithAction;
+
+/// Builder to create a new `ContractCall`
+pub struct CallBuilder<STATE> {
+    pub(crate) id: ContractId,
+    pub(crate) name: String,
+    pub(crate) writer: Option<BorderlessId>,
+    pub(crate) action: Option<CallAction>,
+    _marker: std::marker::PhantomData<STATE>,
+}
+
+impl CallBuilder<CBInit> {
+    pub fn new(id: ContractId, method_name: &str) -> CallBuilder<CBInit> {
+        CallBuilder {
+            id,
+            name: method_name.to_string(),
+            writer: None,
+            action: None,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub(crate) fn new_with_writer(
+        id: ContractId,
+        method_name: &str,
+        writer: &str,
+    ) -> CallBuilder<CBInit> {
+        let writer = if is_contract() {
+            participant(writer).expect("sink contains unknown writer")
+        } else {
+            // When dealing with a sw-agent, the executor must be the writer
+            executor()
+        };
+
+        CallBuilder {
+            id,
+            name: method_name.to_string(),
+            writer: Some(writer),
+            action: None,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Specify the arguments of the action directly as a json-value
+    pub fn with_value(self, value: Value) -> CallBuilder<CBWithAction> {
+        let action = CallAction::by_method(&self.name, value);
+        CallBuilder {
+            id: self.id,
+            name: self.name,
+            writer: self.writer,
+            action: Some(action),
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Specify the arguments of the action
+    ///
+    /// In contrast to `with_value`, this function expects a serializable object to build the json value.
+    pub fn with_args<T: serde::Serialize>(
+        self,
+        args: T,
+    ) -> Result<CallBuilder<CBWithAction>, crate::Error> {
+        let value = serde_json::to_value(args).map_err(|e| {
+            crate::Error::msg(format!("failed to convert args for method-call: {e}"))
+        })?;
+        let action = CallAction::by_method(&self.name, value);
+        Ok(CallBuilder {
+            id: self.id,
+            name: self.name,
+            writer: self.writer,
+            action: Some(action),
+            _marker: std::marker::PhantomData,
+        })
+    }
+}
+
+impl CallBuilder<CBWithAction> {
+    /// Specify the writer of the transaction by their alias
+    ///
+    /// Returns an error, if no participant exists with that alias.
+    pub fn with_writer(
+        self,
+        writer_alias: impl AsRef<str>,
+    ) -> Result<CallBuilder<CBWithAction>, crate::Error> {
+        // Check if a participant with the provided alias exists
+        let writer_id = participant(writer_alias.as_ref())?;
+        Ok(CallBuilder {
+            id: self.id,
+            name: self.name,
+            writer: Some(writer_id),
+            action: self.action,
+            _marker: std::marker::PhantomData::default(),
+        })
+    }
+
+    /// Builds the `ContractCall`
+    pub fn build(self) -> Result<ContractCall, crate::Error> {
+        debug_assert!(self.action.is_some(), "invariant: action must be set");
+
+        // NOTE: If we have specified a writer, we don't want to check the existing sinks,
+        // as the user seems to know what he/she is doing (calling an action based on contract-id + writer-id):
+        if let Some(writer) = self.writer {
+            return Ok(ContractCall {
+                contract_id: self.id,
+                action: self.action.unwrap(),
+                writer,
+            });
+        }
+        // --- Proceed as normal, without a writer
+
+        // Fetch the sinks related to the contract
+        let mut sinks: Vec<Sink> = sinks()
+            .into_iter()
+            .filter(|s| s.contract_id == self.id)
+            .collect();
+
+        // Ensure there is a single match when looking for a sink
+        let writer = match sinks.len() {
+            0 => return Err(anyhow!("Found no sink related to contract-id {}", self.id)),
+            1 => {
+                let sink = sinks.pop().unwrap();
+                participant(sink.writer)?
+            }
+            _ => {
+                return Err(anyhow!(
+                    "Found multiple sinks for contract-id {} - please specify the writer directly",
+                    self.id
+                ));
+            }
+        };
+
+        Ok(ContractCall {
+            contract_id: self.id,
+            action: self.action.unwrap(),
+            writer,
+        })
+    }
+}
 
 /// An outgoing event for another contract
+///
+/// `ContractCall`s will be converted into transactions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContractCall {
     pub contract_id: ContractId,
     pub action: CallAction,
+    pub writer: BorderlessId,
 }
 
-/// An outgoing event for another agent
+/// An outgoing message that clients or agents can subscribe to
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentCall {
-    pub agent_id: AgentId,
-    pub action: CallAction,
+pub struct Message {
+    pub publisher: Id,
+    pub topic: String,
+    pub value: Value,
+}
+
+/// Convenience function to generate messages
+///
+/// Returns a [`MsgBuilder`], which can be used to generate messages:
+/// ```no_run
+/// # use borderless::prelude::*;
+/// // Build a new message for topic "/base/nested"
+/// let msg = message("/base/nested")
+///    .with_value(value!({ "switch": false }));
+/// ```
+///
+/// Note: All topics are prefixed with `/{contract-id}` (or `/{agent-id}`),
+/// so your topic `my-topic` would become e.g. `/cc963345-4cd9-8f30-b215-2cdffee3d189/my-topic`.
+/// This way we distinguish identical topic names for different contracts or agents.
+/// Trailing slashes are ignored, so `/my-topic` and `my-topic` would result in an identical topic string.
+///
+/// Also be aware, that topic subscriptions and matchings are case-insensitive.
+///
+/// All of these topics would be identical:
+/// - `/my-topic`
+/// - `my-topic`
+/// - `/My-Topic`
+/// - `MY-TOPIC`
+pub fn message(topic: impl AsRef<str>) -> MsgBuilder {
+    // Fetch publisher from the environment
+    let publisher = if is_contract() {
+        Id::contract(contract_id())
+    } else {
+        Id::agent(agent_id())
+    };
+
+    MsgBuilder {
+        publisher,
+        topic: topic.as_ref().to_string(),
+    }
+}
+
+pub struct MsgBuilder {
+    publisher: Id,
+    topic: String,
+}
+
+impl MsgBuilder {
+    pub fn with_value(self, value: Value) -> Message {
+        Message {
+            publisher: self.publisher,
+            topic: self.topic,
+            value,
+        }
+    }
+
+    pub fn with_serde<T: serde::Serialize>(self, args: T) -> Result<Message, crate::Error> {
+        let value = serde_json::to_value(args).map_err(|e| {
+            crate::Error::msg(format!(
+                "failed to serialize argument for message on topic '{}': {e}",
+                self.topic,
+            ))
+        })?;
+        Ok(Message {
+            publisher: self.publisher,
+            topic: self.topic,
+            value,
+        })
+    }
 }
 
 /// Output Events generated by a contract or sw-agent
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Events {
     pub contracts: Vec<ContractCall>,
-    pub local: Vec<AgentCall>,
+    pub local: Vec<Message>,
 }
 
 impl Events {
@@ -144,106 +345,39 @@ impl Events {
     }
 }
 
-/// Specifies the Sink-Type of an `ActionOutput`.
-///
-/// A sink can be either a named sink, that gets referenced by its `sink_alias`.
-/// The real contract- or process-id is taken from the Contract- or ProcessInfo,
-/// using [`ContractInfo::find_sink`] (or [`ProcessInfo::find_sink`]).
-///
-/// In general it is recommended to use the named sink-type, as it provides the most
-/// comfort and fool-proof way of interacting with other contracts or processes.
-///
-/// However, for maximum flexibility, users can also refer to a sink directly by their
-/// [`ContractId`] or [`ProcessId`].
-#[derive(Debug)]
-pub enum SinkType {
-    Named(String),
-    Agent(AgentId),
-    Contract(ContractId),
-}
-
-impl Display for SinkType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SinkType::Named(s) => write!(f, "{s}"),
-            SinkType::Agent(s) => write!(f, "{s}"),
-            SinkType::Contract(s) => write!(f, "{s}"),
+impl From<ContractCall> for Events {
+    fn from(value: ContractCall) -> Self {
+        Events {
+            contracts: vec![value],
+            local: Vec::new(),
         }
     }
 }
 
-/// Output events of a contract's action
-#[derive(Default)]
-pub struct ActionOutput {
-    actions: Vec<(SinkType, CallAction)>,
+impl From<Message> for Events {
+    fn from(value: Message) -> Self {
+        Events {
+            contracts: Vec::new(),
+            local: vec![value],
+        }
+    }
 }
 
-impl ActionOutput {
-    pub fn new() -> Self {
-        Self::default()
+impl From<Vec<ContractCall>> for Events {
+    fn from(value: Vec<ContractCall>) -> Self {
+        Events {
+            contracts: value,
+            local: Vec::new(),
+        }
     }
+}
 
-    pub fn add_event<T: NamedSink>(&mut self, target: T) {
-        let (sink_name, action) = target.into_action();
-        self.actions
-            .push((SinkType::Named(sink_name.to_string()), action));
-    }
-
-    /// Adds a generic event to the output - with dynamic dispatch of the output sinks.
-    ///
-    /// In contrast to [`ActionOutput::add_event`] the event type must only implement `TryInto<CallAction>`,
-    /// since the user directly tells us towards which sink the event should be send.
-    /// This is only necessary, if the `Sink` has been added after the contract was instantiated.
-    pub fn add_event_dynamic<S, IntoAction>(&mut self, sink_alias: S, action: IntoAction)
-    where
-        S: AsRef<str>,
-        IntoAction: TryInto<CallAction>,
-        <IntoAction as TryInto<CallAction>>::Error: std::fmt::Display,
-    {
-        let alias = sink_alias.as_ref().to_string();
-        let action = match action.try_into() {
-            Ok(a) => a,
-            Err(e) => {
-                error!("critical error while converting action for dynamic sink '{alias}': {e}");
-                crate::__private::abort();
-            }
-        };
-        self.actions.push((SinkType::Named(alias), action))
-    }
-
-    pub fn add_event_for_contract<IntoAction>(
-        &mut self,
-        contract_id: ContractId,
-        action: IntoAction,
-    ) where
-        IntoAction: TryInto<CallAction>,
-        <IntoAction as TryInto<CallAction>>::Error: std::fmt::Display,
-    {
-        let action = match action.try_into() {
-            Ok(a) => a,
-            Err(e) => {
-                error!(
-                    "critical error while converting action for dynamic sink '{contract_id}': {e}"
-                );
-                crate::__private::abort();
-            }
-        };
-        self.actions.push((SinkType::Contract(contract_id), action))
-    }
-
-    pub fn add_event_for_process<IntoAction>(&mut self, agent_id: AgentId, action: IntoAction)
-    where
-        IntoAction: TryInto<CallAction>,
-        <IntoAction as TryInto<CallAction>>::Error: std::fmt::Display,
-    {
-        let action = match action.try_into() {
-            Ok(a) => a,
-            Err(e) => {
-                error!("critical error while converting action for dynamic sink '{agent_id}': {e}");
-                crate::__private::abort();
-            }
-        };
-        self.actions.push((SinkType::Agent(agent_id), action))
+impl From<Vec<Message>> for Events {
+    fn from(value: Vec<Message>) -> Self {
+        Events {
+            contracts: Vec::new(),
+            local: value,
+        }
     }
 }
 
@@ -251,7 +385,7 @@ impl ActionOutput {
 ///
 /// Note: This trait converts `()`, `ActionOutput`, `Result<(), E>` and `Result<ActionOutput, E>` into [`Events`].
 /// The implementation of `ActionOutput` also checks, if the writer actually has access to a sink.
-pub trait ActionOutEvent: private::Sealed {
+pub trait ActionOutput: Sealed {
     fn convert_out_events(self) -> crate::Result<Events>;
 }
 
@@ -259,82 +393,52 @@ mod private {
     pub trait Sealed {}
 }
 
-impl private::Sealed for () {}
-impl ActionOutEvent for () {
+impl Sealed for () {}
+impl ActionOutput for () {
     fn convert_out_events(self) -> crate::Result<Events> {
         Ok(Events::default())
     }
 }
 
-impl<E> private::Sealed for Result<(), E> where E: std::fmt::Display + Send + Sync + 'static {}
-impl<E> ActionOutEvent for Result<(), E>
+impl<E> Sealed for Result<(), E> where E: Display + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<(), E>
 where
-    E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static,
+    E: Display + Debug + Send + Sync + 'static,
 {
     fn convert_out_events(self) -> crate::Result<Events> {
         self.map_err(|e| crate::Error::msg(e))?.convert_out_events()
     }
 }
 
-impl private::Sealed for ActionOutput {}
-impl ActionOutEvent for ActionOutput {
-    fn convert_out_events(self) -> crate::Result<Events> {
-        let caller = crate::contracts::env::executor();
-        let sinks = crate::contracts::env::sinks();
-
-        let mut contracts = Vec::new();
-        let mut local = Vec::new();
-
-        // TODO: There is an edge-case here; we currently have no solution,
-        // if multiple participants in a contract have access to the same sink !
-        //
-        // Idea: Find these places and do a pseudo-random (but deterministic) choice.
-        // Or we could solve this from the outside; somehow..
-        for (sink, action) in self.actions {
-            match sink {
-                SinkType::Named(alias) => {
-                    if let Some(sink) = sinks.iter().find(|s| s.has_alias(&alias)) {
-                        if !sink.has_access(caller) {
-                            debug!("caller {caller} does not have access to sink {alias}");
-                            continue;
-                        }
-                        match sink {
-                            Sink::Contract { contract_id, .. } => {
-                                // TODO
-                                contracts.push(ContractCall {
-                                    contract_id: *contract_id,
-                                    action,
-                                })
-                            }
-                            Sink::Agent { agent_id, .. } => local.push(AgentCall {
-                                agent_id: *agent_id,
-                                action,
-                            }),
-                        }
-                    } else {
-                        // TODO: Should this be an error or should we just log the error here ?
-                        return Err(anyhow!("Failed to find sink '{alias}', which is referenced in the action output"));
-                    }
-                }
-                SinkType::Agent(agent_id) => local.push(AgentCall { agent_id, action }),
-                // TODO: The edge-case also applies here I guess ??
-                SinkType::Contract(contract_id) => contracts.push(ContractCall {
-                    contract_id,
-                    action,
-                }),
-            }
-        }
-        Ok(Events { contracts, local })
+impl Sealed for Events {}
+impl ActionOutput for Events {
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        Ok(self)
     }
 }
 
-impl<E> private::Sealed for Result<ActionOutput, E> where
-    E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static
-{
-}
-impl<E> ActionOutEvent for Result<ActionOutput, E>
+impl<E> Sealed for Result<Events, E> where E: Display + Debug + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<Events, E>
 where
-    E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static,
+    E: Display + Debug + Send + Sync + 'static,
+{
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        let inner = self.map_err(|e| crate::Error::msg(e))?;
+        inner.convert_out_events()
+    }
+}
+
+impl Sealed for ContractCall {}
+impl ActionOutput for ContractCall {
+    fn convert_out_events(self) -> crate::Result<Events> {
+        Ok(Events::from(self))
+    }
+}
+
+impl<E> Sealed for Result<ContractCall, E> where E: Display + Debug + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<ContractCall, E>
+where
+    E: Display + Debug + Send + Sync + 'static,
 {
     fn convert_out_events(self) -> crate::Result<Events> {
         let inner = self.map_err(|e| crate::Error::msg(e))?;
@@ -342,68 +446,110 @@ where
     }
 }
 
-/// An event Sink for either a contract or sw-agent
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Sink {
-    Contract {
-        contract_id: ContractId,
-        alias: String,
-        restrict_to_users: Vec<BorderlessId>,
-    },
-    Agent {
-        agent_id: AgentId,
-        alias: String,
-        owner: BorderlessId,
-    },
+impl Sealed for Vec<ContractCall> {}
+impl ActionOutput for Vec<ContractCall> {
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        Ok(Events::from(self))
+    }
+}
+
+impl<E> Sealed for Result<Vec<ContractCall>, E> where E: Display + Debug + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<Vec<ContractCall>, E>
+where
+    E: Display + Debug + Send + Sync + 'static,
+{
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        let inner = self.map_err(|e| crate::Error::msg(e))?;
+        inner.convert_out_events()
+    }
+}
+
+impl Sealed for Message {}
+impl ActionOutput for Message {
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        Ok(Events::from(self))
+    }
+}
+
+impl<E> Sealed for Result<Message, E> where E: Display + Debug + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<Message, E>
+where
+    E: Display + Debug + Send + Sync + 'static,
+{
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        let inner = self.map_err(|e| crate::Error::msg(e))?;
+        inner.convert_out_events()
+    }
+}
+
+impl Sealed for Vec<Message> {}
+impl ActionOutput for Vec<Message> {
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        Ok(Events::from(self))
+    }
+}
+
+impl<E> Sealed for Result<Vec<Message>, E> where E: Display + Debug + Send + Sync + 'static {}
+impl<E> ActionOutput for Result<Vec<Message>, E>
+where
+    E: Display + Debug + Send + Sync + 'static,
+{
+    fn convert_out_events(self) -> anyhow::Result<Events> {
+        let inner = self.map_err(|e| crate::Error::msg(e))?;
+        inner.convert_out_events()
+    }
+}
+
+/// An event Sink for a smart-contract
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Sink {
+    /// Contract-ID of the sink
+    pub contract_id: ContractId,
+    /// Alias for the sink
+    ///
+    /// Sinks can be accessed by their alias, allowing an easier lookup.
+    pub alias: String,
+    /// Participant-Alias of the writer
+    ///
+    /// All transactions for this `Sink` will be written by this writer.
+    pub writer: String,
 }
 
 impl Sink {
-    /// Creates a new Sink for a software-agent
-    pub fn agent(agent_id: AgentId, alias: String, owner: BorderlessId) -> Sink {
-        Sink::Agent {
-            agent_id,
-            alias: alias.to_ascii_uppercase(),
-            owner,
-        }
-    }
-
     /// Creates a new Sink for a SmartContract
-    pub fn contract(
-        contract_id: ContractId,
-        alias: String,
-        restrict_to_users: Vec<BorderlessId>,
-    ) -> Sink {
-        Sink::Contract {
+    pub fn new(contract_id: ContractId, alias: String, writer: String) -> Sink {
+        Sink {
             contract_id,
-            alias: alias.to_ascii_uppercase(),
-            restrict_to_users,
+            alias,
+            writer,
         }
     }
 
-    /// Checks weather or not the given user has access to this sink
-    pub fn has_access(&self, user: BorderlessId) -> bool {
-        match self {
-            Sink::Agent { owner, .. } => *owner == user,
-            Sink::Contract {
-                restrict_to_users, ..
-            } => {
-                // If the vector is empty, everyone has access
-                restrict_to_users.is_empty() || restrict_to_users.iter().any(|u| *u == user)
-            }
-        }
-    }
-
+    /// Checks the alias of the sink against some string
+    ///
+    /// Note: The casing is ignored here, as it should be in all alias lookups.
     pub fn has_alias(&self, alias: impl AsRef<str>) -> bool {
-        let own_alias = match self {
-            Sink::Agent { alias, .. } | Sink::Contract { alias, .. } => alias,
-        };
-        alias.as_ref().eq_ignore_ascii_case(own_alias)
+        alias.as_ref().eq_ignore_ascii_case(&self.alias)
     }
+}
 
-    pub fn is_process(&self) -> bool {
-        match self {
-            Sink::Agent { .. } => true,
-            Sink::Contract { .. } => false,
+/// A topic for Sw-Agents
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Topic {
+    /// The publisher's ID, who creates new messages
+    pub publisher: Id,
+    /// The topic an agent can subscribe to
+    pub topic: String,
+    /// The method triggered in the subscriber's side
+    pub method: String,
+}
+
+impl Topic {
+    pub fn new(publisher: Id, topic: String, method: String) -> Self {
+        Topic {
+            publisher,
+            topic,
+            method,
         }
     }
 }

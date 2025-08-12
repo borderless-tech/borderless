@@ -1,8 +1,9 @@
 #[borderless::agent]
 pub mod flipper {
+    use borderless::contracts::env;
+    use borderless::prelude::*;
     use borderless::{Result, *};
     use collections::lazyvec::LazyVec;
-    use events::ActionOutput;
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
@@ -17,13 +18,6 @@ pub mod flipper {
         switch: bool,
         counter: u32,
         history: LazyVec<History>,
-    }
-
-    use self::actions::Actions;
-
-    #[derive(NamedSink)]
-    pub enum Sinks {
-        Flipper(Actions),
     }
 
     impl Flipper {
@@ -43,10 +37,12 @@ pub mod flipper {
         }
 
         #[action]
-        pub fn set_other(&self, switch: bool) -> Result<ActionOutput> {
-            let mut out = ActionOutput::default();
-            out.add_event(Sinks::Flipper(Actions::SetSwitch { switch }));
-            Ok(out)
+        pub fn set_other(&self, switch: bool) -> Result<ContractCall> {
+            let call = env::sink("flipper")?
+                .call_method("set_switch")
+                .with_value(value!({ "switch": switch }))
+                .build()?;
+            Ok(call)
         }
     }
 }

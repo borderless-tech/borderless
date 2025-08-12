@@ -1,0 +1,7 @@
+[contract]
+name = "ledger-test"
+app_name   = "ledger"
+app_module = "test"
+
+[meta]
+authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]

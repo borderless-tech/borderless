@@ -4,6 +4,7 @@ use borderless_hash::Hash256;
 use borderless_id_types::{BlockIdentifier, TxIdentifier};
 use serde::{Deserialize, Serialize};
 
+use crate::common::Participant;
 use crate::{events::Sink, BorderlessId, ContractId};
 
 /// Contract Environment
@@ -27,8 +28,7 @@ pub struct Role {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Info {
     pub contract_id: ContractId,
-    pub participants: Vec<BorderlessId>,
-    pub roles: Vec<Role>,
+    pub participants: Vec<Participant>,
     pub sinks: Vec<Sink>,
 }
 

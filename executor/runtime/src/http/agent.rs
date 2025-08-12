@@ -1,5 +1,9 @@
+pub use super::*;
+use crate::log_shim::*;
+use crate::{db::controller::Controller, rt::agent::Runtime};
+use borderless::events::Message;
 use borderless::{
-    events::{AgentCall, CallAction, Events},
+    events::{CallAction, Events},
     http::queries::Pagination,
     AgentId, BorderlessId,
 };
@@ -15,10 +19,6 @@ use std::{
     time::Instant,
 };
 use tokio::sync::Mutex;
-
-pub use super::*;
-use crate::log_shim::*;
-use crate::{db::controller::Controller, rt::agent::Runtime};
 
 #[derive(Serialize)]
 pub struct ActionResp {
@@ -62,14 +62,25 @@ impl<S: Db> EventHandler for RecursiveEventHandler<S> {
 
     async fn handle_events(&self, events: Events) -> Result<(), Self::Error> {
         let mut rt = self.rt.lock().await;
-        let mut agent_events = VecDeque::with_capacity(events.local.len());
-        agent_events.extend(events.local);
+        let db = rt.get_db();
+        let sub_handler = Controller::new(&db).messages();
 
+        let mut agent_events: VecDeque<_> = events.local.into();
         // Handle events one by one
-        while let Some(AgentCall { agent_id, action }) = agent_events.pop_front() {
-            // Queue all process events and apply them again
-            if let Some(events) = rt.process_action(&agent_id, action).await? {
-                agent_events.extend(events.local);
+        while let Some(Message {
+            publisher,
+            topic,
+            value,
+        }) = agent_events.pop_front()
+        {
+            let subscribers = sub_handler.get_topic_subscribers(publisher, topic)?;
+
+            for (subscriber, method) in subscribers {
+                let action = CallAction::by_method(method, value.clone());
+                // Queue all process events and apply them again
+                if let Some(events) = rt.process_action(&subscriber, action).await? {
+                    agent_events.extend(events.local);
+                }
             }
         }
         Ok(())
@@ -128,7 +139,14 @@ where
             _ => Ok(method_not_allowed()),
         };
         let elapsed = start.elapsed();
-        info!("Finished executing request. path={path}. Time elapsed: {elapsed:?}");
+        // TODO: I don't know if this should be logged every time
+        match &result {
+            Ok(res) => info!(
+                "Request success. path={path}. Time elapsed: {elapsed:?}, status={}",
+                res.status()
+            ),
+            Err(e) => warn!("Request failed. path={path}. Time elapsed: {elapsed:?}, error={e}"),
+        }
         result
     }
 
@@ -201,6 +219,10 @@ where
             "sinks" => {
                 let sinks = controller.agent_sinks(&agent_id)?;
                 Ok(json_response(&sinks))
+            }
+            "subs" => {
+                let subs = controller.agent_subs(&agent_id)?;
+                Ok(json_response(&subs))
             }
             "desc" => {
                 let desc = controller.agent_desc(&agent_id)?;
