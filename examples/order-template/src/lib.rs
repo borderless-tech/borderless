@@ -35,19 +35,24 @@ pub mod contract {
 
     impl Order {
         #[action(web_api = true, roles = "buyer")]
-        pub fn create_order(&mut self, order: OrderRequest) -> Result<()> {
+        pub fn create_order(&mut self, order: OrderRequest) -> Result<Message> {
             let order_id = order.header.order_id.clone();
             // Return error if order-id does already exist
             if self.orders.contains_key(&order_id) {
                 return Err(Error::msg("cannot create order - duplicate order-id"));
             }
+            // Prepare message
+            let msg = message("/order/create").with_content(&order)?;
+
+            // Create state
             let state = OrderState::new(order);
             self.orders.insert(order_id, state);
-            Ok(())
+
+            Ok(msg)
         }
 
         #[action(web_api = true, roles = "seller")]
-        pub fn confirm_order(&mut self, order: OrderRequest) -> Result<()> {
+        pub fn confirm_order(&mut self, order: OrderRequest) -> Result<Message> {
             let order_id = order.header.order_id.clone();
             let mut state = self
                 .orders
@@ -58,12 +63,17 @@ pub mod contract {
             if state.confirmed.is_some() {
                 return Err(new_error!("order {order_id} is already confirmed"));
             }
+
+            // Prepare message
+            let msg = message("/order/confirm").with_content(&order)?;
+
+            // Set state
             state.confirmed = Some(order);
-            Ok(())
+            Ok(msg)
         }
 
         #[action(web_api = true, roles = "buyer")]
-        pub fn confirm_receival(&mut self, order_id: String) -> Result<()> {
+        pub fn confirm_receival(&mut self, order_id: String) -> Result<Message> {
             let mut state = self
                 .orders
                 .get_mut(order_id.clone())
@@ -73,21 +83,30 @@ pub mod contract {
             if state.confirmed.is_none() {
                 return Err(new_error!("order {order_id} is not confirmed yet"));
             }
-            state.order_received = Some(timestamp());
+            let timestamp = timestamp();
+            state.order_received = Some(timestamp);
+
+            // Prepare message
+            let header = &state.confirmed.as_ref().unwrap().header;
+            let msg = message("/order/receive").with_value(value!( {
+                "order_id": order_id,
+                "total": header.total,
+                "tax": header.tax,
+                "timestamp": timestamp,
+            }));
 
             // Create a debt equal to the total cost of the order
-            let header = &state.confirmed.as_ref().unwrap().header;
             transfer("buyer", "seller")
                 .with_amount(header.total)
                 .with_tax_opt(header.tax)
                 .with_tag(order_id)
                 .execute()?;
 
-            Ok(())
+            Ok(msg)
         }
 
         #[action(web_api = true, roles = "buyer")]
-        pub fn confirm_invoice(&mut self, order_id: String) -> Result<()> {
+        pub fn confirm_invoice(&mut self, order_id: String) -> Result<Message> {
             let mut state = self
                 .orders
                 .get_mut(order_id.clone())
@@ -97,12 +116,19 @@ pub mod contract {
             if state.confirmed.is_none() {
                 return Err(new_error!("order {order_id} is not confirmed yet"));
             }
-            state.invoice_received = Some(timestamp());
-            Ok(())
+            let timestamp = timestamp();
+            state.invoice_received = Some(timestamp);
+
+            // Prepare message
+            let msg = message("/order/invoice").with_value(value!( {
+                "order_id": order_id,
+                "timestamp": timestamp,
+            }));
+            Ok(msg)
         }
 
         #[action(web_api = true, roles = "seller")]
-        pub fn confirm_payment(&mut self, order_id: String) -> Result<()> {
+        pub fn confirm_payment(&mut self, order_id: String) -> Result<Message> {
             let mut state = self
                 .orders
                 .get_mut(order_id.clone())
@@ -112,16 +138,26 @@ pub mod contract {
             if state.paid.is_some() {
                 return Err(new_error!("order {order_id} is already paid for"));
             }
-            state.paid = Some(timestamp());
+            let timestamp = timestamp();
+            state.paid = Some(timestamp);
+
+            // Prepare message
+            let header = &state.confirmed.as_ref().unwrap().header;
+            let msg = message("/order/payment").with_value(value!( {
+                "order_id": order_id,
+                "total": header.total,
+                "tax": header.tax,
+                "timestamp": timestamp,
+            }));
 
             // Settle the created debt from this contract
-            let header = &state.confirmed.as_ref().unwrap().header;
             settle_debt("buyer", "seller")
                 .with_amount(header.total)
                 .with_tax_opt(header.tax)
                 .with_tag(order_id)
                 .execute()?;
-            Ok(())
+
+            Ok(msg)
         }
     }
 }
