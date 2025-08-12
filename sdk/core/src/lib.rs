@@ -72,13 +72,6 @@ impl CallMethod for events::Sink {
     }
 }
 
-impl private_trait::Sealed for AgentId {}
-impl CallMethod for AgentId {
-    fn call_method(&self, _method_name: &str) -> events::CallBuilder<CBInit> {
-        todo!("Remove this")
-    }
-}
-
 pub trait Participant: Sized + private_trait::Sealed {
     fn get_participant(elem: Self) -> Result<BorderlessId>;
 }
