@@ -47,7 +47,9 @@ fn extract_key(key: &[u8]) -> Result<(String, AgentId)> {
             let full_topic = format!("/{publisher}/{topic}");
             Ok((full_topic, subscriber))
         }
-        _ => todo!("Use crate error"),
+        _ => Err(crate::Error::msg(
+            "SubscriptionHandler: malformed key error",
+        )),
     }
 }
 
