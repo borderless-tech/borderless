@@ -368,6 +368,20 @@ pub(crate) fn write_introduction<S: Db>(
         &introduction.id,
     )?;
 
+    // NOTE: We do some extra step here - participants automatically get a role that is equal to their alias
+    let participants: Vec<_> = if let Id::Contract { .. } = &id {
+        // Only do this for contracts, as roles have no meanings for agents
+        introduction
+            .participants
+            .into_iter()
+            .map(|mut p| {
+                p.add_alias_to_roles();
+                p
+            })
+            .collect()
+    } else {
+        introduction.participants
+    };
     // Write participant list
     write_system_value::<S, _, _>(
         db_ptr,
@@ -375,7 +389,7 @@ pub(crate) fn write_introduction<S: Db>(
         &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_PARTICIPANTS,
-        &introduction.participants,
+        &participants,
     )?;
 
     // Write sink list

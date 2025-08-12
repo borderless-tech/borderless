@@ -151,6 +151,15 @@ pub struct Participant {
     #[serde(default)]
     pub roles: Vec<String>,
 }
+
+impl Participant {
+    /// Adds the `alias` as a role, if it's not already present.
+    pub fn add_alias_to_roles(&mut self) {
+        if !self.roles.contains(&self.alias) {
+            self.roles.push(self.alias.clone());
+        }
+    }
+}
 // { "borderless-id": "4bec7f8e-5074-49a5-9b94-620fb13f12c0", "alias": null, roles": [ "Flipper" ]},
 
 /*
@@ -299,14 +308,14 @@ impl TryFrom<IntroductionDto> for Introduction {
             Id::Contract { .. } => {
                 if sinks.iter().any(|s| s.writer.is_empty()) {
                     return Err(anyhow!(
-                        "Sinks defined in a smart contract must contain a writer"
+                        "Sinks defined in a SmartContract must contain a writer"
                     ));
                 }
                 if value.participants.is_empty() {
-                    return Err(anyhow!("Smart contracts must contain participants"));
+                    return Err(anyhow!("SmartContracts must contain participants"));
                 }
                 if !value.subscriptions.is_empty() {
-                    return Err(anyhow!("Smart contracts do not support subscriptions"));
+                    return Err(anyhow!("SmartContracts do not support subscriptions"));
                 }
             }
             Id::Agent { .. } => {
