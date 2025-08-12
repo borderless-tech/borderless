@@ -79,6 +79,16 @@ pub struct BlockCtx {
 }
 
 impl BlockCtx {
+    /// Creates a dummy `BlockCtx` without meaning.
+    ///
+    /// Useful for testing.
+    pub fn dummy() -> Self {
+        Self {
+            block_id: BlockIdentifier::new(999, 999, Hash256::empty()),
+            timestamp: 1755022832386931147,
+        }
+    }
+
     /// Use postcard to encode the `BlockCtx`
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)

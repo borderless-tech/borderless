@@ -380,7 +380,13 @@ impl<S: Db> Runtime<S> {
         writer: &BorderlessId,
     ) -> Result<()> {
         let input = action.to_bytes()?;
+
+        // TODO: Maybe do this a little bit more elaborate,
+        // and actually create a tx-ctx + block-ctx that are "bigger" than the last-applied tx.
+        // Otherwise we might end up with weird effects - as the users can use the timestamps inside their contracts
         let tx_ctx = TxCtx::dummy();
+        let block_ctx = BlockCtx::dummy();
+        self.set_block(block_ctx.block_id, block_ctx.timestamp)?;
         let _out = self.process_chain_tx(*cid, input, *writer, tx_ctx, None)?;
         Ok(())
     }
