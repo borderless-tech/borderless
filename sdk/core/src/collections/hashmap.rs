@@ -75,22 +75,39 @@ where
             return Ok(Some("{}".to_string()));
         }
         let first = self.iter().next().unwrap(); // We checked empty
-        let complex_key = matches!(serde_json::to_value(first.key())?, Value::Object(_));
 
-        let entries: Vec<String> = self
-            .iter()
-            .map(|item| {
+        let mut complex_key = false;
+        let convert_entry = match serde_json::to_value(first.key())? {
+            // Strings are simple
+            Value::String(_) => |item: EntryProxy<'_, K, V>| {
+                let k = serde_json::to_value(item.key()).expect("Key serialization error");
+                let v = to_str(item.value()).expect("Value serialization error");
+                if let Value::String(s) = k {
+                    // Escape the string
+                    let s = s.escape_default();
+                    format!("\"{}\": {}", s, v)
+                } else {
+                    unreachable!("checked that key is string")
+                }
+            },
+            // Objects are 'complex' keys, so we serialize into a list of tuples here
+            Value::Object(_) => {
+                complex_key = true;
+                |item: EntryProxy<'_, K, V>| {
+                    let k = to_str(item.key()).expect("Key serialization error");
+                    let v = to_str(item.value()).expect("Value serialization error");
+                    format!("[{}, {}]", k, v)
+                }
+            }
+            // Serialize everything else as string and call it a day
+            _other => |item: EntryProxy<'_, K, V>| {
                 let k = to_str(item.key()).expect("Key serialization error");
                 let v = to_str(item.value()).expect("Value serialization error");
+                format!("\"{}\": {}", k, v)
+            },
+        };
 
-                if complex_key {
-                    format!("[{}, {}]", k, v)
-                } else {
-                    let k = to_str(&k).unwrap(); // Escape key
-                    format!("{}: {}", k, v)
-                }
-            })
-            .collect();
+        let entries: Vec<String> = self.iter().map(convert_entry).collect();
 
         let body = entries.join(",");
 
@@ -414,12 +431,21 @@ where
 #[cfg(test)]
 mod tests {
     use crate::__private::dev::rand;
+    use crate::__private::storage_traits::ToPayload;
     use crate::collections::hashmap::HashMap;
     use anyhow::Context;
+    use serde::{Deserialize, Serialize};
     use std::collections::HashMap as StdHashMap;
 
     const KEY: u64 = 123456;
     const N: u64 = 5000;
+
+    // Local type for testing
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    struct Person {
+        name: String,
+        age: u8,
+    }
 
     #[test]
     fn is_empty() -> anyhow::Result<()> {
@@ -606,6 +632,82 @@ mod tests {
         oracle_keys.sort_unstable();
         // Check integrity
         assert_eq!(map_keys, oracle_keys, "Integrity check failed");
+        Ok(())
+    }
+
+    #[test]
+    fn to_payload_string_keys() -> anyhow::Result<()> {
+        let mut map: HashMap<String, usize> = HashMap::new(KEY);
+
+        for (idx, s) in [
+            "normal-string",
+            "a string with \"quotes\"",
+            "a string with \n\n",
+        ]
+        .iter()
+        .enumerate()
+        {
+            map.insert(s.to_string(), idx);
+            let res = map.to_payload("/")?;
+            assert!(res.is_some());
+            let parsed_again: StdHashMap<String, usize> = serde_json::from_str(&res.unwrap())?;
+            // NOTE: If the string would have changed, then we would not be able to get this back out again
+            assert_eq!(parsed_again.get(*s), Some(idx).as_ref());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn to_payload_array_keys() -> anyhow::Result<()> {
+        let mut map: HashMap<Vec<u8>, usize> = HashMap::new(KEY);
+
+        for (idx, s) in [vec![0, 1, 2], vec![], vec![5, 4, 3, 2, 1]]
+            .iter()
+            .enumerate()
+        {
+            map.insert(s.clone(), idx);
+            let res = map.to_payload("/")?;
+            assert!(res.is_some());
+            let parsed_again: StdHashMap<String, usize> = serde_json::from_str(&res.unwrap())?;
+            // NOTE: We use the json representation of an array here
+            let key = serde_json::to_string(s)?;
+            assert_eq!(parsed_again.get(&key), Some(idx).as_ref());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn to_payload_numeric_keys() -> anyhow::Result<()> {
+        let mut map: HashMap<i64, usize> = HashMap::new(KEY);
+        for (idx, s) in [-10, 2, 102, 3].iter().enumerate() {
+            map.insert(*s, idx);
+            let res = map.to_payload("/")?;
+            assert!(res.is_some());
+            let parsed_again: StdHashMap<i64, usize> = serde_json::from_str(&res.unwrap())?;
+            assert_eq!(parsed_again.get(s), Some(idx).as_ref());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn to_payload_object_keys() -> anyhow::Result<()> {
+        let mut map: HashMap<Person, usize> = HashMap::new(KEY);
+        let klaus = Person {
+            name: "Klaus".to_string(),
+            age: 64,
+        };
+        let peter = Person {
+            name: "Peter".to_string(),
+            age: 32,
+        };
+        for (idx, s) in [klaus.clone(), peter.clone()].iter().enumerate() {
+            map.insert(s.clone(), idx);
+        }
+        let res = map.to_payload("/")?;
+        assert!(res.is_some());
+        let parsed_again: Vec<(Person, usize)> = serde_json::from_str(&res.unwrap())?;
+        assert_eq!(parsed_again[0], (klaus, 0));
+        assert_eq!(parsed_again[1], (peter, 1));
         Ok(())
     }
 }
