@@ -44,8 +44,8 @@ impl<K, V> Sealed for HashMap<K, V> {}
 
 impl<K, V> storage_traits::ToPayload for HashMap<K, V>
 where
-    K: Serialize + DeserializeOwned + Hash + Eq,
-    V: Serialize + DeserializeOwned,
+    K: Serialize + DeserializeOwned + Hash + Eq + Debug,
+    V: Serialize + DeserializeOwned + Debug,
 {
     fn to_payload(&self, path: &str) -> anyhow::Result<Option<String>> {
         use serde_json::to_string as to_str;
@@ -59,16 +59,20 @@ where
 
         if !path.is_empty() {
             // Try to deserialize key (complex key types will fail)
-            let key: K = match serde_json::from_str(path) {
+            let key: K = match serde_json::from_str(path)
+                .or_else(|_| serde_json::from_str(&format!("\"{}\"", path.escape_default())))
+            {
                 Ok(key) => key,
-                Err(_) => return Ok(None),
+                Err(_e) => {
+                    return Ok(None);
+                }
             };
+            let value = self.get(key);
 
             // Nest to the next to_payload()
-            return self
-                .get(key)
-                .map_or(Ok(None), |val| (*val).to_payload(remainder));
+            return value.map_or(Ok(None), |val| (*val).to_payload(remainder));
         };
+        println!("path empty");
         // We build the json output manually to save performance
         let n_items = self.len();
         if n_items == 0 {
@@ -705,9 +709,52 @@ mod tests {
         }
         let res = map.to_payload("/")?;
         assert!(res.is_some());
-        let parsed_again: Vec<(Person, usize)> = serde_json::from_str(&res.unwrap())?;
+        let mut parsed_again: Vec<(Person, usize)> = serde_json::from_str(&res.unwrap())?;
+        parsed_again.sort_by_key(|(_, idx)| *idx);
         assert_eq!(parsed_again[0], (klaus, 0));
         assert_eq!(parsed_again[1], (peter, 1));
+        Ok(())
+    }
+
+    #[test]
+    fn to_payload_nested() -> anyhow::Result<()> {
+        // Number keys
+        let mut map: HashMap<usize, usize> = HashMap::new(KEY);
+        map.insert(12345, 321);
+        let res = map.to_payload("/12345")?;
+        assert!(res.is_some());
+        assert_eq!(res.unwrap(), "321");
+        // String keys
+        let mut map: HashMap<String, usize> = HashMap::new(KEY);
+        for (idx, s) in [
+            "normal-string",
+            "a string with \"quotes\"",
+            "a string with \n\n",
+        ]
+        .iter()
+        .enumerate()
+        {
+            map.insert(s.to_string(), idx);
+            let res = map.to_payload(&format!("/{s}"))?;
+            println!("checking {s}");
+            assert!(res.is_some());
+            assert_eq!(res.unwrap(), format!("{idx}"));
+        }
+        // Deeply nested
+        let mut map: HashMap<String, Person> = HashMap::new(KEY);
+        let klaus = Person {
+            name: "Klaus".to_string(),
+            age: 44,
+        };
+        map.insert("klaus".to_string(), klaus.clone());
+        let res = map.to_payload("/klaus")?;
+        assert!(res.is_some());
+        let parsed: Person = serde_json::from_str(&res.unwrap())?;
+        assert_eq!(parsed, klaus);
+        // Nest one deeper
+        let res = map.to_payload("/klaus/name")?;
+        assert!(res.is_some());
+        assert_eq!(res.unwrap(), "Klaus");
         Ok(())
     }
 }

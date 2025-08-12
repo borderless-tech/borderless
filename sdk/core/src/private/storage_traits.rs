@@ -98,7 +98,10 @@ impl<T: Serialize + private::Sealed> ToPayload for T {
 
         // Instantly return the value
         if path.is_empty() {
-            return Ok(Some(value.to_string()));
+            match value {
+                Value::String(s) => return Ok(Some(s)),
+                other => return Ok(Some(other.to_string())),
+            }
         }
 
         // Search sub-fields based on path
@@ -112,6 +115,9 @@ impl<T: Serialize + private::Sealed> ToPayload for T {
                 None => return Ok(None),
             };
         }
-        Ok(Some(current.to_string()))
+        match current {
+            Value::String(s) => Ok(Some(s.clone())),
+            other => Ok(Some(other.to_string())),
+        }
     }
 }
