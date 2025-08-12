@@ -462,11 +462,11 @@ mod tests {
         }
         // Check integrity
         let target: u64 = 30000;
-        assert!(!map.contains_key(target), "HashMap contains wrong key");
+        assert!(!map.contains_key(&target), "HashMap contains wrong key");
         map.insert(target, 0);
-        assert!(map.contains_key(target), "HashMap must contain the key");
+        assert!(map.contains_key(&target), "HashMap must contain the key");
         map.remove(target);
-        assert!(!map.contains_key(target), "HashMap contains wrong key");
+        assert!(!map.contains_key(&target), "HashMap contains wrong key");
         Ok(())
     }
 
