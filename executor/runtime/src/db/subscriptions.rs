@@ -80,7 +80,6 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         topic: Topic,
     ) -> Result<()> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
-        // TODO Store the subscription's timestamp for debugging purposes?
         let key = generate_key(topic.publisher, topic.topic, Some(subscriber));
         txn.write(&db_ptr, &key, &topic.method)?;
         Ok(())
