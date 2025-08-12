@@ -28,7 +28,6 @@ use tokio::sync::mpsc;
 
 use crate::db::controller::Controller;
 use crate::db::ledger::Ledger;
-use crate::db::subscriptions::SubscriptionHandler;
 use crate::{
     db::action_log::{ActionLog, ActionRecord},
     db::controller::{write_introduction, write_revocation},
@@ -225,11 +224,15 @@ impl<S: Db> VmState<S> {
                 introduction.meta.active_since = timestamp;
                 introduction.meta.tx_ctx_introduction = tx_ctx;
                 write_introduction::<S>(&self.db_ptr, &mut txn, introduction.clone())?;
-                SubscriptionHandler::new(&self.db).init(id, introduction.subscriptions)?;
+                // Write static subscriptions (coming from the introduction)
+                Controller::new(&self.db)
+                    .messages()
+                    .init(&mut txn, introduction)?;
             }
             Commit::Revocation(revocation) => {
                 assert_eq!(revocation.id, id);
                 write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, timestamp, tx_ctx)?;
+                // TODO Cancel subscriptions
             }
             Commit::Other => { /* nothing to do */ }
         }

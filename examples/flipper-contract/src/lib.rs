@@ -40,11 +40,21 @@ pub mod flipper {
             let call = env::sink("flipper")?
                 .call_method("set_switch")
                 .with_value(value!({ "switch": switch }))
-                //.with_writer("alpha")?
                 .build()?;
+            Ok(call)
+        }
 
-            // Or emit messages:
-            //let msg = message("/foo/baa").with_value(value! { switch });
+        #[action(web_api = true, roles = "Flipper")]
+        pub fn set_other_explicit(
+            &self,
+            switch: bool,
+            target: borderless::ContractId,
+        ) -> Result<ContractCall> {
+            // Bypass the sink usage by directly specifying the target contract
+            let call = target
+                .call_method("set_switch")
+                .with_value(value!({ "switch": switch }))
+                .build()?;
             Ok(call)
         }
     }

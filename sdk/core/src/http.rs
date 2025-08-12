@@ -292,6 +292,7 @@ pub struct ContractInfo {
 pub struct AgentInfo {
     pub agent_id: AgentId,
     pub sinks: Vec<Sink>,
+    pub subs: Vec<String>,
     pub desc: Option<Description>,
     pub meta: Option<Metadata>,
 }

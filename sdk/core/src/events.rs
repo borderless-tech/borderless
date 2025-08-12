@@ -111,7 +111,7 @@ pub struct CallBuilder<STATE> {
 }
 
 impl CallBuilder<CBInit> {
-    pub(crate) fn new(id: ContractId, method_name: &str) -> CallBuilder<CBInit> {
+    pub fn new(id: ContractId, method_name: &str) -> CallBuilder<CBInit> {
         CallBuilder {
             id,
             name: method_name.to_string(),

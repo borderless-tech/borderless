@@ -21,7 +21,7 @@ use super::{
 use crate::log_shim::*;
 use crate::{
     error::{ErrorKind, Result},
-    AGENT_SUB_DB,
+    AGENT_SUB_DB, SUBSCRIPTION_REL_SUB_DB,
 };
 
 pub mod tasks;
@@ -44,6 +44,7 @@ impl<S: Db> Runtime<S> {
         let start = Instant::now();
         // Create agent sub-db (in case it does not exist)
         let _ = storage.create_sub_db(AGENT_SUB_DB)?;
+        let _ = storage.create_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
 
         // Generate engine ( with async enabled )
         let mut config = Config::new();
@@ -157,6 +158,11 @@ impl<S: Db> Runtime<S> {
 
     pub fn into_shared(self) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(self))
+    }
+
+    /// Returns a copy of the underlying db handle
+    pub fn get_db(&self) -> S {
+        self.agent_store.get_db()
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(%agent_id), err))]

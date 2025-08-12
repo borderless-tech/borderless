@@ -43,11 +43,11 @@ pub(crate) fn contains_key(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
     }
     // Check integrity
     let target: u64 = 30000;
-    ensure!(!hashmap.contains_key(target), "Error 1 in [contains_key]");
+    ensure!(!hashmap.contains_key(&target), "Error 1 in [contains_key]");
     hashmap.insert(target, 0);
-    ensure!(hashmap.contains_key(target), "Error 2 in [contains_key]");
+    ensure!(hashmap.contains_key(&target), "Error 2 in [contains_key]");
     hashmap.remove(target);
-    ensure!(!hashmap.contains_key(target), "Error 3 in [contains_key]");
+    ensure!(!hashmap.contains_key(&target), "Error 3 in [contains_key]");
     Ok(())
 }
 

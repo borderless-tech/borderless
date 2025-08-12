@@ -41,14 +41,14 @@ impl<'a, S: Db> Controller<'a, S> {
         Logger::new(self.db, id)
     }
 
-    /// Returns the ['SubscriptionHandler'] of the contract or agent
-    pub fn messages(&self) -> SubscriptionHandler<'a, S> {
-        SubscriptionHandler::new(self.db)
-    }
-
     /// Returns the [`Ledger`]
     pub fn ledger(&self) -> Ledger<'a, S> {
         Ledger::new(self.db)
+    }
+
+    /// Returns the ['SubscriptionHandler']
+    pub fn messages(&self) -> SubscriptionHandler<'a, S> {
+        SubscriptionHandler::new(self.db)
     }
 
     /// List of contract-participants
@@ -136,6 +136,10 @@ impl<'a, S: Db> Controller<'a, S> {
         self.read_value(&aid, BASE_KEY_METADATA, META_SUB_KEY_SINKS)
     }
 
+    pub fn agent_subs(&self, aid: &AgentId) -> Result<Vec<String>> {
+        self.messages().get_subscriptions(*aid)
+    }
+
     /// Returns the [`Description`] of the contract
     pub fn contract_desc(&self, cid: &ContractId) -> Result<Option<Description>> {
         self.read_value(&Id::contract(*cid), BASE_KEY_METADATA, META_SUB_KEY_DESC)
@@ -164,14 +168,16 @@ impl<'a, S: Db> Controller<'a, S> {
         Ok(Some(ContractInfo { info, desc, meta }))
     }
 
-    /// Returns the full [`ContractInfo`], which bundles info, description and metadata.
+    /// Returns the full [`AgentInfo`], which bundles info, description and metadata.
     pub fn agent_full(&self, aid: &AgentId) -> Result<Option<AgentInfo>> {
         let sinks = self.agent_sinks(aid)?.unwrap_or_default();
+        let subs = self.agent_subs(aid)?;
         let desc = self.agent_desc(aid)?;
         let meta = self.agent_meta(aid)?;
         Ok(Some(AgentInfo {
             agent_id: *aid,
             sinks,
+            subs,
             desc,
             meta,
         }))
@@ -342,20 +348,21 @@ pub(crate) fn write_introduction<S: Db>(
     use borderless::__private::storage_keys::*;
 
     use crate::error::ErrorKind;
-    let cid = introduction.id;
+    let id = introduction.id;
 
-    // NOTE: If the id was already written to disk, this means that the contract has already been written !
+    // NOTE: If the id was already written to disk, it means
+    // that the contract/sw-agent has already been written !
     let check_id =
-        read_system_value::<S, Id, _>(db_ptr, txn, &cid, BASE_KEY_METADATA, META_SUB_KEY_ID)?;
+        read_system_value::<S, Id, _>(db_ptr, txn, &id, BASE_KEY_METADATA, META_SUB_KEY_ID)?;
     if check_id.is_some() {
         return Err(ErrorKind::DoubleIntroduction.into());
     }
 
-    // Write contract-id
+    // Write contract or sw-agent id
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_ID,
         &introduction.id,
@@ -365,7 +372,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_PARTICIPANTS,
         &introduction.participants,
@@ -375,7 +382,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_SINKS,
         &introduction.sinks,
@@ -385,7 +392,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_DESC,
         &introduction.desc,
@@ -395,7 +402,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_META,
         &introduction.meta,
@@ -405,7 +412,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_INIT_STATE,
         &introduction.initial_state,
@@ -419,7 +426,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_PACKAGE_DEF,
         &pkg_def,
@@ -429,7 +436,7 @@ pub(crate) fn write_introduction<S: Db>(
     write_system_value::<S, _, _>(
         db_ptr,
         txn,
-        &cid,
+        &id,
         BASE_KEY_METADATA,
         META_SUB_KEY_PACKAGE_SOURCE,
         &pkg_source,

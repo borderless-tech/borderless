@@ -1,10 +1,7 @@
-mod contract_actions;
-
 #[borderless::agent]
 pub mod cc_agent {
     use borderless::contracts::env;
-    use borderless::prelude::{message, ContractCall, Message};
-    use borderless::serialize::{Number, Value};
+    use borderless::prelude::{json, message, ContractCall, Message};
     use borderless::*;
     use serde::{Deserialize, Serialize};
 
@@ -19,7 +16,7 @@ pub mod cc_agent {
         #[action]
         pub fn increase_process(&mut self, number: u32) -> Result<Message, Error> {
             self.last_number = number;
-            let value = Value::Number(Number::from(number + 1));
+            let value = json!({"number": self.last_number + 1});
             let msg = message("TOPIC").with_value(value);
             Ok(msg)
         }
@@ -28,7 +25,7 @@ pub mod cc_agent {
         #[action]
         pub fn increase_contract(&mut self, number: u32) -> Result<ContractCall, Error> {
             self.last_number = number;
-            let value = Value::Number(Number::from(number + 1));
+            let value = json!({"number": self.last_number + 1});
             let call = env::sink("CONTRACT")?
                 .call_method("set_number")
                 .with_value(value)

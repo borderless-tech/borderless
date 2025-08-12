@@ -1,9 +1,12 @@
-use std::{collections::BTreeMap, fmt::Display, str::FromStr};
-
+use anyhow::anyhow;
 use borderless_id_types::{AgentId, Uuid};
-use borderless_pkg::WasmPkg;
+use borderless_pkg::{PkgType, WasmPkg};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::{collections::BTreeMap, fmt::Display, str::FromStr};
+
+#[cfg(not(feature = "generate_ids"))]
+use anyhow::Context;
 
 pub use borderless_pkg as pkg;
 
@@ -251,7 +254,7 @@ pub struct IntroductionDto {
     /// List of available sinks
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub sinks: Vec<Sink>,
+    pub sinks: Vec<SinkDto>,
 
     /// List of available topics
     #[serde(default)]
@@ -265,8 +268,10 @@ pub struct IntroductionDto {
     pub package: WasmPkg,
 }
 
-impl From<IntroductionDto> for Introduction {
-    fn from(value: IntroductionDto) -> Self {
+impl TryFrom<IntroductionDto> for Introduction {
+    type Error = crate::Error;
+
+    fn try_from(value: IntroductionDto) -> Result<Self, Self::Error> {
         let id = {
             #[cfg(feature = "generate_ids")]
             {
@@ -274,23 +279,58 @@ impl From<IntroductionDto> for Introduction {
             }
             #[cfg(not(feature = "generate_ids"))]
             {
-                assert!(
-                    value.id.is_some(),
+                value.id.with_context(|| {
                     "ID must be set - enable feature 'generate_ids' to autogenerate an ID"
-                );
-                value.id.unwrap()
+                })?
             }
         };
-        Self {
+
+        // Verify that the ID matches the package type
+        let valid = match value.package.pkg_type {
+            PkgType::Contract => id.as_cid().is_some(),
+            PkgType::Agent => id.as_aid().is_some(),
+        };
+        if !valid {
+            return Err(anyhow!("Mismatch between provided ID and package type"));
+        }
+
+        let sinks: Vec<Sink> = value.sinks.into_iter().map(|s| s.into()).collect();
+        match id {
+            Id::Contract { .. } => {
+                if sinks.iter().any(|s| s.writer.is_empty()) {
+                    return Err(anyhow!(
+                        "Sinks defined in a smart contract must contain a writer"
+                    ));
+                }
+                if value.participants.is_empty() {
+                    return Err(anyhow!("Smart contracts must contain participants"));
+                }
+                if !value.subscriptions.is_empty() {
+                    return Err(anyhow!("Smart contracts do not support subscriptions"));
+                }
+            }
+            Id::Agent { .. } => {
+                if sinks.iter().any(|s| !s.writer.is_empty()) {
+                    return Err(anyhow!(
+                        "Sinks defined in a sw-agent must NOT contain a writer"
+                    ));
+                }
+                if !value.participants.is_empty() {
+                    return Err(anyhow!("Sw-Agents must NOT contain participants"));
+                }
+            }
+        }
+
+        Ok(Self {
             id,
             participants: value.participants,
             initial_state: value.initial_state,
-            sinks: value.sinks,
+            sinks,
             subscriptions: value.subscriptions,
             desc: value.desc,
             meta: Default::default(),
             package: value.package,
-        }
+        })
     }
 }
 
@@ -299,6 +339,35 @@ impl FromStr for IntroductionDto {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         serde_json::from_str(s)
+    }
+}
+
+/// Digital-Tranfer-Object (Dto) of a [`Sink`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SinkDto {
+    /// Contract-ID of the sink
+    pub contract_id: ContractId,
+
+    /// Alias for the sink
+    ///
+    /// Sinks can be accessed by their alias, allowing an easier lookup.
+    pub alias: String,
+
+    /// Participant-Alias of the writer
+    ///
+    /// All transactions for this `Sink` will be written by this writer.
+    /// Sinks defined in a sw-agent have no writers, as agents have no participants
+    pub writer: Option<String>,
+}
+
+impl From<SinkDto> for Sink {
+    fn from(value: SinkDto) -> Self {
+        Self {
+            contract_id: value.contract_id,
+            alias: value.alias,
+            // Defaults to empty string if no writer is provided
+            writer: value.writer.unwrap_or_default(),
+        }
     }
 }
 
