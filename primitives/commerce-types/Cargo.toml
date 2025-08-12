@@ -9,7 +9,8 @@ homepage = "https://borderless-technologies.com/"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-chrono = { version = "0.4", features = ["serde"] }
+# NOTE: chrono has wasm-bindgen enabled by default, which causes linker errors when executing wasm contracts/agents
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 schemars = { workspace = true, features = ["chrono04"] }
 currency-4217 = { workspace = true, features = ["serde", "json-schema"] }
