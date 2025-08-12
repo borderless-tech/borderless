@@ -105,8 +105,8 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
 pub async fn start_contract_server<DB: Db + 'static>(
     db: DB,
     rt: SharedContractRuntime<DB>,
+    writer: BorderlessId,
 ) -> Result<()> {
-    let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
     rt.lock().set_executor(writer)?;
     let action_writer = ActionApplier {
         rt: rt.clone(),
@@ -140,8 +140,8 @@ pub async fn start_contract_server<DB: Db + 'static>(
 pub async fn start_agent_server<DB: Db + 'static>(
     db: DB,
     rt: SharedAgentRuntime<DB>,
+    writer: BorderlessId,
 ) -> Result<()> {
-    let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
     let event_handler = RecursiveEventHandler { rt: rt.clone() };
     rt.lock().await.set_executor(writer)?;
     let srv = SwAgentService::with_shared(db, rt, event_handler, writer);

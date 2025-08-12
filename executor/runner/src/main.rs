@@ -13,7 +13,7 @@ use borderless::{
     events::CallAction,
     hash::Hash256,
     pkg::{SourceType, WasmPkg},
-    AgentId, BlockIdentifier, ContractId, TxIdentifier,
+    AgentId, BlockIdentifier, BorderlessId, ContractId, TxIdentifier,
 };
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use borderless_runtime::{
@@ -43,6 +43,10 @@ struct Cli {
     /// Path to the database directory (global)
     #[arg(short, long)]
     db: PathBuf,
+
+    /// Borderless-ID of the writer (and executor)
+    #[arg(long)]
+    writer: Option<BorderlessId>,
 
     #[command(subcommand)]
     command: Commands,
@@ -142,8 +146,8 @@ async fn main() -> Result<()> {
     let db = Lmdb::new(&args.db, 16).context("failed to open database")?;
 
     match args.command {
-        Commands::Contract(cmd) => contract(cmd, db).await?,
-        Commands::Agent(cmd) => sw_agent(cmd, db).await?,
+        Commands::Contract(cmd) => contract(cmd, db, args.writer).await?,
+        Commands::Agent(cmd) => sw_agent(cmd, db, args.writer).await?,
     }
     Ok(())
 }
@@ -173,7 +177,7 @@ pub fn generate_tx_ctx(
     Ok(tx_ctx)
 }
 
-async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
+async fn contract(command: ContractCommand, db: Lmdb, writer: Option<BorderlessId>) -> Result<()> {
     // Create runtime
     let code_store = CodeStore::new(&db)?;
 
@@ -187,7 +191,11 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
         "cc8ca79c-3bbb-89d2-bb28-29636c170387".parse()?
     };
 
-    let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
+    // Set writer
+    let writer = match writer {
+        Some(w) => w,
+        None => "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?,
+    };
 
     // The writer is also the executor
     rt.set_executor(writer)?;
@@ -279,14 +287,14 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
             log.into_iter().for_each(print_log_line);
         }
         ContractAction::Api => {
-            start_contract_server(db, rt.into_shared()).await?;
+            start_contract_server(db, rt.into_shared(), writer).await?;
         }
     }
     Ok(())
 }
 
 #[allow(unused)]
-async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
+async fn sw_agent(command: AgentCommand, db: Lmdb, writer: Option<BorderlessId>) -> Result<()> {
     // Create runtime
     let code_store = CodeStore::new(&db)?;
     let lock = AgentLock::default();
@@ -299,7 +307,11 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
         "a265e6fd-7f7a-85b5-aa24-a79305daf2a5".parse()?
     };
 
-    let writer = "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?;
+    // Set writer
+    let writer = match writer {
+        Some(w) => w,
+        None => "bbcd81bb-b90c-8806-8341-fe95b8ede45a".parse()?,
+    };
 
     // The writer is also the executor
     rt.set_executor(writer)?;
@@ -362,7 +374,7 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
                 // ws_handle.await;
             }
 
-            start_agent_server(db, rt).await?;
+            start_agent_server(db, rt, writer).await?;
             handle.await;
         }
         AgentAction::Logs => {
@@ -370,7 +382,7 @@ async fn sw_agent(command: AgentCommand, db: Lmdb) -> Result<()> {
             log.into_iter().for_each(print_log_line);
         }
         AgentAction::Api => {
-            start_agent_server(db, rt.into_shared()).await?;
+            start_agent_server(db, rt.into_shared(), writer).await?;
         }
     }
     Ok(())
