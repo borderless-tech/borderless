@@ -1,5 +1,5 @@
 #[borderless::contract]
-pub mod order_oneshot {
+pub mod contract {
     use borderless::prelude::ledger::{settle_debt, transfer};
     use borderless::prelude::*;
     use borderless::{collections::HashMap, time::timestamp};

@@ -1,5 +1,4 @@
 {
-  "contract_id": "cc8ca79c-3bbb-89d2-bb28-29636c170387",
   "participants": [
     {
       "id": "bbcd81bb-b90c-8806-8341-fe95b8ede45a",
@@ -11,12 +10,12 @@
     }
   ],
   "initial_state": {
-    "cnt": 0
+    "orders": {}
   },
   "sinks": [],
   "desc": {
-    "display_name": "ledger-test",
-    "summary": "ledger test",
+    "display_name": "order-template",
+    "summary": "order template",
     "legal": null
   },
   "meta": {},
