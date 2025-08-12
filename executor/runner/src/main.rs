@@ -172,7 +172,7 @@ pub fn generate_tx_ctx(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_secs(),
+            .as_millis() as u64,
     )?;
     Ok(tx_ctx)
 }
