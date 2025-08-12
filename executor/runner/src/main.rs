@@ -213,7 +213,8 @@ async fn contract(command: ContractCommand, db: Lmdb) -> Result<()> {
                         .send()?;
 
                     let text = response.text()?;
-                    let pkg: WasmPkg = serde_json::from_str(&text)?;
+                    let _pkg: WasmPkg = serde_json::from_str(&text)?;
+                    todo!("implement registry handling")
                 }
                 SourceType::Wasm { wasm, .. } => {
                     if !wasm.is_empty() {
