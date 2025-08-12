@@ -288,7 +288,7 @@ pub fn message(topic: impl AsRef<str>) -> MsgBuilder {
 
     MsgBuilder {
         publisher,
-        topic: topic.as_ref().to_string(),
+        topic: topic.as_ref().to_ascii_lowercase(),
     }
 }
 
@@ -306,8 +306,8 @@ impl MsgBuilder {
         }
     }
 
-    pub fn with_serde<T: serde::Serialize>(self, args: T) -> Result<Message, crate::Error> {
-        let value = serde_json::to_value(args).map_err(|e| {
+    pub fn with_content<T: serde::Serialize>(self, content: &T) -> Result<Message, crate::Error> {
+        let value = serde_json::to_value(content).map_err(|e| {
             crate::Error::msg(format!(
                 "failed to serialize argument for message on topic '{}': {e}",
                 self.topic,
