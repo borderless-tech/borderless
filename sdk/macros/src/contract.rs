@@ -3,7 +3,7 @@ use quote::quote;
 use syn::{Ident, Item, Result};
 
 use crate::{
-    action::{get_actions, impl_actions_enum, match_action, ActionFn},
+    action::{get_actions, match_action, ActionFn},
     state::get_state,
 };
 
@@ -51,7 +51,7 @@ pub fn parse_module_content(
         ];
     };
 
-    let actions_enum = impl_actions_enum(&actions);
+    // let actions_enum = impl_actions_enum(&actions);
 
     // Generate the nested match block for matching the action method by name or id
     // match &action.method { ... => match method_name => { ... => FUNC } }
@@ -188,11 +188,16 @@ pub fn parse_module_content(
             #exec_http
         }
 
-        pub(super) mod actions {
-            use super::__derived::*;
-            #actions_enum
-        }
     };
+    /*
+    * // DEPRECATED - we do not require the actions enum anymore
+       pub(super) mod actions {
+           use super::*;
+           use super::__derived::*;
+           #actions_enum
+       }
+    * */
+
     Ok(derived)
 }
 

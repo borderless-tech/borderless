@@ -15,6 +15,7 @@ borderless-id-types.workspace = true
 borderless-pkg.workspace = true
 borderless-sdk-macros.workspace = true
 borderless-hash.workspace = true
+currency-4217 = { workspace = true, features = ["serde"] }
 postcard.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
