@@ -203,6 +203,7 @@ impl fmt::Display for Currency {
     }
 }
 
+// TODO: Let's simply use "String" as the base representation here
 /// Monetary value stored as an *integer number of thousandths* (1/1000) of the currency’s major unit.
 ///
 /// Using thousandths lets us represent all ISO 4217 currencies (the largest fraction in normal use is the Bahraini dinar’s 3 decimal places) without loss.

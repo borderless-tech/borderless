@@ -168,6 +168,7 @@ where
         match route {
             "state" => {
                 // TODO: The contract should also parse query parameters !
+                // TODO: URL-Decode !
                 let mut rt = self.rt.lock();
                 let (status, payload) = rt.http_get_state(&contract_id, trunc)?;
                 if status == 200 {
