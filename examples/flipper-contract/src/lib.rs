@@ -51,7 +51,8 @@ pub mod flipper {
             target: borderless::ContractId,
         ) -> Result<ContractCall> {
             // Bypass the sink usage by directly specifying the target contract
-            let call = CallBuilder::new(target, "set_switch")
+            let call = target
+                .call_method("set_switch")
                 .with_value(value!({ "switch": switch }))
                 .build()?;
             Ok(call)
