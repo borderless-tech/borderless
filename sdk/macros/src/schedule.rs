@@ -105,7 +105,7 @@ fn get_schedules_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result
                     )
                 } else {
                     return Err(Error::new_spanned(
-                        &attr,
+                        attr,
                         "Schedules require an interval - e.g. interval = 5m",
                     ));
                 };
@@ -137,7 +137,7 @@ fn get_schedules_from_impl(state_ident: &Ident, impl_block: &ItemImpl) -> Result
                     // Extract the name from the pattern
                     if let Pat::Ident(PatIdent { ident, .. }) = &*t.pat {
                         return Err(Error::new_spanned(
-                            &ident,
+                            ident,
                             "Schedules must not take any input parameters except 'self'",
                         ));
                     } else {

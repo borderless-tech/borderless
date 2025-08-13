@@ -487,15 +487,9 @@ pub fn generate_wasm_exports(mod_ident: &Ident) -> TokenStream2 {
     }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AgentArgs {
     pub websocket: Option<bool>, // None if not specified, Some(true) or Some(false) if specified
-}
-
-impl Default for AgentArgs {
-    fn default() -> Self {
-        Self { websocket: None } // Default to no argument specified
-    }
 }
 
 impl Parse for AgentArgs {

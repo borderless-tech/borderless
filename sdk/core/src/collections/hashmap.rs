@@ -32,9 +32,11 @@ enum CacheOp {
     Remove,
 }
 
+type KVCell<K, V> = Rc<RefCell<KeyValue<K, V>>>;
+
 pub struct HashMap<K, V> {
     base_key: u64,
-    cache: RefCell<IntMap<u64, Rc<RefCell<KeyValue<K, V>>>>>,
+    cache: RefCell<IntMap<u64, KVCell<K, V>>>,
     operations: IntMap<u64, CacheOp>,
     entries: usize,
     db_keys: OnceCell<Vec<u64>>,
@@ -324,7 +326,7 @@ where
         }
     }
 
-    fn read(&self, key: u64) -> Option<Rc<RefCell<KeyValue<K, V>>>> {
+    fn read(&self, key: u64) -> Option<KVCell<K, V>> {
         // Deleted keys (but still not commited) must return None
         // as the DB still contains them
         if let Some(CacheOp::Remove) = self.operations.get(&key) {
@@ -418,7 +420,7 @@ where
         cache.keys().chain(self.db_keys().iter()).cloned().collect()
     }
 
-    fn extract_cell(rc: Rc<RefCell<KeyValue<K, V>>>) -> Option<V> {
+    fn extract_cell(rc: KVCell<K, V>) -> Option<V> {
         let old_cell = Rc::try_unwrap(rc).ok().expect("Rc strong counter > 1");
         Some(old_cell.into_inner().pair.1)
     }

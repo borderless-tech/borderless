@@ -462,7 +462,7 @@ mod tests {
     fn general_id() {
         let cid = r#"{ "contract_id": "cbcd81bb-b90c-8806-8341-fe95b8ede45a" }"#;
         let aid = r#"{ "agent_id": "abcd81bb-b90c-8806-8341-fe95b8ede45a" }"#;
-        let parsed: Result<Id, _> = serde_json::from_str(&cid);
+        let parsed: Result<Id, _> = serde_json::from_str(cid);
         assert!(parsed.is_ok(), "{}", parsed.unwrap_err());
         match parsed.unwrap() {
             Id::Contract { contract_id } => assert_eq!(
@@ -472,7 +472,7 @@ mod tests {
             Id::Agent { .. } => panic!("result was not an agent-id"),
         }
 
-        let parsed: Result<Id, _> = serde_json::from_str(&aid);
+        let parsed: Result<Id, _> = serde_json::from_str(aid);
         assert!(parsed.is_ok(), "{}", parsed.unwrap_err());
         match parsed.unwrap() {
             Id::Agent { agent_id } => {
@@ -512,7 +512,7 @@ mod tests {
   }
 }
 "#;
-        let result: Result<Introduction, _> = serde_json::from_str(&json);
+        let result: Result<Introduction, _> = serde_json::from_str(json);
         assert!(result.is_ok(), "{}", result.unwrap_err());
         let introduction = result.unwrap();
         assert_eq!(

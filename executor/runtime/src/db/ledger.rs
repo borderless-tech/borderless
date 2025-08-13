@@ -41,7 +41,7 @@ impl<'a, S: Db> Ledger<'a, S> {
         let ledger_id = entry.creditor.merge_compact(&entry.debitor);
         let meta_key = LedgerKey::meta(ledger_id);
         let mut meta = match txn.read(&db_ptr, &meta_key)? {
-            Some(val) => postcard::from_bytes(&val)?,
+            Some(val) => postcard::from_bytes(val)?,
             None => LedgerMeta::new(entry.creditor, entry.debitor),
         };
 
@@ -258,7 +258,7 @@ impl<'a, S: Db> SelectedLedger<'a, S> {
         let txn = self.db.begin_ro_txn()?;
         match txn.read(&db_ptr, &key)? {
             Some(val) => {
-                let out = postcard::from_bytes(&val)?;
+                let out = postcard::from_bytes(val)?;
                 Ok(Some(out))
             }
             None => Ok(None),

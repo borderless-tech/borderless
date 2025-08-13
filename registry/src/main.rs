@@ -63,7 +63,7 @@ pub async fn list_pkgs(State(app): State<App>) -> Result<Json<Vec<String>>, Erro
     let mut pkgs = Vec::new();
 
     for (_, buf) in cursor.iter() {
-        let pkg: WasmPkg = bincode::deserialize(&buf)?;
+        let pkg: WasmPkg = bincode::deserialize(buf)?;
         let identifier = [
             pkg.app_name.as_deref(),
             pkg.app_module.as_deref(),
@@ -122,7 +122,7 @@ pub async fn get_pkg(
 
     let key = Hash256::digest(&name);
     let buf = txn.read(&db_ptr, &key)?.ok_or(Error::NoPkg(key))?;
-    let pkg = bincode::deserialize(&buf)?;
+    let pkg = bincode::deserialize(buf)?;
 
     Ok(Json(pkg))
 }

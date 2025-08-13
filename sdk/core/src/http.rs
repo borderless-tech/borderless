@@ -376,7 +376,7 @@ pub mod queries {
             let page = usize::from_str(page_item).ok()?;
             let per_page = usize::from_str(per_page_item).ok()?;
             let reverse = match self.items.get("reverse") {
-                Some(r) => bool::from_str(&r).ok()?,
+                Some(r) => bool::from_str(r).ok()?,
                 None => false,
             };
             Some(Pagination {

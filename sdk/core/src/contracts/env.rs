@@ -86,8 +86,7 @@ pub fn writer_roles() -> Vec<String> {
     participants
         .into_iter()
         .filter(|p| p.id == writer)
-        .map(|p| p.roles)
-        .flatten()
+        .flat_map(|p| p.roles)
         .collect()
 }
 

@@ -118,8 +118,7 @@ fn hash_value(key: &str, value: &Value) -> Hash256 {
             hasher.update(&string.as_bytes());
         }
     }
-    let digest = hasher.finalize();
-    digest.into()
+    hasher.finalize()
 }
 
 /// Calculates the proofs for every member of the JSON object.

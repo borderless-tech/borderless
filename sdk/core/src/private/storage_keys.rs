@@ -326,7 +326,7 @@ mod tests {
         let cid = ContractId::generate();
         let base = 42;
         let sub = 99;
-        let key = StorageKey::user_key(&cid, base, sub);
+        let key = StorageKey::user_key(cid, base, sub);
 
         assert!(key.contract_id().is_some());
         assert_eq!(key.contract_id().unwrap(), cid);
@@ -341,7 +341,7 @@ mod tests {
         let cid = ContractId::generate();
         let base = BASE_KEY_METADATA;
         let sub = 0;
-        let key = StorageKey::system_key(&cid, base, sub);
+        let key = StorageKey::system_key(cid, base, sub);
 
         assert!(key.contract_id().is_some());
         assert_eq!(key.contract_id().unwrap(), cid);
@@ -357,15 +357,15 @@ mod tests {
         let cid = ContractId::generate();
         let base = 42;
         let sub = 99;
-        let aid_key = StorageKey::user_key(&aid, base, sub);
-        let cid_key = StorageKey::user_key(&cid, base, sub);
+        let aid_key = StorageKey::user_key(aid, base, sub);
+        let cid_key = StorageKey::user_key(cid, base, sub);
         // Keys must not be equal
         assert_ne!(aid_key.0, cid_key.0);
         // Check that storage keys use the correct prefix
-        assert!(aid_prefix(&aid_key.0));
-        assert!(!aid_prefix(&cid_key.0));
-        assert!(!cid_prefix(&aid_key.0));
-        assert!(cid_prefix(&cid_key.0));
+        assert!(aid_prefix(aid_key.0));
+        assert!(!aid_prefix(cid_key.0));
+        assert!(!cid_prefix(aid_key.0));
+        assert!(cid_prefix(cid_key.0));
     }
 
     #[test]
@@ -374,8 +374,8 @@ mod tests {
         let cid = ContractId::generate();
         let base = 42;
         let sub = 99;
-        let aid_key = StorageKey::user_key(&aid, base, sub);
-        let cid_key = StorageKey::user_key(&cid, base, sub);
+        let aid_key = StorageKey::user_key(aid, base, sub);
+        let cid_key = StorageKey::user_key(cid, base, sub);
         // Check, that the correct ID-type is returned
         assert!(aid_key.contract_id().is_none());
         assert!(aid_key.agent_id().is_some());
@@ -392,7 +392,7 @@ mod tests {
             .expect("valid contract-id");
         let base = 123;
         let sub = 456;
-        let key = StorageKey::user_key(&cid, base, sub);
+        let key = StorageKey::user_key(cid, base, sub);
 
         let hex = key.to_hex();
         assert_eq!(hex.len(), 64);

@@ -204,7 +204,7 @@ impl<'a, S: Db> Controller<'a, S> {
             let rel_db = self.db.create_sub_db(ACTION_TX_REL_SUB_DB)?;
             let txn = self.db.begin_ro_txn()?;
             match txn.read(&rel_db, &tx_id_bytes)? {
-                Some(bytes) => RelTxAction::from_bytes(&bytes),
+                Some(bytes) => RelTxAction::from_bytes(bytes),
                 None => return Ok(None),
             }
         };

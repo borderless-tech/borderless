@@ -227,7 +227,7 @@ async fn contract(command: ContractCommand, db: Lmdb, writer: Option<BorderlessI
                 SourceType::Wasm { wasm, .. } => {
                     if !wasm.is_empty() {
                         info!("try to instantiate the contract");
-                        rt.instantiate_contract(cid, &wasm)?;
+                        rt.instantiate_contract(cid, wasm)?;
                     } else {
                         info!("Introduction had empty code bytes - using filesystem instead");
                     }
@@ -331,7 +331,7 @@ async fn sw_agent(command: AgentCommand, db: Lmdb, writer: Option<BorderlessId>)
                 }
                 SourceType::Wasm { wasm, .. } => {
                     if !wasm.is_empty() {
-                        rt.instantiate_sw_agent(aid, &wasm)?;
+                        rt.instantiate_sw_agent(aid, wasm)?;
                     } else {
                         info!("Introduction had empty code bytes - using filesystem instead");
                     }
@@ -340,7 +340,7 @@ async fn sw_agent(command: AgentCommand, db: Lmdb, writer: Option<BorderlessId>)
 
             info!("Introduce agent {aid}");
             let start = Instant::now();
-            let _events = rt.process_introduction(introduction).await?;
+            rt.process_introduction(introduction).await?;
             let elapsed = start.elapsed();
             info!("Outer time elapsed: {elapsed:?}");
         }

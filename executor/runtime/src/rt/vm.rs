@@ -201,7 +201,7 @@ impl<S: Db> VmState<S> {
                 &mut txn,
                 &entry,
                 id.as_cid().expect("ledgers only exist in contracts"),
-                &tx_ctx.as_ref().expect("ledgers are only modified by txs"),
+                tx_ctx.as_ref().expect("ledgers are only modified by txs"),
             )?;
         }
 
@@ -691,14 +691,8 @@ pub fn create_ledger_entry(
         .contract_participants(&cid)?
         .unwrap_or_default();
 
-    let creditor = participants
-        .iter()
-        .find(|p| p.id == entry.creditor)
-        .is_some();
-    let debitor = participants
-        .iter()
-        .find(|p| p.id == entry.debitor)
-        .is_some();
+    let creditor = participants.iter().any(|p| p.id == entry.creditor);
+    let debitor = participants.iter().any(|p| p.id == entry.debitor);
     if creditor && debitor {
         caller.data_mut().active.push_ledger(entry)?;
         Ok(0)
@@ -747,7 +741,7 @@ pub fn timestamp(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<i64> 
                 .expect("i64 should fit for 292471208 years");
             Ok(timestamp)
         }
-        ActiveEntity::None => return Err(wasmtime::Error::msg("no active entity set")),
+        ActiveEntity::None => Err(wasmtime::Error::msg("no active entity set")),
     }
 }
 
@@ -802,7 +796,7 @@ pub mod async_abi {
             Some(ch) => {
                 // We add a timeout here to not create a deadlock in case the channel is full
                 match tokio::time::timeout(Duration::from_secs(10), ch.send(data)).await {
-                    Ok(Ok(())) => return Ok(0),
+                    Ok(Ok(())) => Ok(0),
                     Ok(Err(_)) => {
                         warn!("failed to send websocket message for agent {agent_id} - receiver closed");
                         Ok(1)

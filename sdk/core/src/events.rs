@@ -190,7 +190,7 @@ impl CallBuilder<CBWithAction> {
             name: self.name,
             writer: Some(writer_id),
             action: self.action,
-            _marker: std::marker::PhantomData::default(),
+            _marker: std::marker::PhantomData,
         })
     }
 

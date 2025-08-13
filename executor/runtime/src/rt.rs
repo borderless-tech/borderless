@@ -87,11 +87,7 @@ pub mod factory {
             }
             let lock = self.lck_contract.as_ref().unwrap();
 
-            Ok(ContractRuntime::new(
-                self.db,
-                code_store.clone(),
-                lock.clone(),
-            )?)
+            ContractRuntime::new(self.db, code_store.clone(), lock.clone())
         }
 
         /// Creates a new agent runtime
@@ -107,11 +103,7 @@ pub mod factory {
             }
             let lock = self.lck_agent.as_ref().unwrap();
 
-            Ok(AgentRuntime::new(
-                self.db,
-                code_store.clone(),
-                lock.clone(),
-            )?)
+            AgentRuntime::new(self.db, code_store.clone(), lock.clone())
         }
     }
 }
@@ -163,7 +155,7 @@ pub mod code_store {
                 self.db.open_sub_db(CONTRACT_SUB_DB)?
             };
             let state = VmState::new(self.db.clone(), db_ptr);
-            let store = Store::new(&engine, state);
+            let store = Store::new(engine, state);
             Ok(store)
         }
 

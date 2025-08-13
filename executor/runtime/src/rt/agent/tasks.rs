@@ -41,7 +41,6 @@ where
     let mut join_set = JoinSet::new();
     for sched in schedules {
         let rt = rt.clone();
-        let aid = aid.clone();
         let action = sched.get_action();
         let out_tx = out_tx.clone();
         let action_name = action.print_method();
@@ -107,6 +106,7 @@ where
     let mut msg_rx = rt.lock().await.register_ws(aid)?;
 
     let mut failure_cnt = 1;
+    #[allow(clippy::while_immutable_condition)]
     while ws_config.reconnect {
         match handle_ws_inner(
             rt.clone(),
@@ -172,7 +172,7 @@ where
                 tx.send(msg).await.map_err(|e| format!("failed to send heartbeat: {e}"))?;
             }
             result = msg_rx.recv() => {
-                let payload = result.ok_or_else(|| "Websocket message receiver closed.")?;
+                let payload = result.ok_or("Websocket message receiver closed.")?;
                 let msg = if ws_config.binary {
                     Message::Binary(payload.into())
                 } else {
