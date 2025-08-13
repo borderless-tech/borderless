@@ -30,7 +30,7 @@ borderless-runtime = { version = "0.3.0", path = "executor/runtime" }
 
 # Non-Borderless prefixed crates
 currency-4217 = { version = "0.1.0", path = "primitives/currency-4217" }
-commerce-types = { version = "0.1.0", path = "primitives/commerce-types" }
+commerce-types = { version = "0.1.1", path = "primitives/commerce-types" }
 
 # External dependencies
 anyhow = "1.0"

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// The full request datatype for a purchase order
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct OrderRequest {
     /// Header of the order request
     ///
@@ -19,7 +19,7 @@ pub struct OrderRequest {
 }
 
 /// Header of an order-request
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct OrderRequestHeader {
     /// Identifier of this order
     pub order_id: String,
@@ -42,7 +42,7 @@ pub struct OrderRequestHeader {
 }
 
 /// A single item position in the purchase order
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ItemOut {
     /// The line-number in the list of items that are purchased.
     pub line_number: u32,
@@ -55,7 +55,7 @@ pub struct ItemOut {
 }
 
 /// Datatype for a single item - bundles item-id and item-detail
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Item {
     /// ID of the requested item
     pub item_id: ItemID,
@@ -64,7 +64,7 @@ pub struct Item {
 }
 
 /// Supplier and buyer part/item ID
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ItemID {
     /// If known, the buyer can supply his/her own ID for this item
     ///
@@ -75,7 +75,7 @@ pub struct ItemID {
 }
 
 /// Details of a single position in the purchase order
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ItemDetail {
     /// For goods: price per unit
     pub unit_price: Option<Money>,
@@ -98,7 +98,7 @@ pub struct ItemDetail {
 }
 
 /// Address definition
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Address {
     /// Name of the company / person that resides at the address
     pub name: String,
@@ -113,20 +113,20 @@ pub struct Address {
 }
 
 /// Information about the manufacturer
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ManufacturerInfo {
     pub part_id: String,
     pub name: String,
 }
 
 /// Classification (UNSPSC, ECLASS, …)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Classification {
     pub domain: ClassificationDomain,
     pub code: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum ClassificationDomain {
     UNSPSC,
     ECLASS,
@@ -134,7 +134,7 @@ pub enum ClassificationDomain {
 }
 
 /// Defines if the order was "new", an "update" or should be "delete"d
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum OrderType {
     New,
     Update,
@@ -142,7 +142,7 @@ pub enum OrderType {
 }
 
 /// Service pricing per time/measure unit (cXML `<UnitRate>`)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct UnitRate {
     /// Money amount of the rate
     pub rate: Money,
@@ -155,28 +155,28 @@ pub struct UnitRate {
 }
 
 /// Quantity + UOM that the price is based on (cXML `<PriceBasisQuantity>`)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct PriceBasisQuantity {
     pub quantity: u32,
     pub unit_of_measure: UnitOfMeasure,
 }
 
 /// Identifies the meaning of a `UnitRate` (cXML `<TermReference>`)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TermReference {
     pub term_name: String,
     pub term: String,
 }
 
 /// Time period for a service (cXML `<Period>`)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Period {
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
 }
 
 /// Mirrors cXML `<SpendDetail>` → may contain Travel, Fee, and/or Labor
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SpendDetail {
     pub travel_detail: Option<TravelDetail>,
     pub fee_detail: Option<FeeDetail>,
@@ -185,7 +185,7 @@ pub struct SpendDetail {
 }
 
 /// Labor service details (subset of cXML `<LaborDetail>`)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct LaborDetail {
     /// Supplier quote/proposal reference (cXML `supplierReferenceCode` attribute)
     pub supplier_reference_code: Option<String>,
@@ -206,7 +206,7 @@ pub struct LaborDetail {
 }
 
 /// Optional “fee” style charge
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct FeeDetail {
     pub amount: Money,
     pub description: Option<String>,
@@ -214,7 +214,7 @@ pub struct FeeDetail {
 }
 
 /// Optional “travel” style cost bucket (kept simple; extend as needed)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TravelDetail {
     pub amount: Option<Money>,
     pub description: Option<String>,
@@ -223,20 +223,20 @@ pub struct TravelDetail {
 }
 
 /// Who did the work (cXML `<Contractor>`)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Contractor {
     pub identifier: Option<ContractorIdentifier>,
     pub contact: Option<ContactInfo>,
 }
 
 /// Contractor identifier (cXML `<ContractorIdentifier domain=...>`)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ContractorIdentifier {
     pub domain: ContractorIdentifierDomain,
     pub value: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum ContractorIdentifierDomain {
     /// cXML: "buyerReferenceID"
     BuyerReferenceID,
@@ -247,7 +247,7 @@ pub enum ContractorIdentifierDomain {
 }
 
 /// Minimal contact info for supervisors/contractors (maps to cXML `<Contact>`)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ContactInfo {
     pub name: String,
     pub email: Option<String>,
@@ -256,7 +256,7 @@ pub struct ContactInfo {
 }
 
 /// ISO Units-of-Measure-Codes or a freely defined measure
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum UnitOfMeasure {
     /// Each
     EA,
@@ -277,7 +277,7 @@ pub enum UnitOfMeasure {
 }
 
 /// A transport service request/tender/booking (A→B or multi-stop)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TransportationRequest {
     /// Your unique ID (tender/booking)
     pub request_id: String,
@@ -321,7 +321,7 @@ pub struct TransportationRequest {
 }
 
 /// Where you are in the request→execution flow
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum TransportStatus {
     Draft,     // built but not sent
     RfqSent,   // RFQ/tender sent to providers
@@ -333,7 +333,7 @@ pub enum TransportStatus {
 }
 
 /// Road/Air/Ocean/Rail or mixed
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum TransportMode {
     Road,
     Air,
@@ -343,7 +343,7 @@ pub enum TransportMode {
 }
 
 /// Requested vs planned vs estimated vs actual for one step (pickup or delivery)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct StepTiming {
     /// What the shipper/transport user asked for
     pub requested: Option<TimeWindow>,
@@ -356,14 +356,14 @@ pub struct StepTiming {
 }
 
 /// A time window (site availability / appointment window)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TimeWindow {
     pub earliest_utc: DateTime<Utc>,
     pub latest_utc: DateTime<Utc>,
 }
 
 /// An intermediate stop (for multi-pick/drop). Each stop can model both arrival & departure.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct LegStop {
     pub sequence: u32,
     pub location: Address,
@@ -376,7 +376,7 @@ pub struct LegStop {
 }
 
 /// What you’re moving (high-level)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct CargoSummary {
     /// Number of pieces ( pieces being cartons / pallets / containers / etc. )
     pub pieces: u32,
@@ -393,7 +393,7 @@ pub struct CargoSummary {
 }
 
 /// Equipment / container / trailer requirements
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Equipment {
     /// Examples: "Box Truck 7.5t", "13.6m tautliner", "40HC", "20DV", "Reefer Trailer"
     pub type_code: String,
@@ -404,7 +404,7 @@ pub struct Equipment {
 }
 
 /// Accessorial services (used to add cost / constraints on the delivery)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum Accessorial {
     /// Liftgate
     TailLift,
@@ -429,7 +429,7 @@ pub enum Accessorial {
 }
 
 /// Execution/visibility event (optional stream)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TransportEvent {
     pub code: TransportEventCode,
     pub timestamp: DateTime<Utc>,
@@ -439,7 +439,7 @@ pub struct TransportEvent {
 }
 
 /// A compact event vocabulary
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum TransportEventCode {
     PickupPlanned,
     PickupEtaUpdated,
