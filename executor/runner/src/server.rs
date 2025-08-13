@@ -100,7 +100,7 @@ impl<S: Db> ActionWriter for ActionApplier<S> {
                 // Print messages ( since there are no agents )
                 for msg in events.local {
                     info!(
-                        "publish message to topic {}/{}: {}",
+                        "publish message to topic /{}/{}: {}",
                         msg.publisher,
                         msg.topic.trim_matches('/'),
                         serde_json::to_string_pretty(&msg.value).unwrap_or_default()
