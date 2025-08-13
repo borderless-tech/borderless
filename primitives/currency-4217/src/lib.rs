@@ -203,12 +203,10 @@ impl fmt::Display for Currency {
     }
 }
 
-// TODO: Let's simply use "String" as the base representation here
 /// Monetary value stored as an *integer number of thousandths* (1/1000) of the currency’s major unit.
 ///
 /// Using thousandths lets us represent all ISO 4217 currencies (the largest fraction in normal use is the Bahraini dinar’s 3 decimal places) without loss.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct Money {
     /// Amount in thousandths of a unit (can be negative).
@@ -328,80 +326,168 @@ impl fmt::Display for ParseMoneyError {
 }
 impl std::error::Error for ParseMoneyError {}
 
-enum ParserState {
-    Prefix,
-    Number,
-    NumberFrac,
-    CurSym,
+/// Formats an amount with the given number of fractions.
+///
+/// Similar to the `fmt::Display` implementation, but without the currency symbol
+#[cfg(feature = "serde")]
+fn fmt_amount_with_fracs(amount_milli: i64, fracs: u8) -> String {
+    let abs = amount_milli.abs();
+    let integral = abs / 1000;
+    let fractional = (abs % 1000) as u32;
+
+    // Build fractional string, trimming trailing zeros.
+    if fractional == 0 {
+        if amount_milli < 0 {
+            format!("-{}", integral)
+        } else {
+            format!("{}", integral)
+        }
+    } else {
+        let mut frac_str = format!("{:03}", fractional);
+        let remove_fracs = 3u8.saturating_sub(fracs);
+        for _ in 0..remove_fracs {
+            frac_str.pop();
+        }
+        if amount_milli < 0 {
+            format!("-{}.{}", integral, frac_str)
+        } else {
+            format!("{}.{}", integral, frac_str)
+        }
+    }
+}
+
+/// Parses the input string into `amount_milli`, the currency symbol and the number of fracs
+fn parse_amount_to_milli(input: &str) -> Result<(i64, String, usize), ParseMoneyError> {
+    // normalize whitespace (incl. non-breaking) and trim
+    let mut s = input.replace('\u{00A0}', " "); // NBSP → space
+    s.retain(|c| c != '\t' && c != '\r' && c != '\n' && !c.is_whitespace());
+
+    if s.is_empty() {
+        return Err(ParseMoneyError::InvalidFormat);
+    }
+
+    // sign
+    let (neg, rest) = if let Some(r) = s.strip_prefix('-') {
+        (true, r.trim_start())
+    } else {
+        (false, s.as_str())
+    };
+
+    // find the rightmost '.' or ',' → decimal separator
+    let last_dot = rest.rfind('.');
+    let last_comma = rest.rfind(',');
+    let dec_idx = match (last_dot, last_comma) {
+        (Some(d), Some(c)) => Some(d.max(c)),
+        (Some(d), None) => Some(d),
+        (None, Some(c)) => Some(c),
+        (None, None) => None,
+    };
+
+    // split number (left) and trailing currency symbol (right)
+    // we’ll scan digits/sep from the left; once a non [0-9., _' ] appears, that and the rest is the symbol
+    let mut num_end = rest.len();
+    for (i, ch) in rest.char_indices() {
+        let is_group = ch == '.' || ch == ',' || ch == ' ' || ch == '_' || ch == '’' || ch == '\'';
+        if ch.is_ascii_digit() || is_group {
+            continue;
+        } else {
+            num_end = i;
+            break;
+        }
+    }
+    let (num_part, sym_part) = rest.split_at(num_end);
+    let sym = sym_part.trim().to_string();
+
+    // split whole/fraction around the chosen decimal separator (if any)
+    let (whole_raw, frac_raw) = if let Some(idx) = dec_idx {
+        // only treat that occurrence as decimal if it's inside num_part
+        if idx < num_end {
+            (&num_part[..idx], &num_part[idx + 1..])
+        } else {
+            (num_part, "")
+        }
+    } else {
+        (num_part, "")
+    };
+
+    // strip grouping from the whole part
+    let mut whole_clean = String::with_capacity(whole_raw.len());
+    for ch in whole_raw.chars() {
+        if ch.is_ascii_digit() {
+            whole_clean.push(ch);
+        }
+        // ignore group separators: . , space, NBSP, _, ’, '
+        else if ch == '.' || ch == ',' || ch == ' ' || ch == '_' || ch == '’' || ch == '\'' {
+            continue;
+        } else {
+            return Err(ParseMoneyError::InvalidFormat);
+        }
+    }
+    if whole_clean.is_empty() {
+        return Err(ParseMoneyError::InvalidFormat);
+    }
+
+    // take only the leading digits of the fractional part; grouping not expected after decimal
+    let mut frac_digits = String::new();
+    for ch in frac_raw.chars() {
+        if ch.is_ascii_digit() {
+            frac_digits.push(ch);
+        } else if ch == ' ' {
+            continue;
+        }
+        // allow stray space after decimal
+        else {
+            break;
+        } // currency symbol or anything else found; stop
+    }
+    if frac_digits.len() > 3 {
+        return Err(ParseMoneyError::InvalidFormat);
+    }
+
+    // build milli
+    let whole_i: i128 = whole_clean
+        .parse()
+        .map_err(|_| ParseMoneyError::InvalidFormat)?;
+    let frac_pad = {
+        let mut f = frac_digits;
+        while f.len() < 3 {
+            f.push('0');
+        }
+        f
+    };
+    let frac_i: i128 = frac_pad
+        .parse()
+        .map_err(|_| ParseMoneyError::InvalidFormat)?;
+    let mut milli = whole_i
+        .checked_mul(1000)
+        .and_then(|x| x.checked_add(frac_i))
+        .ok_or(ParseMoneyError::Overflow)?;
+    if neg {
+        milli = -milli;
+    }
+
+    // return frac_len as actually provided (before padding)
+    let frac_len = dec_idx
+        .filter(|&i| i < num_end)
+        .map(|_| frac_raw.chars().take_while(|c| c.is_ascii_digit()).count())
+        .unwrap_or(0);
+
+    Ok((milli as i64, sym, frac_len))
 }
 
 impl FromStr for Money {
     type Err = ParseMoneyError;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        // Okay, write a small parser from scratch
-        // start with either number or "-"
-        let mut state = ParserState::Prefix;
-        let mut mul = 1;
-        let mut num = String::new();
-        let mut frac = String::new();
-        let mut sym = String::new();
-        for c in input.chars() {
-            // Ignore whitespace completely
-            if c.is_ascii_whitespace() {
-                continue;
-            }
-            match state {
-                ParserState::Prefix => {
-                    if c == '-' {
-                        mul = -1; // multiply by -1 to make a negative number
-                        state = ParserState::Number;
-                    } else if c.is_numeric() {
-                        state = ParserState::Number;
-                        num.push(c);
-                    } else {
-                        return Err(ParseMoneyError::InvalidFormat);
-                    }
-                }
-                ParserState::Number => {
-                    if c.is_numeric() {
-                        num.push(c);
-                    } else if c == ',' || c == '.' {
-                        state = ParserState::NumberFrac;
-                    } else {
-                        sym.push(c);
-                        state = ParserState::CurSym;
-                    }
-                }
-                ParserState::NumberFrac => {
-                    if c.is_numeric() {
-                        frac.push(c);
-                    } else {
-                        sym.push(c);
-                        state = ParserState::CurSym;
-                    }
-                }
-                ParserState::CurSym => {
-                    sym.push(c);
-                }
-            }
-        }
-        let num = i64::from_str_radix(&num, 10).map_err(|_| ParseMoneyError::InvalidFormat)?;
-        let frac = if frac.is_empty() {
-            0
-        } else {
-            // We have to account for the correct number of fractions
-            let n = i64::from_str_radix(&frac, 10).map_err(|_| ParseMoneyError::InvalidFormat)?;
-            if frac.len() > 3 {
-                return Err(ParseMoneyError::InvalidFormat);
-            }
-            n * 10_i64.pow(3 - frac.len() as u32)
-        };
-        debug_assert!(frac < 1000);
-        let amount_milli = mul * (1000 * num + frac);
+        let (amount_milli, sym, frac_len) = parse_amount_to_milli(input)?;
 
         for cur in Currency::ALL {
             if sym == cur.symbol() {
+                // Check, if the frac_len is smaller or equal to what the currency allows
+                if frac_len > cur.fracs() as usize {
+                    return Err(ParseMoneyError::InvalidFormat);
+                }
+                // Otherwise, just return the money struct
                 return Ok(Money {
                     amount_milli,
                     currency: cur,
@@ -409,6 +495,81 @@ impl FromStr for Money {
             }
         }
         Err(ParseMoneyError::UnknownCurrency)
+    }
+}
+
+#[cfg(feature = "serde")]
+mod serialize_money {
+    use super::*;
+    use serde::{Deserializer, Serializer};
+
+    /// Human readable definition of [`Money`]
+    #[derive(Serialize, Deserialize)]
+    struct MoneyHuman {
+        amount: String,
+        currency: Currency,
+    }
+
+    /// Binary format for [`Money`]
+    ///
+    /// NOTE: This is identical to [`Money`] itself, but has a different serialize/deserialize implementation !
+    #[derive(Serialize, Deserialize)]
+    struct MoneyBin {
+        amount_milli: i64,
+        currency: Currency,
+    }
+
+    impl Serialize for Money {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            if serializer.is_human_readable() {
+                let f = self.currency.fracs();
+                let amount = fmt_amount_with_fracs(self.amount_milli, f);
+                MoneyHuman {
+                    amount,
+                    currency: self.currency,
+                }
+                .serialize(serializer)
+            } else {
+                MoneyBin {
+                    amount_milli: self.amount_milli,
+                    currency: self.currency,
+                }
+                .serialize(serializer)
+            }
+        }
+    }
+
+    impl<'de> Deserialize<'de> for Money {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            if deserializer.is_human_readable() {
+                let m = MoneyHuman::deserialize(deserializer)?;
+                let fracs = m.currency.fracs();
+                let (amount_milli, _, n_fracs) =
+                    parse_amount_to_milli(&m.amount).map_err(serde::de::Error::custom)?;
+                if n_fracs > fracs as usize {
+                    return Err(serde::de::Error::custom(format!(
+                        "invalid amount of fractions for currency {}",
+                        m.currency
+                    )));
+                }
+                Ok(Money {
+                    amount_milli,
+                    currency: m.currency,
+                })
+            } else {
+                let m = MoneyBin::deserialize(deserializer)?;
+                Ok(Money {
+                    amount_milli: m.amount_milli,
+                    currency: m.currency,
+                })
+            }
+        }
     }
 }
 
@@ -421,7 +582,7 @@ mod tests {
     type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
     /// Generates a random amount in a random currency
-    fn random_money() -> Money {
+    pub fn random_money() -> Money {
         let currency = Currency::ALL[random_range(0..Currency::ALL.len())];
         // Check fraction and shorten the amount so that it does not represent invalid values for that currency
         // E.g. cur=€ and amount_milli=1003 would not be valid, as 0.103 € is not representable.
@@ -516,5 +677,187 @@ mod tests {
         let euro = Money::euro(-100, 10);
         assert_eq!(euro.amount_milli, -100100);
         assert_eq!(euro.to_string(), "-100.10 €");
+    }
+    #[test]
+    fn parse_accepts_dot_and_comma_and_whitespace() {
+        let cases = [
+            ("100€", 100_000, "€", 0),
+            ("100.5 €", 100_500, "€", 1),
+            (" 100 , 50 € ", 100_500, "€", 2),
+            ("-1,005€", -1_005, "€", 3),
+            ("10.00€", 10_000, "€", 2),
+        ];
+        for (inp, want_milli, want_sym, want_fracs) in cases {
+            let (milli, sym, fracs) = parse_amount_to_milli(inp).unwrap();
+            println!("{inp}");
+            assert_eq!(
+                (milli, sym, fracs),
+                (want_milli, want_sym.to_string(), want_fracs)
+            );
+        }
+    }
+
+    #[test]
+    fn parse_rejects_more_than_three_fractional_digits() {
+        // Parser itself rejects >3 digits regardless of currency
+        let e = parse_amount_to_milli("1.2345€").unwrap_err();
+        assert_eq!(e, ParseMoneyError::InvalidFormat);
+    }
+
+    #[test]
+    fn parse_handles_sign_and_large_values() {
+        let (milli, sym, fracs) = parse_amount_to_milli("-123456789.001$").unwrap();
+        assert_eq!(sym, "$");
+        assert_eq!(fracs, 3);
+        assert_eq!(milli, -123_456_789_001);
+    }
+
+    // ---- Money::from_str (uses parse + currency check) ----
+    #[test]
+    fn from_str_respects_currency_fracs() {
+        // EUR allows 2 → OK
+        let m: Money = "1.23 €".parse().unwrap();
+        assert_eq!(m.amount_milli, 1_230);
+
+        // EUR with 3 → error (even though parse_amount_to_milli would accept 3)
+        let e = "1.234€".parse::<Money>().unwrap_err();
+        assert_eq!(e, ParseMoneyError::InvalidFormat);
+
+        // JPY with decimals → error
+        let e = "1.0 ¥".parse::<Money>().unwrap_err();
+        assert_eq!(e, ParseMoneyError::InvalidFormat);
+    }
+
+    #[test]
+    fn from_str_unknown_currency() {
+        let e = "10.00 ¤".parse::<Money>().unwrap_err();
+        assert_eq!(e, ParseMoneyError::UnknownCurrency);
+    }
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod serde_tests {
+    use super::tests::random_money;
+    use super::*;
+    use serde_json as json;
+
+    // Emulate having anyhow
+    type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+    #[test]
+    fn json_serialize_eur() -> Result<()> {
+        let m = Money::euro(12, 34); // €12.34 → 12_340 milli
+        let s = json::to_string(&m)?;
+        // Human readable: amount should be a STRING with 2 fracs for EUR
+        assert_eq!(s, r#"{"amount":"12.34","currency":"EUR"}"#);
+        Ok(())
+    }
+
+    #[test]
+    fn json_serialize_jpy() -> Result<()> {
+        let m = Money::yen(123); // JPY has 0 fractional digits
+        let s = json::to_string(&m)?;
+        assert_eq!(s, r#"{"amount":"123","currency":"JPY"}"#);
+        Ok(())
+    }
+
+    #[test]
+    fn json_roundtrip_eur() -> Result<()> {
+        for _ in 0..1000 {
+            let m = random_money();
+            let s = json::to_string(&m)?;
+            let back: Money = json::from_str(&s)?;
+            assert_eq!(m, back);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn json_deserialize_accepts_comma_and_dot() -> Result<()> {
+        // Your parser accepts both '.' and ',' — serde path goes through parse_amount_to_milli
+        let j1 = r#"{ "amount": "10.5", "currency": "EUR" }"#;
+        let j2 = r#"{ "amount": "10,5", "currency": "EUR" }"#;
+        let m1: Money = json::from_str(j1)?;
+        let m2: Money = json::from_str(j2)?;
+        assert_eq!(m1, m2);
+        assert_eq!(m1.amount_milli, 10_500);
+        Ok(())
+    }
+
+    #[test]
+    fn json_deserialize_rejects_too_many_fracs_for_currency() {
+        // EUR has 2 fracs → "1.234" should be rejected
+        let j = r#"{ "amount": "1.234", "currency": "EUR" }"#;
+        let res = json::from_str::<Money>(j);
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("invalid amount of fractions") || msg.contains("invalid money format"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn json_deserialize_rejects_numeric_amount() {
+        // MoneyHuman.amount is String; numbers should be rejected
+        let j = r#"{ "amount": 12.34, "currency": "EUR" }"#;
+        let err = json::from_str::<Money>(j).unwrap_err();
+        assert!(err.to_string().contains("invalid type") || err.to_string().contains("string"));
+    }
+
+    #[test]
+    fn postcard_roundtrip_usd() -> Result<()> {
+        // Binary path must keep amount_milli intact and not format strings
+        let m = Money::usd(5, 1); // $5.01 → 5_010 milli
+        let bytes = postcard::to_allocvec(&m)?;
+        let back: Money = postcard::from_bytes(&bytes)?;
+        assert_eq!(m, back);
+        assert_eq!(back.amount_milli, 5_010);
+        Ok(())
+    }
+
+    #[test]
+    fn postcard_roundtrip() -> Result<()> {
+        for _ in 0..1000 {
+            let m = random_money();
+            let bytes = postcard::to_allocvec(&m)?;
+            let back: Money = postcard::from_bytes(&bytes)?;
+            assert_eq!(m, back);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn json_and_binary_are_different_shapes() -> Result<()> {
+        let m = Money::euro(1, 0);
+        // JSON should contain "amount" as a string
+        let js = json::to_string(&m)?;
+        assert!(js.contains(r#""amount":"1""#));
+
+        // Binary length should be small (no string) — this is a smoke test:
+        // Currency is a repr(u32) in the code, but serialized here via derive;
+        // still, the binary should *not* include "1" or any dots/commas.
+        let bin = postcard::to_allocvec(&m)?;
+        assert!(!std::str::from_utf8(&bin).unwrap_or("").contains("1"));
+        Ok(())
+    }
+
+    #[test]
+    fn fmt_amount_matches_currency_fracs() {
+        // EUR → 2 fracs
+        let s = fmt_amount_with_fracs(12_340, Currency::EUR.fracs());
+        assert_eq!(s, "12.34");
+
+        // JPY → 0 fracs
+        let s = fmt_amount_with_fracs(12_000, Currency::JPY.fracs());
+        assert_eq!(s, "12");
+
+        // KRW (0 fracs) negative
+        let s = fmt_amount_with_fracs(-987_000, Currency::KRW.fracs());
+        assert_eq!(s, "-987");
+
+        // Trailing zeros trimmed correctly at 2 fracs
+        let s = fmt_amount_with_fracs(10_000, Currency::EUR.fracs());
+        assert_eq!(s, "10");
     }
 }
