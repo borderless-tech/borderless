@@ -60,14 +60,23 @@ impl From<Registry> for RegistryDto {
 /// DTO for [`PkgMeta`]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PkgMetaDto {
-    /// Authors of the package
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub authors: Vec<Author>,
+    pub name: String,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_name: Option<String>,
+
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_module: Option<String>,
+
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub authors: Vec<Author>,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -85,9 +94,12 @@ pub struct PkgMetaDto {
 impl From<PkgMetaDto> for PkgMeta {
     fn from(value: PkgMetaDto) -> Self {
         Self {
+            name: value.name,
             authors: value.authors,
             description: value.description,
             documentation: value.documentation,
+            app_name: value.app_name,
+            app_module: value.app_module,
             license: value.license,
             repository: value.repository,
         }
@@ -97,9 +109,12 @@ impl From<PkgMetaDto> for PkgMeta {
 impl From<PkgMeta> for PkgMetaDto {
     fn from(value: PkgMeta) -> Self {
         Self {
+            name: value.name,
             authors: value.authors,
             description: value.description,
             documentation: value.documentation,
+            app_name: value.app_name,
+            app_module: value.app_module,
             license: value.license,
             repository: value.repository,
         }
@@ -114,6 +129,8 @@ impl PkgMetaDto {
             && self.documentation.is_none()
             && self.license.is_none()
             && self.repository.is_none()
+            && self.app_name.is_none()
+            && self.app_module.is_none()
     }
 }
 

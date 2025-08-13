@@ -15,6 +15,7 @@ pub use crate::semver::SemVer;
 mod author;
 pub mod dto;
 pub mod git_info;
+pub mod manifest;
 pub mod semver;
 
 // TODO: When using this with the CLI, it may be beneficial to add builders to all of those types.
@@ -189,13 +190,35 @@ impl SourceFlattened {
 /// Contains things like the authors, license, link to documentation etc.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PkgMeta {
-    /// Authors of the package
-    #[serde(default)]
-    pub authors: Vec<Author>,
+    /// Name of the package
+    pub name: String,
 
     /// A description of the package
     #[serde(default)]
     pub description: Option<String>,
+
+    /// Name of the application that this package is a part of
+    ///
+    /// An application is just an abstraction for multiple wasm packages.
+    /// It can be further split into application modules.
+    ///
+    /// The full specifier for the package would be (if application and app-modules are used):
+    /// `<app_name>/<app_module>/<pkg-name>`
+    #[serde(default)]
+    pub app_name: Option<String>,
+
+    /// Name of the application module that this package is a part of
+    ///
+    /// An application module is a subset of wasm modules in an application.
+    ///
+    /// The full specifier for the package would be (if application and app-modules are used):
+    /// `<app_name>/<app_module>/<pkg-name>`
+    #[serde(default)]
+    pub app_module: Option<String>,
+
+    /// Authors of the package
+    #[serde(default)]
+    pub authors: Vec<Author>,
 
     /// URL of the package documentation
     #[serde(default)]
@@ -242,27 +265,11 @@ pub struct Capabilities {
 /// and (optional) package metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WasmPkg {
-    /// Name of the package
-    pub name: String,
+    /// Package metadata
+    pub package: PkgMeta,
 
-    /// Name of the application that this package is a part of
-    ///
-    /// An application is just an abstraction for multiple wasm packages.
-    /// It can be further split into application modules.
-    ///
-    /// The full specifier for the package would be (if application and app-modules are used):
-    /// `<app_name>/<app_module>/<pkg-name>`
-    #[serde(default)]
-    pub app_name: Option<String>,
-
-    /// Name of the application module that this package is a part of
-    ///
-    /// An application module is a subset of wasm modules in an application.
-    ///
-    /// The full specifier for the package would be (if application and app-modules are used):
-    /// `<app_name>/<app_module>/<pkg-name>`
-    #[serde(default)]
-    pub app_module: Option<String>,
+    /// Package type (contract or agent)
+    pub pkg_type: PkgType,
 
     /// (Networking) Capabilities of the package
     ///
@@ -271,13 +278,6 @@ pub struct WasmPkg {
     /// calls than specified by the url-whitelist in [`Capabilities`].
     #[serde(default)]
     pub capabilities: Option<Capabilities>,
-
-    /// Package type (contract or agent)
-    pub pkg_type: PkgType,
-
-    /// Package metadata
-    #[serde(default)]
-    pub meta: PkgMeta,
 
     /// Package source
     pub source: Source,
