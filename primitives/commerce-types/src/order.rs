@@ -84,8 +84,9 @@ pub struct ItemDetail {
     /// Human-readable description
     pub description: String,
 
-    /// For goods: unit of measure. For services, prefer `unit_rate` (cXML deprecates UnitPrice+UOM for services).
-    pub unit_of_measure: Option<UnitOfMeasure>,
+    /// Unit of measure as ISO String (e.g. "KG" for kilogram) - used for goods.
+    /// For services prefer `unit_rate` (cXML deprecates UnitPrice+UOM for services).
+    pub unit_of_measure: Option<String>,
 
     pub classification: Option<Classification>,
     pub manufacturer: Option<ManufacturerInfo>,

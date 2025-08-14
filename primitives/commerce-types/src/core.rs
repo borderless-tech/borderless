@@ -57,105 +57,7 @@ pub enum ContractorIdentifierDomain {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct PriceBasisQuantity {
     pub quantity: u32,
-    pub unit_of_measure: UnitOfMeasure,
-}
-
-/// Flexible Unit-of-Measure that supports common known codes AND arbitrary strings.
-/// - Known codes serialize to a canonical short code (see `rename`).
-/// - On input, we also accept popular aliases (UNECE codes and ERP shorthands).
-/// - Unknown strings deserialize to `UnitOfMeasure::Other("...")` instead of failing.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
-pub enum UnitOfMeasure {
-    Known(KnownUom),
-    Other(String),
-}
-
-/// The most-used UoMs for commerce & hardware, with common aliases.
-///
-/// Canonical serialized codes (via `rename`) are chosen to be friendly & recognizable,
-/// while aliases include UNECE Rec 20 codes and widely used ERP shorthands.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum KnownUom {
-    // ---- Count / packaging ---------------------------------------------------
-    /// Piece / Each
-    #[serde(rename = "PCE", alias = "EA", alias = "C62")]
-    Piece,
-    /// Package
-    #[serde(rename = "PKG", alias = "XPK", alias = "PK")]
-    Package,
-    /// Set
-    #[serde(rename = "SET")]
-    Set,
-    /// Box
-    #[serde(rename = "BOX", alias = "BX")]
-    Box,
-    /// Bag
-    #[serde(rename = "BAG", alias = "BG")]
-    Bag,
-    /// Roll
-    #[serde(rename = "ROL", alias = "RL")]
-    Roll,
-    /// Pair
-    #[serde(rename = "PAI", alias = "PR")]
-    Pair,
-
-    // ---- Mass ----------------------------------------------------------------
-    /// Kilogram
-    #[serde(rename = "KG", alias = "KGM")]
-    Kilogram,
-    /// Gram
-    #[serde(rename = "G", alias = "GRM")]
-    Gram,
-    /// Tonne (metric ton)
-    #[serde(rename = "T", alias = "TNE")]
-    Tonne,
-
-    // ---- Volume --------------------------------------------------------------
-    /// Litre
-    #[serde(rename = "LTR", alias = "L")]
-    Litre,
-    /// Millilitre
-    #[serde(rename = "ML", alias = "MLT")]
-    Millilitre,
-    /// Cubic meter
-    #[serde(rename = "CBM", alias = "M3", alias = "MTQ")]
-    CubicMeter,
-
-    // ---- Length / area -------------------------------------------------------
-    /// Meter
-    #[serde(rename = "MTR", alias = "M")]
-    Meter,
-    /// Centimeter
-    #[serde(rename = "CM", alias = "CMT")]
-    Centimeter,
-    /// Millimeter
-    #[serde(rename = "MM", alias = "MMT")]
-    Millimeter,
-    /// Square meter
-    #[serde(rename = "SQM", alias = "M2", alias = "MTK")]
-    SquareMeter,
-
-    // ---- Time ----------------------------------------------------------------
-    /// Hour
-    #[serde(rename = "HUR", alias = "H")]
-    Hour,
-    /// Minute
-    #[serde(rename = "MIN")]
-    Minute,
-    /// Second
-    #[serde(rename = "SEC", alias = "S")]
-    Second,
-    /// Day
-    #[serde(rename = "DAY")]
-    Day,
-    /// Month
-    #[serde(rename = "MON")]
-    Month,
-    /// Year
-    #[serde(rename = "YR", alias = "ANN")]
-    Year,
+    pub unit_of_measure: String,
 }
 
 /// Service pricing per time/measure unit (cXML `<UnitRate>`)
@@ -163,8 +65,8 @@ pub enum KnownUom {
 pub struct UnitRate {
     /// Money amount of the rate
     pub rate: Money,
-    /// Unit the service is provided in (e.g., hours)
-    pub unit_of_measure: UnitOfMeasure,
+    /// Unit the service is provided in (e.g., H or HUR for hours)
+    pub unit_of_measure: String,
     /// Optional price basis quantity (e.g., rate applies per 8 hours)
     pub price_basis_quantity: Option<PriceBasisQuantity>,
     /// Optional rate code/context (e.g., payCode=Overtime)
