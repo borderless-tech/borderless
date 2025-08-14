@@ -6,7 +6,6 @@ authors = ["Christian Hammermeister <c.hammermeister@borderless-technologies.com
 
 [dependencies]
 serde.workspace = true
-schemars.workspace = true
 borderless.workspace = true
 commerce-types.workspace = true
 
