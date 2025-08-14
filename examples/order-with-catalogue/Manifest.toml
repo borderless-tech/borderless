@@ -1,7 +1,7 @@
 [contract]
-name = "order-from-catalogue"
+name = "order-with-catalogue"
 app_name   = "order"
-app_module = "catalogue"
+app_module = "test"
 
 [meta]
 authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]
