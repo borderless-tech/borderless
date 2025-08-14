@@ -346,6 +346,20 @@ async fn sw_agent(command: AgentCommand, db: Lmdb, writer: Option<BorderlessId>)
                 }
                 SourceType::Wasm { wasm, .. } => {
                     if !wasm.is_empty() {
+                        let (okay, log) = rt
+                            .check_module_and_state(
+                                wasm.clone(),
+                                introduction.initial_state.clone(),
+                            )
+                            .await?;
+                        if !okay {
+                            warn!("Check failed");
+                            for l in log {
+                                warn!("{l}");
+                            }
+                            warn!("Introduction process aborted...");
+                            return Ok(());
+                        }
                         rt.instantiate_sw_agent(aid, wasm)?;
                     } else {
                         info!("Introduction had empty code bytes - using filesystem instead");
