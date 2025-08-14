@@ -46,7 +46,7 @@ pub(crate) fn contains_key(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
     ensure!(!hashmap.contains_key(&target), "Error 1 in [contains_key]");
     hashmap.insert(target, 0);
     ensure!(hashmap.contains_key(&target), "Error 2 in [contains_key]");
-    hashmap.remove(target);
+    hashmap.remove(&target);
     ensure!(!hashmap.contains_key(&target), "Error 3 in [contains_key]");
     Ok(())
 }
@@ -63,7 +63,7 @@ pub(crate) fn insert(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
     }
     // Check integrity
     for i in 0..N {
-        let val = hashmap.get(i).context("Get({i}) must return some value")?;
+        let val = hashmap.get(&i).context("Get({i}) must return some value")?;
         ensure!(oracle.get(&i) == Some(&val), "Error 1 in [insert]")
     }
     Ok(())
@@ -81,7 +81,7 @@ pub(crate) fn remove(hashmap: &mut HashMap<u64, u64>) -> Result<()> {
     }
     // Check integrity
     for i in 0..N {
-        let x = hashmap.remove(i);
+        let x = hashmap.remove(&i);
         let y = oracle.remove(&i);
         ensure!(x == y, "Error 1 in [remove]")
     }
@@ -159,7 +159,7 @@ pub(crate) fn add_product(hashmap: &mut HashMap<Code, Product>) -> Result<()> {
         let product = Product::generate_product();
         hashmap.insert(code.clone(), product.clone());
 
-        let from_map = hashmap.get(code).unwrap();
+        let from_map = hashmap.get(&code).unwrap();
         if *from_map != product {
             return Err(new_error!("{} !== {}", *from_map, product));
         }

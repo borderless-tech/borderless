@@ -3,13 +3,13 @@ pub mod contract {
     use borderless::prelude::ledger::{settle_debt, transfer};
     use borderless::prelude::*;
     use borderless::{collections::HashMap, time::timestamp};
-    use commerce_types::OrderRequest;
+    use commerce_types::order::OrderRequest;
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
     pub struct OrderState {
-        pub created: OrderRequest,
+        pub init: OrderRequest,
         pub confirmed: Option<OrderRequest>,
         pub order_received: Option<i64>, // timestamp - use chrono here
         pub invoice_received: Option<i64>, // use invoice model here
@@ -17,20 +17,30 @@ pub mod contract {
     }
 
     impl OrderState {
+        /// Creates a new `OrderState` from an existing `OrderRequest`
         pub fn new(order: OrderRequest) -> Self {
             OrderState {
-                created: order,
+                init: order,
                 confirmed: None,
                 order_received: None,
                 invoice_received: None,
                 paid: None,
             }
         }
+
+        /// Returns `true` if the order if fulfilled
+        pub fn is_fulfilled(&self) -> bool {
+            self.confirmed.is_some()
+                && self.order_received.is_some()
+                && self.invoice_received.is_some()
+                && self.paid.is_some()
+        }
     }
 
     #[derive(State)]
     pub struct Order {
-        orders: HashMap<String, OrderState>,
+        open_orders: HashMap<String, OrderState>,
+        closed_orders: HashMap<String, OrderState>,
     }
 
     impl Order {
@@ -38,7 +48,9 @@ pub mod contract {
         pub fn create_order(&mut self, order: OrderRequest) -> Result<Message> {
             let order_id = order.header.order_id.clone();
             // Return error if order-id does already exist
-            if self.orders.contains_key(&order_id) {
+            if self.open_orders.contains_key(&order_id)
+                || self.closed_orders.contains_key(&order_id)
+            {
                 return Err(Error::msg("cannot create order - duplicate order-id"));
             }
             // Prepare message
@@ -46,7 +58,34 @@ pub mod contract {
 
             // Create state
             let state = OrderState::new(order);
-            self.orders.insert(order_id, state);
+            self.open_orders.insert(order_id, state);
+
+            Ok(msg)
+        }
+
+        #[action(web_api = true, roles = "buyer")]
+        pub fn update_order(&mut self, order: OrderRequest) -> Result<Message> {
+            let order_id = order.header.order_id.clone();
+            // Return error if order-id does already exist
+            if self.closed_orders.contains_key(&order_id) {
+                return Err(Error::msg("cannot update closed order"));
+            }
+
+            let mut state = self
+                .open_orders
+                .get_mut(&order_id)
+                .context(format!("found no order with id={order_id}"))?;
+
+            // NOTE: This logic needs some expansion in the future
+            if state.confirmed.is_some() {
+                return Err(Error::msg("cannot update order that was already confirmed"));
+            }
+
+            // Prepare message
+            let msg = message("/order/update").with_content(&order)?;
+
+            // Update state
+            state.init = order;
 
             Ok(msg)
         }
@@ -55,8 +94,8 @@ pub mod contract {
         pub fn confirm_order(&mut self, order: OrderRequest) -> Result<Message> {
             let order_id = order.header.order_id.clone();
             let mut state = self
-                .orders
-                .get_mut(order_id.clone())
+                .open_orders
+                .get_mut(&order_id)
                 .context(format!("found no order with id={order_id}"))?;
 
             // Cannot confirm order twice
@@ -64,10 +103,14 @@ pub mod contract {
                 return Err(new_error!("order {order_id} is already confirmed"));
             }
 
-            // TODO: Add validation; not all things can change if an order is confirmed !
-            // Things like shipping address etc. must be identical.
-            // The differences are in the amount of items that were ordered (if some things are out of stock),
-            // and in the delivery date.
+            // Neither shipping nor billing address can be changed
+            if state.init.header.ship_to != order.header.ship_to
+                || state.init.header.bill_to != order.header.bill_to
+            {
+                return Err(new_error!(
+                    "shipping and billing address cannot change from original request"
+                ));
+            }
 
             // Prepare message
             let msg = message("/order/confirm").with_content(&order)?;
@@ -80,8 +123,8 @@ pub mod contract {
         #[action(web_api = true, roles = "buyer")]
         pub fn confirm_receival(&mut self, order_id: String) -> Result<Message> {
             let mut state = self
-                .orders
-                .get_mut(order_id.clone())
+                .open_orders
+                .get_mut(&order_id)
                 .context(format!("found no order with id={order_id}"))?;
 
             // Cannot receive order before it is confirmed
@@ -104,17 +147,23 @@ pub mod contract {
             transfer("buyer", "seller")
                 .with_amount(header.total)
                 .with_tax_opt(header.tax)
-                .with_tag(order_id)
+                .with_tag(&order_id)
                 .execute()?;
 
+            if state.is_fulfilled() {
+                let closed = state.clone();
+                drop(state);
+                self.open_orders.remove(&order_id);
+                self.closed_orders.insert(order_id, closed);
+            }
             Ok(msg)
         }
 
         #[action(web_api = true, roles = "buyer")]
         pub fn confirm_invoice(&mut self, order_id: String) -> Result<Message> {
             let mut state = self
-                .orders
-                .get_mut(order_id.clone())
+                .open_orders
+                .get_mut(&order_id)
                 .context(format!("found no order with id={order_id}"))?;
 
             // Cannot receive invoice before order is confirmed
@@ -136,14 +185,21 @@ pub mod contract {
                 "order_id": order_id,
                 "timestamp": timestamp,
             }));
+
+            if state.is_fulfilled() {
+                let closed = state.clone();
+                drop(state);
+                self.open_orders.remove(&order_id);
+                self.closed_orders.insert(order_id, closed);
+            }
             Ok(msg)
         }
 
         #[action(web_api = true, roles = "seller")]
         pub fn confirm_payment(&mut self, order_id: String) -> Result<Message> {
             let mut state = self
-                .orders
-                .get_mut(order_id.clone())
+                .open_orders
+                .get_mut(&order_id)
                 .context(format!("found no order with id={order_id}"))?;
 
             // Cannot pay twice
@@ -166,8 +222,15 @@ pub mod contract {
             settle_debt("buyer", "seller")
                 .with_amount(header.total)
                 .with_tax_opt(header.tax)
-                .with_tag(order_id)
+                .with_tag(&order_id)
                 .execute()?;
+
+            if state.is_fulfilled() {
+                let closed = state.clone();
+                drop(state);
+                self.open_orders.remove(&order_id);
+                self.closed_orders.insert(order_id, closed);
+            }
 
             Ok(msg)
         }
