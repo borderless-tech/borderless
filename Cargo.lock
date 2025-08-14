@@ -554,7 +554,6 @@ dependencies = [
  "currency-4217",
  "schemars",
  "serde",
- "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -3251,7 +3250,6 @@ version = "0.1.0"
 dependencies = [
  "borderless",
  "commerce-types",
- "schemars",
  "serde",
 ]
 

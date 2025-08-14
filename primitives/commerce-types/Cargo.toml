@@ -14,4 +14,3 @@ chrono = { version = "0.4", default-features = false, features = ["serde"] }
 currency-4217 = { workspace = true, features = ["serde", "json-schema"] }
 schemars = { workspace = true, features = ["chrono04"] }
 serde = { workspace = true, features = ["derive"] }
-thiserror.workspace = true
