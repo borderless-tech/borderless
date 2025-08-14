@@ -1,0 +1,23 @@
+{
+  "participants": [
+    {
+      "id": "bbcd81bb-b90c-8806-8341-fe95b8ede45a",
+      "alias": "buyer"
+    },
+    {
+      "id": "baaa81bb-b90c-8806-8341-fe95b8ede54b",
+      "alias": "seller"
+    }
+  ],
+  "initial_state": {
+    "orders": {}
+  },
+  "sinks": [],
+  "desc": {
+    "display_name": "order-template",
+    "summary": "order template",
+    "legal": null
+  },
+  "meta": {},
+  "package": {}
+}
