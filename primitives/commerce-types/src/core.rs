@@ -60,25 +60,102 @@ pub struct PriceBasisQuantity {
     pub unit_of_measure: UnitOfMeasure,
 }
 
-/// ISO Units-of-Measure-Codes or a freely defined measure
+/// Flexible Unit-of-Measure that supports common known codes AND arbitrary strings.
+/// - Known codes serialize to a canonical short code (see `rename`).
+/// - On input, we also accept popular aliases (UNECE codes and ERP shorthands).
+/// - Unknown strings deserialize to `UnitOfMeasure::Other("...")` instead of failing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
 pub enum UnitOfMeasure {
-    /// Each
-    EA,
+    Known(KnownUom),
+    Other(String),
+}
+
+/// The most-used UoMs for commerce & hardware, with common aliases.
+///
+/// Canonical serialized codes (via `rename`) are chosen to be friendly & recognizable,
+/// while aliases include UNECE Rec 20 codes and widely used ERP shorthands.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum KnownUom {
+    // ---- Count / packaging ---------------------------------------------------
+    /// Piece / Each
+    #[serde(rename = "PCE", alias = "EA", alias = "C62")]
+    Piece,
+    /// Package
+    #[serde(rename = "PKG", alias = "XPK", alias = "PK")]
+    Package,
+    /// Set
+    #[serde(rename = "SET")]
+    Set,
+    /// Box
+    #[serde(rename = "BOX", alias = "BX")]
+    Box,
+    /// Bag
+    #[serde(rename = "BAG", alias = "BG")]
+    Bag,
+    /// Roll
+    #[serde(rename = "ROL", alias = "RL")]
+    Roll,
+    /// Pair
+    #[serde(rename = "PAI", alias = "PR")]
+    Pair,
+
+    // ---- Mass ----------------------------------------------------------------
     /// Kilogram
-    KG,
-    /// Liter
-    LTR,
+    #[serde(rename = "KG", alias = "KGM")]
+    Kilogram,
+    /// Gram
+    #[serde(rename = "G", alias = "GRM")]
+    Gram,
+    /// Tonne (metric ton)
+    #[serde(rename = "T", alias = "TNE")]
+    Tonne,
+
+    // ---- Volume --------------------------------------------------------------
+    /// Litre
+    #[serde(rename = "LTR", alias = "L")]
+    Litre,
+    /// Millilitre
+    #[serde(rename = "ML", alias = "MLT")]
+    Millilitre,
+    /// Cubic meter
+    #[serde(rename = "CBM", alias = "M3", alias = "MTQ")]
+    CubicMeter,
+
+    // ---- Length / area -------------------------------------------------------
     /// Meter
-    MTR,
+    #[serde(rename = "MTR", alias = "M")]
+    Meter,
+    /// Centimeter
+    #[serde(rename = "CM", alias = "CMT")]
+    Centimeter,
+    /// Millimeter
+    #[serde(rename = "MM", alias = "MMT")]
+    Millimeter,
+    /// Square meter
+    #[serde(rename = "SQM", alias = "M2", alias = "MTK")]
+    SquareMeter,
+
+    // ---- Time ----------------------------------------------------------------
     /// Hour
-    HUR,
+    #[serde(rename = "HUR", alias = "H")]
+    Hour,
+    /// Minute
+    #[serde(rename = "MIN")]
+    Minute,
+    /// Second
+    #[serde(rename = "SEC", alias = "S")]
+    Second,
     /// Day
-    DAY,
+    #[serde(rename = "DAY")]
+    Day,
     /// Month
-    MON,
-    /// A custom unit
-    Custom(String),
+    #[serde(rename = "MON")]
+    Month,
+    /// Year
+    #[serde(rename = "YR", alias = "ANN")]
+    Year,
 }
 
 /// Service pricing per time/measure unit (cXML `<UnitRate>`)
