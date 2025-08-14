@@ -32,7 +32,7 @@ use borderless_runtime::{
 use clap::{Parser, Subcommand};
 use reqwest::blocking::Client;
 
-use log::info;
+use log::{info, warn};
 use server::{start_agent_server, start_contract_server};
 
 mod server;
@@ -226,6 +226,21 @@ async fn contract(command: ContractCommand, db: Lmdb, writer: Option<BorderlessI
                 }
                 SourceType::Wasm { wasm, .. } => {
                     if !wasm.is_empty() {
+                        info!("Checking state and module...");
+
+                        let (okay, log) = rt.check_module_and_state(
+                            wasm.clone(),
+                            introduction.initial_state.clone(),
+                        )?;
+                        if !okay {
+                            warn!("Check failed");
+                            for l in log {
+                                warn!("{l}");
+                            }
+                            warn!("Introduction process aborted...");
+                            return Ok(());
+                        }
+
                         info!("try to instantiate the contract");
                         rt.instantiate_contract(cid, wasm)?;
                     } else {
