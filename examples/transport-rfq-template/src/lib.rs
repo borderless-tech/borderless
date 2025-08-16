@@ -70,6 +70,33 @@ pub mod contract {
             Ok(msg)
         }
 
+        /// Decline the transport - this is the "cancel" equivalent for the carrier
+        #[action(web_api = true, roles = "carrier")]
+        pub fn decline(&mut self, request_id: String) -> Result<Message> {
+            let mut state = self
+                .open_requests
+                .remove(&request_id)
+                .context(format!("found no request with id={request_id}"))?;
+
+            if !matches!(
+                state.status,
+                TransportStatus::BidSent | TransportStatus::RfqSent
+            ) {
+                return Err(new_error!(
+                    "status of request={request_id} must be 'RFQ_SENT' or 'BID_SENT'"
+                ));
+            }
+
+            state.status = TransportStatus::Cancelled;
+
+            let msg = message("/transport/cancelled").with_value(json!({
+                "request_id": request_id,
+            }));
+            // Put to closed requests
+            self.closed_requests.insert(request_id, state);
+            Ok(msg)
+        }
+
         /// Award a carrier with the transport
         #[action(web_api = true, roles = "buyer")]
         pub fn award(&mut self, request_id: String) -> Result<Message> {
