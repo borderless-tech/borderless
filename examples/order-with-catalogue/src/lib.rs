@@ -250,4 +250,49 @@ pub mod contract {
             Ok(msg)
         }
     }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+
+        const ITEM: &str = r#"
+  {
+    "item_id": {
+      "buyer_part_id": "ITM-001",
+      "supplier_part_id": "SUP-ITM-001"
+    },
+    "detail": {
+      "unit_price": {
+        "amount": "0.02",
+        "currency": "EUR"
+      },
+      "description": "Holzschraube 4x40 mm",
+      "unit_of_measure": "PCE",
+      "classification": {
+        "domain": "UNSPSC",
+        "code": "31161506"
+      },
+      "manufacturer": {
+        "part_id": "HS440",
+        "name": "MusterSchrauben GmbH"
+      },
+      "extrinsic": {
+        "material": "Stahl verzinkt"
+      },
+      "unit_rate": null,
+      "spend_detail": null
+    }
+  }
+"#;
+
+        #[test]
+        fn test_item_parse() {
+            let item = serde_json::from_str::<Item>(ITEM);
+            assert!(item.is_ok(), "{}", item.unwrap_err());
+
+            let bytes = postcard::to_allocvec(&item.unwrap()).unwrap();
+            let item = postcard::from_bytes::<Item>(&bytes);
+            assert!(item.is_ok(), "{}", item.unwrap_err());
+        }
+    }
 }

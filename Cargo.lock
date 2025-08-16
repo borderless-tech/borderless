@@ -1989,8 +1989,10 @@ version = "0.1.0"
 dependencies = [
  "borderless",
  "commerce-types",
+ "postcard",
  "schemars",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
