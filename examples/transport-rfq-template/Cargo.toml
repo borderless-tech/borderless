@@ -1,0 +1,13 @@
+[package]
+name = "transport-rfq-template"
+version = "0.1.0"
+edition = "2021"
+authors = ["Christian Hammermeister <c.hammermeister@borderless-technologies.com>"]
+
+[dependencies]
+serde.workspace = true
+borderless.workspace = true
+commerce-types.workspace = true
+
+[lib]
+crate-type = ["cdylib"]

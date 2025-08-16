@@ -6,17 +6,16 @@
     },
     {
       "id": "baaa81bb-b90c-8806-8341-fe95b8ede54b",
-      "alias": "seller"
+      "alias": "carrier"
     }
   ],
   "initial_state": {
-    "open_orders": {},
-    "closed_orders": {}
+    "orders": {}
   },
   "sinks": [],
   "desc": {
-    "display_name": "order-template",
-    "summary": "order template",
+    "display_name": "transport-rfq-template",
+    "summary": "transport rfq template",
     "legal": null
   },
   "meta": {},

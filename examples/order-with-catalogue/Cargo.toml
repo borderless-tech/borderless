@@ -1,0 +1,18 @@
+[package]
+name = "order-with-catalogue"
+version = "0.1.0"
+edition = "2021"
+authors = ["Christian Hammermeister <c.hammermeister@borderless-technologies.com>"]
+
+[dependencies]
+serde.workspace = true
+schemars.workspace = true
+borderless.workspace = true
+commerce-types.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+postcard.workspace = true
+
+[lib]
+crate-type = ["cdylib"]

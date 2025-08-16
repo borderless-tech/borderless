@@ -1,5 +1,5 @@
 [contract]
-name = "order-from-catalogue"
+name = "order-with-catalogue"
 app_name   = "order"
 app_module = "catalogue"
 

@@ -69,7 +69,7 @@ where
                     return Ok(None);
                 }
             };
-            let value = self.get(key);
+            let value = self.get(&key);
 
             // Nest to the next to_payload()
             return value.map_or(Ok(None), |val| (*val).to_payload(remainder));
@@ -219,8 +219,8 @@ where
         self.read(sub_key).is_some()
     }
 
-    pub fn remove(&mut self, key: K) -> Option<V> {
-        let internal_key = Self::hash_key(&key);
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        let internal_key = Self::hash_key(key);
         // Check if key is present
         self.read(internal_key)?;
         // Decrease number of entries
@@ -251,8 +251,8 @@ where
             .and_then(Self::extract_cell)
     }
 
-    pub fn get(&self, key: K) -> Option<ValueProxy<'_, K, V>> {
-        let internal_key = Self::hash_key(&key);
+    pub fn get(&self, key: &K) -> Option<ValueProxy<'_, K, V>> {
+        let internal_key = Self::hash_key(key);
         match self.read(internal_key) {
             None => None,
             Some(cell) => {
@@ -265,8 +265,8 @@ where
         }
     }
 
-    pub fn get_mut(&mut self, key: K) -> Option<ValueMutProxy<'_, K, V>> {
-        let internal_key = Self::hash_key(&key);
+    pub fn get_mut(&mut self, key: &K) -> Option<ValueMutProxy<'_, K, V>> {
+        let internal_key = Self::hash_key(key);
         match self.read(internal_key) {
             None => None,
             Some(cell) => {

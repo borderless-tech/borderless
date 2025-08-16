@@ -1,9 +1,10 @@
 #[borderless::contract]
 pub mod contract {
+    use borderless::collections::LazyVec;
     use borderless::prelude::ledger::{settle_debt, transfer};
     use borderless::prelude::*;
     use borderless::{collections::HashMap, time::timestamp};
-    use commerce_types::order::OrderRequest;
+    use commerce_types::order::{Item, OrderRequest};
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
 
@@ -41,6 +42,8 @@ pub mod contract {
     pub struct Order {
         open_orders: HashMap<String, OrderState>,
         closed_orders: HashMap<String, OrderState>,
+        // NOTE: This is here to check, which items can be bought
+        item_catalogue: LazyVec<Item>,
     }
 
     impl Order {
@@ -53,6 +56,18 @@ pub mod contract {
             {
                 return Err(Error::msg("cannot create order - duplicate order-id"));
             }
+
+            for line in order.items.iter() {
+                let supplier_id = &line.item.item_id.supplier_part_id;
+                if !self
+                    .item_catalogue
+                    .iter()
+                    .any(|item| item.item_id.supplier_part_id == *supplier_id)
+                {
+                    return Err(Error::msg("requested item does not exist"));
+                }
+            }
+
             // Prepare message
             let msg = message("/order/create").with_content(&order)?;
 
@@ -233,6 +248,51 @@ pub mod contract {
             }
 
             Ok(msg)
+        }
+    }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+
+        const ITEM: &str = r#"
+  {
+    "item_id": {
+      "buyer_part_id": "ITM-001",
+      "supplier_part_id": "SUP-ITM-001"
+    },
+    "detail": {
+      "unit_price": {
+        "amount": "0.02",
+        "currency": "EUR"
+      },
+      "description": "Holzschraube 4x40 mm",
+      "unit_of_measure": "PCE",
+      "classification": {
+        "domain": "UNSPSC",
+        "code": "31161506"
+      },
+      "manufacturer": {
+        "part_id": "HS440",
+        "name": "MusterSchrauben GmbH"
+      },
+      "extrinsic": {
+        "material": "Stahl verzinkt"
+      },
+      "unit_rate": null,
+      "spend_detail": null
+    }
+  }
+"#;
+
+        #[test]
+        fn test_item_parse() {
+            let item = serde_json::from_str::<Item>(ITEM);
+            assert!(item.is_ok(), "{}", item.unwrap_err());
+
+            let bytes = postcard::to_allocvec(&item.unwrap()).unwrap();
+            let item = postcard::from_bytes::<Item>(&bytes);
+            assert!(item.is_ok(), "{}", item.unwrap_err());
         }
     }
 }
