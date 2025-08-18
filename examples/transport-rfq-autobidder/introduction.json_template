@@ -1,12 +1,21 @@
 {
   "participants": [],
   "initial_state": {
-    "bids_to_place": {}
+    "bids_to_place": []
   },
   "sinks": [
     {
       "alias":"rfq",
-      "contract_id": "ce5a3ca9-b3cb-8a48-bdd2-22995134a0a9"
+      "contract_id": "cd41b95a-1ba6-8d16-8b9f-f792a401b9a5"
+    }
+  ],
+  "subscriptions": [
+    {
+      "publisher": {
+        "contract_id": "cd41b95a-1ba6-8d16-8b9f-f792a401b9a5"
+      },
+      "topic": "/transport/rfq",
+      "method": "incoming_rq"
     }
   ],
   "desc": {
