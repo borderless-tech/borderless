@@ -1,0 +1,13 @@
+[agent]
+name = "transport-rfq-autobidder"
+app_name   = "transport"
+app_module = "bid"
+
+[capabilities]
+network = false
+websocket = false
+url_whitelist = []
+
+[meta]
+authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]
+description = "Automatically creates a bid for an incoming request"

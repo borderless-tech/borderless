@@ -3257,6 +3257,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "transport-rfq-autobidder"
+version = "0.1.0"
+dependencies = [
+ "borderless",
+ "commerce-types",
+ "serde",
+]
+
+[[package]]
 name = "transport-rfq-template"
 version = "0.1.0"
 dependencies = [
