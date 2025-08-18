@@ -1,0 +1,19 @@
+{
+  "participants": [],
+  "initial_state": {
+    "bids_to_place": {}
+  },
+  "sinks": [
+    {
+      "alias":"rfq",
+      "contract_id": "ce5a3ca9-b3cb-8a48-bdd2-22995134a0a9"
+    }
+  ],
+  "desc": {
+    "display_name": "transport-rfq-autobidder",
+    "summary": "automatically creates bids for incoming transport rfq's",
+    "legal": null
+  },
+  "meta": {},
+  "package": {}
+}
