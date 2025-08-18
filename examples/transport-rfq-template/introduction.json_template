@@ -1,16 +1,17 @@
 {
   "participants": [
     {
-      "id": "bbcd81bb-b90c-8806-8341-fe95b8ede45a",
+      "id": "bbec7f8e-5074-89a5-9b94-620fb13f12c0",
       "alias": "buyer"
     },
     {
-      "id": "baaa81bb-b90c-8806-8341-fe95b8ede54b",
+      "id": "b0477794-9d32-835c-bbd7-0878c1d9d5e0",
       "alias": "carrier"
     }
   ],
   "initial_state": {
-    "orders": {}
+    "open_requests": {},
+    "closed_requests": {}
   },
   "sinks": [],
   "desc": {

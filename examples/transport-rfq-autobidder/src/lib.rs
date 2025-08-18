@@ -32,7 +32,7 @@ pub mod transport_rfq_autobidder {
             references: std::collections::HashMap<String, String>,
             rate: Option<UnitRate>,
             events: Vec<TransportEvent>,
-        ) {
+        ) -> Result<ContractCall> {
             let state = TransportationRqState {
                 request_id,
                 status,
@@ -51,32 +51,49 @@ pub mod transport_rfq_autobidder {
                 events,
             };
             info!("Received state: {state:#?}");
-            self.bids_to_place.push(state);
+            self.bids_to_place.push(state.clone());
+
+            info!("-- Hello, I would like to take a bid");
+            let planned_pickup = generate_tw(rand(20, 28) as i64, rand(30, 90) as i64)?;
+            let planned_delivery = generate_tw(rand(44, 52) as i64, rand(30, 90) as i64)?;
+            let rate = generate_rate(&state.cargo);
+
+            // Generate message for the RFQ sink
+            let call = sink("rfq")?
+                .call_method("bid")
+                .with_value(json!({
+                    "request_id": state.request_id,
+                    "rate": rate,
+                    "planned_pickup": planned_pickup,
+                    "planned_delivery": planned_delivery,
+                }))
+                .build()?;
+            Ok(call)
         }
 
-        #[schedule(interval = "30s", delay = "5s")]
-        pub fn autobid(&mut self) -> Result<Vec<ContractCall>> {
-            let mut calls = Vec::new();
-            while let Some(state) = self.bids_to_place.pop() {
-                info!("-- Hello, I would like to take a bid");
-                let planned_pickup = generate_tw(rand(20, 28) as i64, rand(30, 90) as i64)?;
-                let planned_delivery = generate_tw(rand(44, 52) as i64, rand(30, 90) as i64)?;
-                let rate = generate_rate(&state.cargo);
+        // #[schedule(interval = "30s", delay = "5s")]
+        // pub fn autobid(&mut self) -> Result<Vec<ContractCall>> {
+        //     let mut calls = Vec::new();
+        //     while let Some(state) = self.bids_to_place.pop() {
+        //         info!("-- Hello, I would like to take a bid");
+        //         let planned_pickup = generate_tw(rand(20, 28) as i64, rand(30, 90) as i64)?;
+        //         let planned_delivery = generate_tw(rand(44, 52) as i64, rand(30, 90) as i64)?;
+        //         let rate = generate_rate(&state.cargo);
 
-                // Generate message for the RFQ sink
-                let call = sink("rfq")?
-                    .call_method("bid")
-                    .with_value(json!({
-                        "request_id": state.request_id,
-                        "rate": rate,
-                        "planned_pickup": planned_pickup,
-                        "planned_delivery": planned_delivery,
-                    }))
-                    .build()?;
-                calls.push(call);
-            }
-            Ok(calls)
-        }
+        //         // Generate message for the RFQ sink
+        //         let call = sink("rfq")?
+        //             .call_method("bid")
+        //             .with_value(json!({
+        //                 "request_id": state.request_id,
+        //                 "rate": rate,
+        //                 "planned_pickup": planned_pickup,
+        //                 "planned_delivery": planned_delivery,
+        //             }))
+        //             .build()?;
+        //         calls.push(call);
+        //     }
+        //     Ok(calls)
+        // }
     }
 
     /// Generates a time-window with `hours_offset` from now and `minutes_spread` apart
