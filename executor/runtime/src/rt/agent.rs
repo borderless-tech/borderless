@@ -23,6 +23,7 @@ use crate::{
     error::{ErrorKind, Result},
     AGENT_SUB_DB, SUBSCRIPTION_REL_SUB_DB,
 };
+use crate::db::controller::Controller;
 
 pub mod tasks;
 
@@ -165,6 +166,20 @@ impl<S: Db> Runtime<S> {
     /// Returns a copy of the underlying db handle
     pub fn get_db(&self) -> S {
         self.agent_store.get_db()
+    }
+
+    /// Check whether a sw-agent exists
+    pub fn agent_exists(&self, aid: &AgentId) -> Result<bool> {
+        let db = self.get_db();
+        let controller = Controller::new(&db);
+        controller.agent_exists(aid)
+    }
+
+    /// Check whether a sw-agent is revoked
+    pub fn agent_revoked(&self, aid: &AgentId) -> Result<bool> {
+        let db = self.get_db();
+        let controller = Controller::new(&db);
+        controller.agent_revoked(aid)
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(%agent_id), err))]
@@ -311,8 +326,6 @@ impl<S: Db> Runtime<S> {
             borderless::prelude::Id::Contract { .. } => return Err(ErrorKind::InvalidIdType.into()),
             borderless::prelude::Id::Agent { agent_id } => agent_id,
         };
-        // NOTE: The input for the introduction is not the introduction, but only the initial state!
-        // The introduction itself is commited by the VmState
         let input = revocation.to_bytes()?;
         let res = self
             .call_mut(
