@@ -498,7 +498,7 @@ pub(crate) fn write_revocation<S: Db>(
         &cid,
         BASE_KEY_METADATA,
         META_SUB_KEY_REVOCATION,
-        &revocation,
+        &revocation.reason, // TODO Store just the reason?
     )?;
     Ok(())
 }
