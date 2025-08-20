@@ -302,7 +302,7 @@ where
                     // Check whether the smart-contract is revoked
                     if rt.contract_revoked(&contract_id)? {
                         return Ok(bad_request(format!(
-                            "sw-agent with aid '{}' is revoked",
+                            "smart-contract with cid '{}' is revoked",
                             contract_id
                         )));
                     }

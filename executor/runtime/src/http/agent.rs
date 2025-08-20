@@ -317,7 +317,7 @@ where
                     // Check whether the sw-agent is revoked
                     if rt.agent_revoked(&agent_id)? {
                         return Ok(bad_request(format!(
-                            "sw-agent with cid '{}' is revoked",
+                            "sw-agent with aid '{}' is revoked",
                             agent_id
                         )));
                     }
