@@ -170,13 +170,6 @@ impl<S: Db> Runtime<S> {
         Arc::new(Mutex::new(self))
     }
 
-    /// Check whether a sw-agent exists
-    pub fn contract_exists(&self, aid: &ContractId) -> Result<bool> {
-        let db = self.get_db();
-        let controller = Controller::new(&db);
-        controller.contract_exists(aid)
-    }
-
     /// Check whether a smart-contract is revoked
     pub fn contract_revoked(&self, aid: &ContractId) -> Result<bool> {
         let db = self.get_db();
