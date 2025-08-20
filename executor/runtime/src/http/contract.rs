@@ -299,6 +299,13 @@ where
 
                 let action = {
                     let mut rt = self.rt.lock();
+                    // Check whether the smart-contract is revoked
+                    if rt.contract_revoked(&contract_id)? {
+                        return Ok(bad_request(format!(
+                            "sw-agent with aid '{}' is revoked",
+                            contract_id
+                        )));
+                    }
                     rt.set_executor(self.writer)?; // NOTE: In this case writer and executor are identical
                     match rt.http_post_action(&contract_id, trunc, payload.into(), &self.writer)? {
                         Ok(action) => {
