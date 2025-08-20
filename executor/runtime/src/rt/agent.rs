@@ -18,12 +18,12 @@ use super::{
     code_store::CodeStore,
     vm::{self, VmState},
 };
+use crate::db::controller::Controller;
 use crate::log_shim::*;
 use crate::{
     error::{ErrorKind, Result},
     AGENT_SUB_DB, SUBSCRIPTION_REL_SUB_DB,
 };
-use crate::db::controller::Controller;
 
 pub mod tasks;
 
