@@ -1,7 +1,7 @@
 use crate::{Result, SUBSCRIPTION_REL_SUB_DB};
 use borderless::common::{Id, Introduction};
 use borderless::events::Topic;
-use borderless::{AgentId, Context};
+use borderless::{AgentId, Context, ContractId};
 use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx};
 use std::str::FromStr;
 
@@ -163,6 +163,32 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         // Free up resources
         drop(cursor);
         Ok(topics)
+    }
+
+    pub fn unsubscribe_all(&self, txn: &mut <S as Db>::RwTx<'_>, subscriber: Id) -> Result<()> {
+        let subscriber = match subscriber {
+            Id::Contract { .. } => return Ok(()), // Not applicable
+            Id::Agent { agent_id } => agent_id,
+        };
+        // Fetch active subscriptions
+        let subscriptions = self.get_subscriptions(subscriber)?;
+
+        for s in subscriptions {
+            let mut parts = s.trim_matches('/').splitn(2, '/');
+            let topic = parts.next().expect("Malformed key").to_string();
+
+            let p = parts.next().expect("Malformed key");
+            let publisher = if let Ok(cid) = ContractId::from_str(p) {
+                Id::from(cid)
+            } else if let Ok(aid) = AgentId::from_str(p) {
+                Id::from(aid)
+            } else {
+                return Err(crate::error::Error::msg("Invalid publisher"));
+            };
+            // Unsubscribe from topic
+            self.unsubscribe(txn, subscriber, publisher, topic)?;
+        }
+        Ok(())
     }
 }
 
