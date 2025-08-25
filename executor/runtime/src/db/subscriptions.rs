@@ -175,9 +175,8 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
 
         for s in subscriptions {
             let mut parts = s.trim_matches('/').splitn(2, '/');
-            let topic = parts.next().expect("Malformed key").to_string();
-
             let p = parts.next().expect("Malformed key");
+            let topic = parts.next().expect("Malformed key").to_string();
             let publisher = if let Ok(cid) = ContractId::from_str(p) {
                 Id::from(cid)
             } else if let Ok(aid) = AgentId::from_str(p) {
