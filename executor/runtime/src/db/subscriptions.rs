@@ -96,11 +96,10 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         subscriber: AgentId,
         publisher: Id,
         topic: String,
-    ) -> Result<bool> {
+    ) -> Result<()> {
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let key = generate_key(publisher, topic, Some(subscriber));
-        let deleted = txn.delete(&db_ptr, &key).is_ok();
-        Ok(deleted)
+        Ok(txn.delete(&db_ptr, &key)?)
     }
 
     /// Fetches the active subscribers for a full topic (publisher + topic)
