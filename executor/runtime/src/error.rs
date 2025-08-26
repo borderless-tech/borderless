@@ -89,6 +89,9 @@ pub(crate) enum ErrorKind {
     #[error("contract is revoked and cannot process transactions cid={cid}")]
     RevokedContract { cid: ContractId },
 
+    #[error("agent is revoked and cannot process transactions aid={aid}")]
+    RevokedAgent { aid: AgentId },
+
     #[error("introduction id is not for the correct type of entity - agent vs contract mismatch")]
     InvalidIdType,
 

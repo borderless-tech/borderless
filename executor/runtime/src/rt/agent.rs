@@ -369,6 +369,10 @@ impl<S: Db> Runtime<S> {
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
+        if self.agent_revoked(&aid)? {
+            return Err(ErrorKind::RevokedAgent { aid: *aid }.into());
+        }
+
         let state = self.mutability_lock.get_lock_state(aid);
         let _guard = state.lock.lock().await;
 

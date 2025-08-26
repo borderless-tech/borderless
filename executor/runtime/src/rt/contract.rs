@@ -324,6 +324,10 @@ impl<S: Db> Runtime<S> {
             .get_contract(&cid, &self.engine, &mut self.linker)?
             .ok_or_else(|| ErrorKind::MissingContract { cid })?;
 
+        if self.contract_revoked(&cid)? {
+            return Err(ErrorKind::RevokedContract { cid }.into());
+        }
+
         let mtx = self.mutability_lock.get_lock(&cid);
         let _guard = mtx.lock();
 
