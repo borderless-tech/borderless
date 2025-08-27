@@ -4,8 +4,10 @@ use super::{
     logger::Logger,
     subscriptions::SubscriptionHandler,
 };
+use crate::log_shim::warn;
 use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB};
 use borderless::common::Participant;
+use borderless::events::Events;
 use borderless::{
     common::{Description, Metadata, Revocation},
     contracts::Info,
@@ -300,6 +302,39 @@ impl<'a, S: Db> Controller<'a, S> {
         };
         txn.commit()?;
         Ok(result)
+    }
+
+    pub(crate) fn filter_events(&self, events: Events) -> Result<Events> {
+        let mut filtered = Events::default();
+        // Filter ContractCalls
+        for cc in events.contracts {
+            let cid = cc.contract_id;
+            // SmartContract must exist
+            if !self.contract_exists(&cid)? {
+                warn!("ContractCall contains a non-existing contract-id");
+                continue;
+            }
+            // SmartContract must NOT be revoked
+            if self.contract_revoked(&cid)? {
+                warn!("ContractCall contains a revoked contract-id");
+                continue;
+            }
+            filtered.contracts.push(cc);
+        }
+        // Filter Messages
+        let sub_handler = self.messages();
+        for msg in events.local {
+            if sub_handler
+                .get_topic_subscribers(msg.publisher, msg.topic.to_string())?
+                .is_empty()
+            {
+                warn!("Message contains topic with no subscribers");
+                continue;
+            }
+            filtered.local.push(msg);
+        }
+
+        Ok(filtered)
     }
 }
 
