@@ -304,7 +304,15 @@ impl<'a, S: Db> Controller<'a, S> {
         Ok(result)
     }
 
-    pub(crate) fn filter_events(&self, events: Events) -> Result<Events> {
+    /// Filters a set of events, discarding those considered invalid
+    ///
+    /// Events considered invalid are:
+    /// - ['ContractCall'] targeting a non-existing SmartContract
+    /// - ['ContractCall'] targeting a revoked SmartContract
+    /// - ['Message'] with no subscribers
+    ///
+    /// Returns a new ['Events'] containing only the valid events
+    pub fn filter_events(&self, events: Events) -> Result<Events> {
         let mut filtered = Events::default();
         // Filter ContractCalls
         for cc in events.contracts {
