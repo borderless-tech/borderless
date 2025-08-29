@@ -314,13 +314,6 @@ where
                 }
                 let (events, action) = {
                     let mut rt = self.rt.lock().await;
-                    // Check whether the sw-agent is revoked
-                    if rt.agent_revoked(&agent_id)? {
-                        return Ok(bad_request(format!(
-                            "sw-agent with aid '{}' is revoked",
-                            agent_id
-                        )));
-                    }
                     rt.set_executor(self.writer)?; // For agents the executor and the writer are actually the same
                     match rt
                         .http_post_action(&agent_id, trunc, payload.into(), &self.writer)
