@@ -9,6 +9,7 @@ use borderless::events::Events;
 use borderless::{events::CallAction, AgentId, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
+use http::StatusCode;
 use parking_lot::Mutex as SyncMutex;
 use tokio::sync::{mpsc, Mutex};
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module};
@@ -483,14 +484,23 @@ impl<S: Db> Runtime<S> {
         payload: Vec<u8>,
         writer: &BorderlessId, // TODO: I think the writer makes no sense here and is an artifact
     ) -> Result<std::result::Result<(Events, CallAction), (u16, String)>> {
-        let (instance, mut store) = self
+        // Check whether agent exists
+        let Some((instance, mut store)) = self
             .agent_store
             .get_agent(aid, &self.engine, &mut self.linker)
             .await?
-            .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
-
+        else {
+            return Ok(Err((
+                StatusCode::BAD_REQUEST.as_u16(),
+                ErrorKind::MissingAgent { aid: *aid }.to_string(),
+            )));
+        };
+        // Check whether agent is revoked
         if self.agent_revoked(&aid)? {
-            return Err(ErrorKind::RevokedAgent { aid: *aid }.into());
+            return Ok(Err((
+                StatusCode::BAD_REQUEST.as_u16(),
+                ErrorKind::RevokedAgent { aid: *aid }.to_string(),
+            )));
         }
 
         let state = self.mutability_lock.get_lock_state(aid);
