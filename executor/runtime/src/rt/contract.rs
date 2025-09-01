@@ -10,6 +10,7 @@ use borderless::{events::CallAction, ContractId};
 use borderless::{BlockIdentifier, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
+use http::StatusCode;
 use parking_lot::Mutex;
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module};
 
@@ -424,6 +425,13 @@ impl<S: Db> Runtime<S> {
         payload: Vec<u8>,
         writer: &BorderlessId,
     ) -> Result<std::result::Result<CallAction, (u16, String)>> {
+        // Check whether the smart-contract is revoked
+        if self.contract_revoked(cid)? {
+            return Ok(Err((
+                StatusCode::BAD_REQUEST.as_u16(),
+                ErrorKind::RevokedContract { cid: *cid }.to_string(),
+            )));
+        }
         let (status, result) =
             self.process_http_call(cid, path, Some(payload), Some(writer), "http_post_action")?;
         if status == 200 {
