@@ -10,6 +10,7 @@ use borderless::{events::CallAction, ContractId};
 use borderless::{BlockIdentifier, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
+use http::StatusCode;
 use parking_lot::Mutex;
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module};
 
@@ -18,6 +19,7 @@ use super::{
     code_store::CodeStore,
     vm::{self, VmState},
 };
+use crate::db::controller::Controller;
 use crate::{
     error::{ErrorKind, Result},
     CONTRACT_SUB_DB,
@@ -169,6 +171,13 @@ impl<S: Db> Runtime<S> {
         Arc::new(Mutex::new(self))
     }
 
+    /// Check whether a smart-contract is revoked
+    pub fn contract_revoked(&self, aid: &ContractId) -> Result<bool> {
+        let db = self.get_db();
+        let controller = Controller::new(&db);
+        controller.contract_revoked(aid)
+    }
+
     /// Creates a new instance of the wasm module in our [`CodeStore`] for the given contract-id
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(%contract_id), err))]
     pub fn instantiate_contract(
@@ -316,6 +325,10 @@ impl<S: Db> Runtime<S> {
             .get_contract(&cid, &self.engine, &mut self.linker)?
             .ok_or_else(|| ErrorKind::MissingContract { cid })?;
 
+        if self.contract_revoked(&cid)? {
+            return Err(ErrorKind::RevokedContract { cid }.into());
+        }
+
         let mtx = self.mutability_lock.get_lock(&cid);
         let _guard = mtx.lock();
 
@@ -412,6 +425,13 @@ impl<S: Db> Runtime<S> {
         payload: Vec<u8>,
         writer: &BorderlessId,
     ) -> Result<std::result::Result<CallAction, (u16, String)>> {
+        // Check whether the smart-contract is revoked
+        if self.contract_revoked(cid)? {
+            return Ok(Err((
+                StatusCode::BAD_REQUEST.as_u16(),
+                ErrorKind::RevokedContract { cid: *cid }.to_string(),
+            )));
+        }
         let (status, result) =
             self.process_http_call(cid, path, Some(payload), Some(writer), "http_post_action")?;
         if status == 200 {

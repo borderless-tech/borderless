@@ -234,7 +234,10 @@ impl<S: Db> VmState<S> {
             Commit::Revocation(revocation) => {
                 assert_eq!(revocation.id, id);
                 write_revocation::<S>(&self.db_ptr, &mut txn, &revocation, timestamp, tx_ctx)?;
-                // TODO Cancel subscriptions
+                // Cancel subscriptions
+                Controller::new(&self.db)
+                    .messages()
+                    .unsubscribe_all(&mut txn, id)?;
             }
             Commit::Other => { /* nothing to do */ }
         }

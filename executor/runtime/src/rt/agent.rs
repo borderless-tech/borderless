@@ -9,6 +9,7 @@ use borderless::events::Events;
 use borderless::{events::CallAction, AgentId, BorderlessId};
 use borderless_kv_store::backend::lmdb::Lmdb;
 use borderless_kv_store::Db;
+use http::StatusCode;
 use parking_lot::Mutex as SyncMutex;
 use tokio::sync::{mpsc, Mutex};
 use wasmtime::{Caller, Config, Engine, ExternType, FuncType, Linker, Module};
@@ -18,6 +19,7 @@ use super::{
     code_store::CodeStore,
     vm::{self, VmState},
 };
+use crate::db::controller::Controller;
 use crate::log_shim::*;
 use crate::{
     error::{ErrorKind, Result},
@@ -167,6 +169,20 @@ impl<S: Db> Runtime<S> {
         self.agent_store.get_db()
     }
 
+    /// Check whether a sw-agent exists
+    pub fn agent_exists(&self, aid: &AgentId) -> Result<bool> {
+        let db = self.get_db();
+        let controller = Controller::new(&db);
+        controller.agent_exists(aid)
+    }
+
+    /// Check whether a sw-agent is revoked
+    pub fn agent_revoked(&self, aid: &AgentId) -> Result<bool> {
+        let db = self.get_db();
+        let controller = Controller::new(&db);
+        controller.agent_revoked(aid)
+    }
+
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(%agent_id), err))]
     pub fn instantiate_sw_agent(&mut self, agent_id: AgentId, module_bytes: &[u8]) -> Result<()> {
         let module = Module::new(&self.engine, module_bytes)?;
@@ -311,8 +327,6 @@ impl<S: Db> Runtime<S> {
             borderless::prelude::Id::Contract { .. } => return Err(ErrorKind::InvalidIdType.into()),
             borderless::prelude::Id::Agent { agent_id } => agent_id,
         };
-        // NOTE: The input for the introduction is not the introduction, but only the initial state!
-        // The introduction itself is commited by the VmState
         let input = revocation.to_bytes()?;
         let res = self
             .call_mut(
@@ -355,6 +369,10 @@ impl<S: Db> Runtime<S> {
             .get_agent(aid, &self.engine, &mut self.linker)
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
+
+        if self.agent_revoked(&aid)? {
+            return Err(ErrorKind::RevokedAgent { aid: *aid }.into());
+        }
 
         let state = self.mutability_lock.get_lock_state(aid);
         let _guard = state.lock.lock().await;
@@ -466,11 +484,24 @@ impl<S: Db> Runtime<S> {
         payload: Vec<u8>,
         writer: &BorderlessId, // TODO: I think the writer makes no sense here and is an artifact
     ) -> Result<std::result::Result<(Events, CallAction), (u16, String)>> {
-        let (instance, mut store) = self
+        // Check whether agent exists
+        let Some((instance, mut store)) = self
             .agent_store
             .get_agent(aid, &self.engine, &mut self.linker)
             .await?
-            .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
+        else {
+            return Ok(Err((
+                StatusCode::BAD_REQUEST.as_u16(),
+                ErrorKind::MissingAgent { aid: *aid }.to_string(),
+            )));
+        };
+        // Check whether agent is revoked
+        if self.agent_revoked(&aid)? {
+            return Ok(Err((
+                StatusCode::BAD_REQUEST.as_u16(),
+                ErrorKind::RevokedAgent { aid: *aid }.to_string(),
+            )));
+        }
 
         let state = self.mutability_lock.get_lock_state(aid);
         let _guard = state.lock.lock().await;
