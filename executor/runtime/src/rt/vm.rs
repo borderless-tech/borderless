@@ -3,11 +3,11 @@
 //! This module contains the state of the virtual machine, that is shared across host function invocations,
 //! and the concrete implementation of the ABI host functions, that are linked to the webassembly module by the runtime.
 
-use borderless::contracts::BlockCtx;
-use borderless::{Context, Uuid};
 use borderless::__private::registers::*;
 use borderless::common::Id;
+use borderless::contracts::BlockCtx;
 use borderless::prelude::ledger::LedgerEntry;
+use borderless::{Context, Uuid};
 use borderless::{
     __private::storage_keys::StorageKey,
     common::{Introduction, Revocation},
@@ -19,15 +19,12 @@ use borderless::{
 use borderless_kv_store::*;
 use nohash::IntMap;
 use rand::Rng;
+use std::str::from_utf8;
 use std::{
     cell::RefCell,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
-use std::str::from_utf8;
 use wasmtime::{Caller, Extern, Memory};
-
-#[cfg(feature = "agents")]
-use tokio::sync::mpsc;
 
 use crate::db::controller::Controller;
 use crate::db::ledger::Ledger;
@@ -39,6 +36,9 @@ use crate::{
     log_shim::*,
     Error, Result,
 };
+use borderless::events::Topic;
+#[cfg(feature = "agents")]
+use tokio::sync::mpsc;
 
 /// Virtual-Machine State
 ///
@@ -755,8 +755,15 @@ pub fn subscribe(
     topic_ptr: u64,
     topic_len: u64,
 ) -> wasmtime::Result<u64> {
+    // Subscriptions are only handled by SwAgents
+    let aid = caller
+        .data()
+        .active
+        .is_agent()
+        .ok_or_else(|| Error::msg("subscriptions can only be created in agents"))?;
+
     if caller.data().active.is_immutable() {
-        return Ok(0);
+        return Ok(0); // TODO Is this an error?
     }
 
     // Get memory
@@ -770,6 +777,19 @@ pub fn subscribe(
     let bytes = copy_wasm_memory(&mut caller, &memory, topic_ptr, topic_len)?;
     let topic = from_utf8(bytes.as_slice())?.to_string();
 
+    // Read method name
+    let method_name = "dummy".to_string(); // TODO
+
+    let topic = Topic::new(publisher, topic, method_name);
+
+    // Setup DB access
+    let db = &caller.data().db;
+    let mut txn = db.begin_rw_txn()?;
+    let sub_handler = Controller::new(db).messages();
+
+    // Init subscription
+    sub_handler.subscribe(&mut txn, aid, topic)?;
+    txn.commit()?;
     Ok(0)
 }
 
