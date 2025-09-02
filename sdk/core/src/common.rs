@@ -143,6 +143,23 @@ impl From<AgentId> for Id {
     }
 }
 
+impl TryFrom<Uuid> for Id {
+    type Error = crate::Error;
+    fn try_from(value: Uuid) -> Result<Self, Self::Error> {
+        let str = value.to_string();
+        if let Ok(cid) = ContractId::try_from(str.clone()) {
+            Ok(Id::contract(cid))
+        } else if let Ok(aid) = AgentId::try_from(str) {
+            Ok(Id::agent(aid))
+        } else {
+            Err(anyhow!(
+                "Uuid {} is neither a valid ContractId nor AgentId",
+                value
+            ))
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Participant {
     pub id: BorderlessId,
