@@ -4,7 +4,7 @@
 //! and the concrete implementation of the ABI host functions, that are linked to the webassembly module by the runtime.
 
 use borderless::contracts::BlockCtx;
-use borderless::Context;
+use borderless::{Context, Uuid};
 use borderless::__private::registers::*;
 use borderless::common::Id;
 use borderless::prelude::ledger::LedgerEntry;
@@ -23,6 +23,7 @@ use std::{
     cell::RefCell,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
+use std::str::from_utf8;
 use wasmtime::{Caller, Extern, Memory};
 
 #[cfg(feature = "agents")]
@@ -746,6 +747,30 @@ pub fn timestamp(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<i64> 
         }
         ActiveEntity::None => Err(wasmtime::Error::msg("no active entity set")),
     }
+}
+
+pub fn subscribe(
+    mut caller: Caller<'_, VmState<impl Db>>,
+    id_ptr: u64,
+    topic_ptr: u64,
+    topic_len: u64,
+) -> wasmtime::Result<u64> {
+    if caller.data().active.is_immutable() {
+        return Ok(0);
+    }
+
+    // Get memory
+    let memory = get_memory(&mut caller)?;
+
+    // Read publisher
+    let bytes = copy_wasm_memory(&mut caller, &memory, id_ptr, 16)?;
+    let publisher = Id::try_from(Uuid::try_from(bytes)?)?;
+
+    // Read topic
+    let bytes = copy_wasm_memory(&mut caller, &memory, topic_ptr, topic_len)?;
+    let topic = from_utf8(bytes.as_slice())?.to_string();
+
+    Ok(0)
 }
 
 /// Async (agent) ABI implementation
