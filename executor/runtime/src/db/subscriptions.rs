@@ -1,5 +1,4 @@
 use crate::{Result, SUBSCRIPTION_REL_SUB_DB};
-//use crate::error::Error;
 use borderless::common::{Id, Introduction};
 use borderless::events::Topic;
 use borderless::{AgentId, Context, Uuid};
