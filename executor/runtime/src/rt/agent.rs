@@ -116,6 +116,14 @@ impl<S: Db> Runtime<S> {
             |caller: Caller<'_, VmState<S>>, base_key| vm::storage_cursor(caller, base_key),
         )?;
 
+        linker.func_wrap_async(
+            "env",
+            "subscribe",
+            |caller: Caller<'_, VmState<S>>, id_ptr, topic_ptr, topic_len| {
+                vm::subscribe(caller, id_ptr, topic_ptr, topic_len)
+            },
+        )?;
+
         // NOTE: Those functions introduce side-effects;
         // they should only be used by us or during development of a contract
         linker.func_wrap("env", "storage_gen_sub_key", vm::storage_gen_sub_key)?;
