@@ -129,6 +129,14 @@ impl<S: Db> Runtime<S> {
             },
         )?;
 
+        linker.func_wrap(
+            "env",
+            "unsubscribe",
+            |caller: Caller<'_, VmState<S>>, id_ptr, topic_ptr, topic_len| {
+                vm::unsubscribe(caller, id_ptr, topic_ptr, topic_len)
+            },
+        )?;
+
         // NOTE: Those functions introduce side-effects;
         // they should only be used by us or during development of a contract
         linker.func_wrap("env", "storage_gen_sub_key", vm::storage_gen_sub_key)?;
