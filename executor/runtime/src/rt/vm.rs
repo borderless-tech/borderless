@@ -754,6 +754,8 @@ pub fn subscribe(
     id_ptr: u64,
     topic_ptr: u64,
     topic_len: u64,
+    method_ptr: u64,
+    method_len: u64,
 ) -> wasmtime::Result<u64> {
     // Subscriptions are only handled by SwAgents
     let aid = caller
@@ -778,7 +780,8 @@ pub fn subscribe(
     let topic = from_utf8(bytes.as_slice())?.to_string();
 
     // Read method name
-    let method_name = "dummy".to_string(); // TODO
+    let bytes = copy_wasm_memory(&mut caller, &memory, method_ptr, method_len)?;
+    let method_name = from_utf8(bytes.as_slice())?.to_string();
 
     let topic = Topic::new(publisher, topic, method_name);
 

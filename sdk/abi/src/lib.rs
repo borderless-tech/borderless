@@ -57,7 +57,13 @@ extern "C" {
     // Send a message via websocket
     pub fn send_ws_msg(msg_ptr: u64, msg_len: u64) -> u64;
 
-    pub fn subscribe(id_ptr: u64, topic_ptr: u64, topic_len: u64) -> u64;
+    pub fn subscribe(
+        id_ptr: u64,
+        topic_ptr: u64,
+        topic_len: u64,
+        method_ptr: u64,
+        method_len: u64,
+    ) -> u64;
 
     pub fn unsubscribe(id_ptr: u64, topic_ptr: u64, topic_len: u64) -> u64;
 }
