@@ -799,6 +799,48 @@ pub fn subscribe(
     Ok(0)
 }
 
+/// Host function to unsubscribe a SwAgent to a topic
+///
+/// This is the host implementation of `borderless_abi::unsubscribe` and must be linked by the runtime.
+pub fn unsubscribe(
+    mut caller: Caller<'_, VmState<impl Db>>,
+    id_ptr: u64,
+    topic_ptr: u64,
+    topic_len: u64,
+) -> wasmtime::Result<u64> {
+    // Subscriptions are only handled by SwAgents
+    let aid = caller
+        .data()
+        .active
+        .is_agent()
+        .ok_or_else(|| Error::msg("subscriptions can only be created in agents"))?;
+
+    if caller.data().active.is_immutable() {
+        return Ok(0); // TODO Is this an error?
+    }
+
+    // Get memory
+    let memory = get_memory(&mut caller)?;
+
+    // Read publisher
+    let bytes = copy_wasm_memory(&mut caller, &memory, id_ptr, 16)?;
+    let publisher = Id::try_from(Uuid::try_from(bytes)?)?;
+
+    // Read topic
+    let bytes = copy_wasm_memory(&mut caller, &memory, topic_ptr, topic_len)?;
+    let topic = from_utf8(bytes.as_slice())?.to_string();
+
+    // Setup DB access
+    let db = &caller.data().db;
+    let mut txn = db.begin_rw_txn()?;
+    let sub_handler = Controller::new(db).messages();
+
+    // Cancel subscription
+    sub_handler.unsubscribe(&mut txn, aid, publisher, topic)?;
+    txn.commit()?;
+    Ok(0)
+}
+
 /// Async (agent) ABI implementation
 #[cfg(feature = "agents")]
 pub mod async_abi {
