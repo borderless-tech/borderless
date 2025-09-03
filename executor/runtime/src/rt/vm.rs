@@ -720,7 +720,7 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
     Ok(value)
 }
 
-/// Host function to returns the milliseconds since unix-epoch.
+/// Host function to return the milliseconds since unix-epoch.
 ///
 /// This is the host implementation of `borderless_abi::timestamp` and must be linked by the runtime.
 pub fn timestamp(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<i64> {
@@ -749,6 +749,9 @@ pub fn timestamp(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<i64> 
     }
 }
 
+/// Host function to subscribe a SwAgent to a topic
+///
+/// This is the host implementation of `borderless_abi::subscribe` and must be linked by the runtime.
 pub fn subscribe(
     mut caller: Caller<'_, VmState<impl Db>>,
     id_ptr: u64,
