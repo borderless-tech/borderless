@@ -116,7 +116,7 @@ impl<S: Db> Runtime<S> {
             |caller: Caller<'_, VmState<S>>, base_key| vm::storage_cursor(caller, base_key),
         )?;
 
-        linker.func_wrap_async(
+        linker.func_wrap(
             "env",
             "subscribe",
             |caller: Caller<'_, VmState<S>>, id_ptr, topic_ptr, topic_len| {
