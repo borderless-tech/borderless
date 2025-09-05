@@ -765,7 +765,7 @@ pub fn subscribe(
         .data()
         .active
         .is_agent()
-        .ok_or_else(|| Error::msg("subscriptions can only be created in agents"))?;
+        .ok_or_else(|| Error::msg("subscriptions are only relevant to agents"))?;
 
     if caller.data().active.is_immutable() {
         return Ok(0); // TODO Is this an error?
@@ -813,7 +813,7 @@ pub fn unsubscribe(
         .data()
         .active
         .is_agent()
-        .ok_or_else(|| Error::msg("subscriptions can only be created in agents"))?;
+        .ok_or_else(|| Error::msg("subscriptions are only relevant to agents"))?;
 
     if caller.data().active.is_immutable() {
         return Ok(0); // TODO Is this an error?
