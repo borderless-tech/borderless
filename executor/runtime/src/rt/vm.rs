@@ -808,11 +808,10 @@ pub fn unsubscribe(
     topic_len: u64,
 ) -> wasmtime::Result<u64> {
     // Subscriptions are only handled by SwAgents
-    let aid = caller
-        .data()
-        .active
-        .is_agent()
-        .ok_or_else(|| Error::msg("subscriptions are only relevant to agents"))?;
+    let aid = match caller.data().active.is_agent() {
+        Some(aid) => aid,
+        None => return Ok(1),
+    };
 
     if caller.data().active.is_immutable() {
         return Ok(0); // TODO Is this an error?
