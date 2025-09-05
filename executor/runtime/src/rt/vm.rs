@@ -767,7 +767,7 @@ pub fn subscribe(
     };
 
     if caller.data().active.is_immutable() {
-        return Ok(0); // TODO Is this an error?
+        return Ok(0);
     }
 
     // Get memory
@@ -814,7 +814,7 @@ pub fn unsubscribe(
     };
 
     if caller.data().active.is_immutable() {
-        return Ok(0); // TODO Is this an error?
+        return Ok(0);
     }
 
     // Get memory
