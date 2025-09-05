@@ -106,6 +106,21 @@ pub fn subscribe(topic: Topic) -> crate::Result<()> {
     }
 }
 
+pub fn unsubscribe(publisher: Id, topic: String) -> crate::Result<()> {
+    unsafe {
+        match abi::unsubscribe(
+            publisher.as_ref().as_ptr() as _,
+            topic.as_ptr() as _,
+            topic.len() as _,
+        ) {
+            0 => Ok(()),
+            1 => Err(crate::Error::msg(
+                "subscriptions are only relevant to agents",
+            )),
+        }
+    }
+}
+
 pub fn create_ledger_entry(entry: LedgerEntry) -> crate::Result<()> {
     let bytes = entry.to_bytes()?;
     unsafe {
