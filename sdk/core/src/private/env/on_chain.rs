@@ -1,8 +1,8 @@
 use crate::__private::{LedgerEntry, REGISTER_ATOMIC_OP};
 use crate::error;
+use crate::prelude::Topic;
 use borderless_abi as abi;
 use std::time::Duration;
-
 // The on_chain environment.
 
 pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
@@ -86,6 +86,18 @@ pub fn register_len(register_id: u64) -> Option<u64> {
         } else {
             Some(len)
         }
+    }
+}
+
+pub fn subscribe(topic: Topic) -> u64 {
+    unsafe {
+        abi::subscribe(
+            topic.publisher.as_ref().as_ptr() as _,
+            topic.topic.as_ptr() as _,
+            topic.topic.len() as _,
+            topic.method.as_ptr() as _,
+            topic.method.len() as _,
+        )
     }
 }
 
