@@ -1,5 +1,6 @@
 use crate::__private::REGISTER_CURSOR;
 use crate::contracts::ledger::LedgerEntry;
+use crate::prelude::{Id, Topic};
 use borderless_abi::LogLevel;
 use core::cell::RefCell;
 use nohash_hasher::IntMap;
@@ -109,6 +110,22 @@ pub fn write_register(register_id: u64, data: impl AsRef<[u8]>) {
         let mut registers = registers.borrow_mut();
         registers.insert(register_id, data.as_ref().to_vec())
     });
+}
+
+pub fn subscribe(topic: Topic) -> crate::Result<()> {
+    DATABASE.with(|db| {
+        // let mut db = db.borrow_mut();
+        // TODO Generate a key
+    });
+    Ok(())
+}
+
+pub fn unsubscribe(publisher: Id, topic: String) -> crate::Result<()> {
+    DATABASE.with(|db| {
+        // let mut db = db.borrow_mut();
+        // TODO Generate a key
+    });
+    Ok(())
 }
 
 pub fn create_ledger_entry(entry: LedgerEntry) -> crate::Result<()> {
