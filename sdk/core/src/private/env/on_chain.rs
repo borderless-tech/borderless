@@ -1,4 +1,5 @@
 use crate::__private::{LedgerEntry, REGISTER_ATOMIC_OP};
+use crate::common::Id;
 use crate::error;
 use crate::prelude::Topic;
 use borderless_abi as abi;
@@ -102,6 +103,7 @@ pub fn subscribe(topic: Topic) -> crate::Result<()> {
             1 => Err(crate::Error::msg(
                 "subscriptions are only relevant to agents",
             )),
+            _ => Err(crate::Error::msg("failed to add subscription")),
         }
     }
 }
@@ -117,6 +119,7 @@ pub fn unsubscribe(publisher: Id, topic: String) -> crate::Result<()> {
             1 => Err(crate::Error::msg(
                 "subscriptions are only relevant to agents",
             )),
+            _ => Err(crate::Error::msg("failed to remove subscription")),
         }
     }
 }
