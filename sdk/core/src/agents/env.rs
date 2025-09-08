@@ -6,7 +6,19 @@ use crate::__private::{read_field, read_register};
 use crate::common::{Description, Metadata};
 use crate::contracts::env::participants;
 use crate::contracts::{BlockCtx, TxCtx};
+use crate::prelude::{Id, Topic};
+use crate::Result;
 use borderless_id_types::{aid_prefix, AgentId, BlockIdentifier, BorderlessId, TxIdentifier, Uuid};
+
+/// Subscribes a SwAgent to a topic
+pub fn subscribe(topic: Topic) -> Result<()> {
+    crate::__private::subscribe(topic)
+}
+
+/// Unsubscribes a SwAgent from a topic
+pub fn unsubscribe(publisher: Id, topic: String) -> Result<()> {
+    crate::__private::unsubscribe(publisher, topic)
+}
 
 /// Checks whether the current running program is a sw-agent
 pub fn is_agent() -> bool {
