@@ -91,14 +91,9 @@ pub fn register_len(register_id: u64) -> Option<u64> {
 }
 
 pub fn subscribe(topic: Topic) -> crate::Result<()> {
+    let bytes = topic.to_bytes()?;
     unsafe {
-        match abi::subscribe(
-            topic.publisher.as_ref().as_ptr() as _,
-            topic.topic.as_ptr() as _,
-            topic.topic.len() as _,
-            topic.method.as_ptr() as _,
-            topic.method.len() as _,
-        ) {
+        match abi::subscribe(bytes.as_ptr() as _, bytes.len() as _) {
             0 => Ok(()),
             1 => Err(crate::Error::msg(
                 "subscriptions are only relevant to agents",

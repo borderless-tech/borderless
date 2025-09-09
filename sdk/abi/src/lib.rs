@@ -58,13 +58,7 @@ extern "C" {
     pub fn send_ws_msg(msg_ptr: u64, msg_len: u64) -> u64;
 
     // Subscribes to a new topic (only applicable to SwAgents)
-    pub fn subscribe(
-        id_ptr: u64,
-        topic_ptr: u64,
-        topic_len: u64,
-        method_ptr: u64,
-        method_len: u64,
-    ) -> u64;
+    pub fn subscribe(wasm_ptr: u64, wasm_len: u64) -> u64;
 
     // Unsubscribes from a topic (only applicable to SwAgents)
     pub fn unsubscribe(id_ptr: u64, topic_ptr: u64, topic_len: u64) -> u64;
