@@ -754,11 +754,8 @@ pub fn timestamp(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<i64> 
 /// This is the host implementation of `borderless_abi::subscribe` and must be linked by the runtime.
 pub fn subscribe(
     mut caller: Caller<'_, VmState<impl Db>>,
-    id_ptr: u64,
-    topic_ptr: u64,
-    topic_len: u64,
-    method_ptr: u64,
-    method_len: u64,
+    wasm_ptr: u64,
+    wasm_len: u64,
 ) -> wasmtime::Result<u64> {
     // Subscriptions are only handled by SwAgents
     let aid = match caller.data().active.is_agent() {
@@ -773,19 +770,9 @@ pub fn subscribe(
     // Get memory
     let memory = get_memory(&mut caller)?;
 
-    // Read publisher
-    let bytes = copy_wasm_memory(&mut caller, &memory, id_ptr, 16)?;
-    let publisher = Id::try_from(Uuid::try_from(bytes)?)?;
-
     // Read topic
-    let bytes = copy_wasm_memory(&mut caller, &memory, topic_ptr, topic_len)?;
-    let topic = from_utf8(bytes.as_slice())?.to_string();
-
-    // Read method name
-    let bytes = copy_wasm_memory(&mut caller, &memory, method_ptr, method_len)?;
-    let method_name = from_utf8(bytes.as_slice())?.to_string();
-
-    let topic = Topic::new(publisher, topic, method_name);
+    let bytes = copy_wasm_memory(&mut caller, &memory, wasm_ptr, wasm_len)?;
+    let topic = Topic::from_bytes(&bytes)?;
 
     // Setup DB access
     let db = &caller.data().db;

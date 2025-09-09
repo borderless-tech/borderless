@@ -119,13 +119,8 @@ impl<S: Db> Runtime<S> {
         linker.func_wrap(
             "env",
             "subscribe",
-            |caller: Caller<'_, VmState<S>>,
-             id_ptr,
-             topic_ptr,
-             topic_len,
-             method_ptr,
-             method_len| {
-                vm::subscribe(caller, id_ptr, topic_ptr, topic_len, method_ptr, method_len)
+            |caller: Caller<'_, VmState<S>>, wasm_ptr, wasm_len| {
+                vm::subscribe(caller, wasm_ptr, wasm_len)
             },
         )?;
 
