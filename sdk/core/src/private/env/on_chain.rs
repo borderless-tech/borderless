@@ -104,12 +104,10 @@ pub fn subscribe(topic: Topic) -> crate::Result<()> {
 }
 
 pub fn unsubscribe(publisher: Id, topic: String) -> crate::Result<()> {
+    let topic = Topic::new(publisher, topic, String::default());
+    let bytes = topic.to_bytes()?;
     unsafe {
-        match abi::unsubscribe(
-            publisher.as_ref().as_ptr() as _,
-            topic.as_ptr() as _,
-            topic.len() as _,
-        ) {
+        match abi::unsubscribe(bytes.as_ptr() as _, bytes.len() as _) {
             0 => Ok(()),
             1 => Err(crate::Error::msg(
                 "subscriptions are only relevant to agents",
