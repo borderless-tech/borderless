@@ -61,7 +61,7 @@ extern "C" {
     pub fn subscribe(wasm_ptr: u64, wasm_len: u64) -> u64;
 
     // Unsubscribes from a topic (only applicable to SwAgents)
-    pub fn unsubscribe(id_ptr: u64, topic_ptr: u64, topic_len: u64) -> u64;
+    pub fn unsubscribe(wasm_ptr: u64, wasm_len: u64) -> u64;
 }
 
 #[derive(Debug)]
