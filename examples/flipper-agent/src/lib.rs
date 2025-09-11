@@ -54,5 +54,10 @@ pub mod flipper {
                 method,
             })
         }
+
+        #[action]
+        pub fn unsubscribe(&self, publisher: Id, topic: String) -> Result<()> {
+            agent_env::unsubscribe(publisher, topic)
+        }
     }
 }
