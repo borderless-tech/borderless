@@ -127,8 +127,8 @@ impl<S: Db> Runtime<S> {
         linker.func_wrap(
             "env",
             "unsubscribe",
-            |caller: Caller<'_, VmState<S>>, id_ptr, topic_ptr, topic_len| {
-                vm::unsubscribe(caller, id_ptr, topic_ptr, topic_len)
+            |caller: Caller<'_, VmState<S>>, wasm_ptr, wasm_len| {
+                vm::unsubscribe(caller, wasm_ptr, wasm_len)
             },
         )?;
 

@@ -7,7 +7,7 @@ use borderless::__private::registers::*;
 use borderless::common::Id;
 use borderless::contracts::BlockCtx;
 use borderless::prelude::ledger::LedgerEntry;
-use borderless::{Context, Uuid};
+use borderless::Context;
 use borderless::{
     __private::storage_keys::StorageKey,
     common::{Introduction, Revocation},
@@ -19,7 +19,6 @@ use borderless::{
 use borderless_kv_store::*;
 use nohash::IntMap;
 use rand::Rng;
-use std::str::from_utf8;
 use std::{
     cell::RefCell,
     time::{Instant, SystemTime, UNIX_EPOCH},
@@ -790,9 +789,8 @@ pub fn subscribe(
 /// This is the host implementation of `borderless_abi::unsubscribe` and must be linked by the runtime.
 pub fn unsubscribe(
     mut caller: Caller<'_, VmState<impl Db>>,
-    id_ptr: u64,
-    topic_ptr: u64,
-    topic_len: u64,
+    wasm_ptr: u64,
+    wasm_len: u64,
 ) -> wasmtime::Result<u64> {
     // Subscriptions are only handled by SwAgents
     let aid = match caller.data().active.is_agent() {
@@ -807,13 +805,9 @@ pub fn unsubscribe(
     // Get memory
     let memory = get_memory(&mut caller)?;
 
-    // Read publisher
-    let bytes = copy_wasm_memory(&mut caller, &memory, id_ptr, 16)?;
-    let publisher = Id::try_from(Uuid::try_from(bytes)?)?;
-
     // Read topic
-    let bytes = copy_wasm_memory(&mut caller, &memory, topic_ptr, topic_len)?;
-    let topic = from_utf8(bytes.as_slice())?.to_string();
+    let bytes = copy_wasm_memory(&mut caller, &memory, wasm_ptr, wasm_len)?;
+    let topic = Topic::from_bytes(&bytes)?;
 
     // Setup DB access
     let db = &caller.data().db;
@@ -821,7 +815,7 @@ pub fn unsubscribe(
     let sub_handler = Controller::new(db).messages();
 
     // Cancel subscription
-    sub_handler.unsubscribe(&mut txn, aid, publisher, topic)?;
+    sub_handler.unsubscribe(&mut txn, aid, topic.publisher, topic.topic)?;
     txn.commit()?;
     Ok(0)
 }
