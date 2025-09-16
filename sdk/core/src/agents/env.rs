@@ -11,8 +11,8 @@ use crate::Result;
 use borderless_id_types::{aid_prefix, AgentId, BlockIdentifier, BorderlessId, TxIdentifier, Uuid};
 
 /// Subscribes a SwAgent to a topic
-pub fn subscribe(topic: Topic) -> Result<()> {
-    crate::__private::subscribe(topic)
+pub fn subscribe(publisher: Id, topic: String, method: String) -> Result<()> {
+    crate::__private::subscribe(Topic::new(publisher, topic, method))
 }
 
 /// Unsubscribes a SwAgent from a topic
