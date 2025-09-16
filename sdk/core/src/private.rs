@@ -265,25 +265,25 @@ pub fn abort() -> ! {
     }
 }
 
-pub fn subscribe(topic: Topic) -> crate::Result<()> {
+pub fn subscribe(_topic: Topic) -> crate::Result<()> {
     #[cfg(target_arch = "wasm32")]
     {
-        env::on_chain::subscribe(topic)
+        env::on_chain::subscribe(_topic)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        env::off_chain::subscribe(topic)
+        todo!("Implement feature");
     }
 }
 
-pub fn unsubscribe(publisher: Id, topic: String) -> crate::Result<()> {
+pub fn unsubscribe(_publisher: Id, _topic: String) -> crate::Result<()> {
     #[cfg(target_arch = "wasm32")]
     {
-        env::on_chain::unsubscribe(publisher, topic)
+        env::on_chain::unsubscribe(_publisher, _topic)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        env::off_chain::unsubscribe(publisher, topic)
+        todo!("Implement feature");
     }
 }
 
