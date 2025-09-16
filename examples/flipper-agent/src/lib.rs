@@ -48,11 +48,7 @@ pub mod flipper {
 
         #[action]
         pub fn subscribe(&self, publisher: Id, topic: String, method: String) -> Result<()> {
-            agent_env::subscribe(Topic {
-                publisher,
-                topic,
-                method,
-            })
+            agent_env::subscribe(publisher, topic, method)
         }
 
         #[action]
