@@ -343,18 +343,22 @@ where
                 }
                 // Extract Topic from request
                 let payload: Vec<u8> = payload.into();
-                let topic = Topic::from_bytes(payload.as_slice()).expect("Handle error");
+                let topic = match Topic::from_bytes(payload.as_slice()) {
+                    Ok(topic) => topic,
+                    Err(e) => return Ok(bad_request(format!("failed to parse topic - {e}"))),
+                };
                 // TODO Control that there are no newline characters in topic
                 // Setup DB access
                 let db = &self.db;
+                // TODO Avoid using this
                 let mut txn = db.begin_rw_txn().expect("Handle error");
                 // Start subscription
                 Controller::new(&self.db)
                     .messages()
-                    .subscribe(&mut txn, agent_id, topic)
+                    .subscribe(&mut txn, agent_id, topic.clone())
                     .expect("Handle error");
                 txn.commit().expect("Handle error");
-                todo!("Return ok")
+                Ok(json_response(&topic))
             }
             "unsubscribe" => {
                 // Check request header
@@ -365,9 +369,13 @@ where
                 // TODO Topic must allow method_name to be unset or unspecified
                 // Extract Topic from request
                 let payload: Vec<u8> = payload.into();
-                let topic = Topic::from_bytes(payload.as_slice()).expect("Handle error");
+                let topic = match Topic::from_bytes(payload.as_slice()) {
+                    Ok(topic) => topic,
+                    Err(e) => return Ok(bad_request(format!("failed to parse topic - {e}"))),
+                };
                 // Setup DB access
                 let db = &self.db;
+                // TODO Avoid using this
                 let mut txn = db.begin_rw_txn().expect("Handle error");
                 // Stop subscription
                 Controller::new(&self.db)
