@@ -1,13 +1,13 @@
 pub use super::*;
 use crate::log_shim::*;
 use crate::{db::controller::Controller, rt::agent::Runtime};
-use borderless::events::Message;
+use borderless::events::{Message, Topic};
 use borderless::{
     events::{CallAction, Events},
     http::queries::Pagination,
     AgentId, BorderlessId,
 };
-use borderless_kv_store::{backend::lmdb::Lmdb, Db};
+use borderless_kv_store::{backend::lmdb::Lmdb, Db, Tx};
 use http::method::Method;
 use std::collections::VecDeque;
 use std::convert::Infallible;
@@ -334,6 +334,48 @@ where
                     }
                     Err(e) => Ok(into_server_error(e)),
                 }
+            }
+            "subscribe" => {
+                // Check request header
+                let (parts, payload) = req.into_parts();
+                if !check_json_content(&parts) {
+                    return Ok(unsupported_media_type());
+                }
+                // Extract Topic from request
+                let payload: Vec<u8> = payload.into();
+                let topic = Topic::from_bytes(payload.as_slice()).expect("Handle error");
+                // TODO Control that there are no newline characters in topic
+                // Setup DB access
+                let db = &self.db;
+                let mut txn = db.begin_rw_txn().expect("Handle error");
+                // Start subscription
+                Controller::new(&self.db)
+                    .messages()
+                    .subscribe(&mut txn, agent_id, topic)
+                    .expect("Handle error");
+                txn.commit().expect("Handle error");
+                todo!("Return ok")
+            }
+            "unsubscribe" => {
+                // Check request header
+                let (parts, payload) = req.into_parts();
+                if !check_json_content(&parts) {
+                    return Ok(unsupported_media_type());
+                }
+                // TODO Topic must allow method_name to be unset or unspecified
+                // Extract Topic from request
+                let payload: Vec<u8> = payload.into();
+                let topic = Topic::from_bytes(payload.as_slice()).expect("Handle error");
+                // Setup DB access
+                let db = &self.db;
+                let mut txn = db.begin_rw_txn().expect("Handle error");
+                // Stop subscription
+                Controller::new(&self.db)
+                    .messages()
+                    .unsubscribe(&mut txn, agent_id, topic.publisher, topic.topic)
+                    .expect("Handle error");
+                txn.commit().expect("Handle error");
+                todo!("Return ok")
             }
             "" => Ok(method_not_allowed()),
             _ => Ok(reject_404()),
