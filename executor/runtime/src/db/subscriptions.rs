@@ -278,8 +278,16 @@ mod tests {
         for i in 0..N {
             let s = subscribers[i];
             let p = publishers[i];
-            // Unsubscribe and check result is true
-            assert!(handler.unsubscribe(&mut txn, s, p, topic.to_string())?);
+            // Unsubscribe from topic
+            handler.unsubscribe(&mut txn, s, p, topic.to_string())?;
+        }
+        txn.commit()?;
+
+        // All subscriptions must be gone
+        for p in publishers {
+            assert!(handler
+                .get_topic_subscribers(p, topic.to_string())?
+                .is_empty());
         }
         Ok(())
     }
