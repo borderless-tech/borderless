@@ -23,14 +23,14 @@ fn generate_key(publisher: Id, topic: String, subscriber: Option<AgentId>) -> St
     // Remove leading and trailing slashes
     let topic = topic.trim_matches('/').to_ascii_lowercase();
 
-    // NOTE: when building a look-up key without a topic, do not write
-    // additional delimiters as they interfere with our cursor logic
-    if topic.is_empty() && subscriber.is_empty() {
-        format!("{publisher}\n")
-    } else {
-        // TODO Forbid creating topics containing the newline character
-        format!("{publisher}\n{topic}\n{subscriber}")
+    //NOTE: in look-up keys the subscriber must be empty
+    // The unused delimiters are removed to avoid interferences with the DB cursor
+    match (topic.is_empty(), subscriber.is_empty()) {
+        (true, true) => format!("{publisher}\n"),
+        (false, true) => format!("{publisher}\n{topic}\n"),
+        _ => format!("{publisher}\n{topic}\n{subscriber}"),
     }
+    // TODO Forbid creating topics containing the newline character
 }
 
 /// Extracts the full topic (publisher + topic) and subscriber from a DB key
