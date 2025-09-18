@@ -2,7 +2,7 @@ use crate::{Result, SUBSCRIPTION_REL_SUB_DB};
 use borderless::common::{Id, Introduction};
 use borderless::events::Topic;
 use borderless::{AgentId, Context, Uuid};
-use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx};
+use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx, Tx};
 use std::str::FromStr;
 
 /// Generates a DB key from a publisher, subscriber and topic
@@ -69,7 +69,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
             Id::Contract { .. } => {} // Not applicable
             Id::Agent { agent_id } => {
                 for s in introduction.subscriptions {
-                    self.subscribe(txn, agent_id, s)?
+                    self.subscribe_txn(txn, agent_id, s)?
                 }
             }
         }
@@ -77,27 +77,53 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
     }
 
     /// Subscribes an ['AgentId'] to a topic from a specific publisher
-    pub fn subscribe(
+    ///
+    /// The changes are automatically commited to DB
+    pub fn subscribe(&self, subscriber: AgentId, topic: Topic) -> Result<()> {
+        let mut txn = self.db.begin_rw_txn()?;
+        self.subscribe_txn(&mut txn, subscriber, topic)?;
+        Ok(txn.commit()?)
+    }
+
+    /// Subscribes an ['AgentId'] to a topic from a specific publisher
+    ///
+    /// The user is responsible for commiting the changes to DB
+    pub fn subscribe_txn(
         &self,
         txn: &mut <S as Db>::RwTx<'_>,
         subscriber: AgentId,
         topic: Topic,
     ) -> Result<()> {
+        // Setup DB access
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
+        // Generate DB key
         let key = generate_key(topic.publisher, topic.topic, Some(subscriber));
         txn.write(&db_ptr, &key, &topic.method)?;
         Ok(())
     }
 
     /// Unsubscribes an ['AgentId'] from a topic
-    pub fn unsubscribe(
+    ///
+    /// The changes are automatically commited to DB
+    pub fn unsubscribe(&self, subscriber: AgentId, publisher: Id, topic: String) -> Result<()> {
+        let mut txn = self.db.begin_rw_txn()?;
+        self.unsubscribe_txn(&mut txn, subscriber, publisher, topic)?;
+        Ok(txn.commit()?)
+    }
+
+    /// Unsubscribes an ['AgentId'] from a topic
+    ///
+    /// The user is responsible for commiting the changes to DB
+    pub fn unsubscribe_txn(
         &self,
         txn: &mut <S as Db>::RwTx<'_>,
         subscriber: AgentId,
         publisher: Id,
         topic: String,
     ) -> Result<()> {
+        // Setup DB access
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
+        // Generate DB key
         let key = generate_key(publisher, topic, Some(subscriber));
         Ok(txn.delete(&db_ptr, &key)?)
     }
@@ -183,7 +209,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
             let publisher =
                 Id::try_from(uuid).map_err(|_| crate::Error::msg("Invalid publisher"))?;
             // Unsubscribe from topic
-            self.unsubscribe(txn, subscriber, publisher, topic.to_string())?;
+            self.unsubscribe_txn(txn, subscriber, publisher, topic.to_string())?;
         }
         Ok(())
     }

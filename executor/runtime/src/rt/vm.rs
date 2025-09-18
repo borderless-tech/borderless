@@ -773,14 +773,10 @@ pub fn subscribe(
     let bytes = copy_wasm_memory(&mut caller, &memory, wasm_ptr, wasm_len)?;
     let topic = Topic::from_bytes(&bytes)?;
 
-    // Setup DB access
-    let db = &caller.data().db;
-    let mut txn = db.begin_rw_txn()?;
-    let sub_handler = Controller::new(db).messages();
-
     // Init subscription
-    sub_handler.subscribe(&mut txn, aid, topic)?;
-    txn.commit()?;
+    let db = &caller.data().db;
+    let sub_handler = Controller::new(db).messages();
+    sub_handler.subscribe(aid, topic)?;
     Ok(0)
 }
 
@@ -809,14 +805,10 @@ pub fn unsubscribe(
     let bytes = copy_wasm_memory(&mut caller, &memory, wasm_ptr, wasm_len)?;
     let topic = Topic::from_bytes(&bytes)?;
 
-    // Setup DB access
+    // Stop subscription
     let db = &caller.data().db;
-    let mut txn = db.begin_rw_txn()?;
     let sub_handler = Controller::new(db).messages();
-
-    // Cancel subscription
-    sub_handler.unsubscribe(&mut txn, aid, topic.publisher, topic.topic)?;
-    txn.commit()?;
+    sub_handler.unsubscribe(aid, topic.publisher, topic.topic)?;
     Ok(0)
 }
 

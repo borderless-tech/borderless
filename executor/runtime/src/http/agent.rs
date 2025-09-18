@@ -7,7 +7,7 @@ use borderless::{
     http::queries::Pagination,
     AgentId, BorderlessId,
 };
-use borderless_kv_store::{backend::lmdb::Lmdb, Db, Tx};
+use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use http::method::Method;
 use std::collections::VecDeque;
 use std::convert::Infallible;
@@ -348,16 +348,11 @@ where
                     Err(e) => return Ok(bad_request(format!("failed to parse topic - {e}"))),
                 };
                 // TODO Control that there are no newline characters in topic
-                // Setup DB access
-                let db = &self.db;
-                // TODO Avoid using this
-                let mut txn = db.begin_rw_txn().expect("Handle error");
                 // Start subscription
                 Controller::new(&self.db)
                     .messages()
-                    .subscribe(&mut txn, agent_id, topic.clone())
+                    .subscribe(agent_id, topic.clone())
                     .expect("Handle error");
-                txn.commit().expect("Handle error");
                 Ok(json_response(&topic))
             }
             "unsubscribe" => {
@@ -373,16 +368,11 @@ where
                     Ok(topic) => topic,
                     Err(e) => return Ok(bad_request(format!("failed to parse topic - {e}"))),
                 };
-                // Setup DB access
-                let db = &self.db;
-                // TODO Avoid using this
-                let mut txn = db.begin_rw_txn().expect("Handle error");
                 // Stop subscription
                 Controller::new(&self.db)
                     .messages()
-                    .unsubscribe(&mut txn, agent_id, topic.publisher, topic.topic)
+                    .unsubscribe(agent_id, topic.publisher, topic.topic)
                     .expect("Handle error");
-                txn.commit().expect("Handle error");
                 todo!("Return ok")
             }
             "" => Ok(method_not_allowed()),
