@@ -566,7 +566,13 @@ impl Topic {
     ///
     /// The method name cannot contain the delimiter used in our subscriptions DB (newline character)
     pub fn validate(&self) -> bool {
-        !self.method.contains('\n')
+        if self.method.is_empty() {
+            return false;
+        }
+        if self.method.contains('\n') {
+            return false;
+        }
+        true
     }
 }
 
@@ -574,7 +580,7 @@ impl Display for Topic {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Publisher: {}, Topic: {}, Method: {}",
+            "topic: /{}/{}, method: {}",
             self.publisher, self.topic, self.method
         )
     }
