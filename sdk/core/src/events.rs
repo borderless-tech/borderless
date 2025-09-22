@@ -560,6 +560,13 @@ impl Topic {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
         serde_json::from_slice(bytes)
     }
+
+    /// Checks the method's validity
+    ///
+    /// The method name cannot contain the delimiter used in our subscriptions DB (newline character)
+    pub fn validate(&self) -> bool {
+        !self.method.contains('\n')
+    }
 }
 
 impl From<TopicDto> for Topic {

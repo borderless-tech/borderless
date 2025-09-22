@@ -30,7 +30,6 @@ fn generate_key(publisher: Id, topic: String, subscriber: Option<AgentId>) -> St
         (false, true) => format!("{publisher}\n{topic}\n"),
         _ => format!("{publisher}\n{topic}\n{subscriber}"),
     }
-    // TODO Forbid creating topics containing the newline character
 }
 
 /// Extracts the full topic (publisher + topic) and subscriber from a DB key

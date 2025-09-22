@@ -12,7 +12,11 @@ use borderless_id_types::{aid_prefix, AgentId, BlockIdentifier, BorderlessId, Tx
 
 /// Subscribes a SwAgent to a topic
 pub fn subscribe(publisher: Id, topic: impl AsRef<str>, method: impl AsRef<str>) -> Result<()> {
-    crate::__private::subscribe(Topic::new(publisher, topic, method))
+    let topic = Topic::new(publisher, topic, method);
+    if !topic.validate() {
+        return Err(crate::Error::msg("topic contains invalid characters"));
+    }
+    crate::__private::subscribe(topic)
 }
 
 /// Unsubscribes a SwAgent from a topic

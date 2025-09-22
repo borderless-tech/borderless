@@ -348,7 +348,10 @@ where
                     Err(e) => return Ok(bad_request(format!("failed to parse topic - {e}"))),
                 };
                 let topic = Topic::from(dto);
-                // TODO Control that there are no newline characters in topic
+                // Control that there are no newline characters in topic
+                if !topic.validate() {
+                    return Ok(bad_request("topic contains invalid characters".to_string()));
+                }
                 // Start subscription
                 Controller::new(&self.db)
                     .messages()
