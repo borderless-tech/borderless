@@ -222,7 +222,7 @@ mod tests {
     use borderless::events::Topic;
     use borderless::{AgentId, ContractId, Result};
     use borderless_kv_store::backend::lmdb::Lmdb;
-    use borderless_kv_store::{Db, Tx};
+    use borderless_kv_store::Db;
     use tempfile::tempdir;
 
     const N: usize = 10;
@@ -239,7 +239,6 @@ mod tests {
         // Setup dummy DB
         let lmdb = open_tmp_lmdb();
         let handler = SubscriptionHandler::new(&lmdb);
-        let mut txn = lmdb.begin_rw_txn()?;
 
         // Setup: subscribers are sw-agents and publishers are smart-contracts
         let subscribers: Vec<AgentId> = std::iter::repeat_with(|| AgentId::generate())
@@ -255,11 +254,8 @@ mod tests {
             let s = subscribers[i];
             let p = publishers[i];
             let topic = Topic::new(p, topic.to_string(), "method".to_string());
-            handler.subscribe(&mut txn, s, topic.clone())?;
+            handler.subscribe(s, topic.clone())?;
         }
-
-        // Commit changes
-        txn.commit()?;
 
         // Check subscriptions are present
         for i in 0..N {
@@ -290,23 +286,19 @@ mod tests {
         let topic = "MyTopic";
 
         // Generate subscriptions
-        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let topic = Topic::new(publishers[i], topic.to_string(), "method".to_string());
             // Subscribe to topic
-            handler.subscribe(&mut txn, subscribers[i], topic)?;
+            handler.subscribe(subscribers[i], topic)?;
         }
-        txn.commit()?;
 
         // Check that unsubscriptions are successful
-        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let s = subscribers[i];
             let p = publishers[i];
             // Unsubscribe from topic
-            handler.unsubscribe(&mut txn, s, p, topic.to_string())?;
+            handler.unsubscribe(s, p, topic.to_string())?;
         }
-        txn.commit()?;
 
         // All subscriptions must be gone
         for p in publishers {
@@ -331,13 +323,11 @@ mod tests {
         let topic = "tennis";
 
         // Generate subscriptions
-        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let topic = Topic::new(publisher, topic.to_string(), "method".to_string());
             // Subscribe to topic
-            handler.subscribe(&mut txn, subscribers[i], topic)?;
+            handler.subscribe(subscribers[i], topic)?;
         }
-        txn.commit()?;
 
         // Fetch topic subscribers
         let mut output: Vec<AgentId> = handler
@@ -367,13 +357,11 @@ mod tests {
         let topics = vec!["Soccer", "Tennis", "Golf", "Basketball", "Football"];
 
         // Generate subscriptions
-        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let topic = Topic::new(publisher, topics[i % 5].to_string(), "method".to_string());
             // Subscribe to topic
-            handler.subscribe(&mut txn, subscribers[i], topic)?;
+            handler.subscribe(subscribers[i], topic)?;
         }
-        txn.commit()?;
 
         // Fetch subscribers
         let mut output: Vec<AgentId> = handler
@@ -401,16 +389,14 @@ mod tests {
 
         let mut full_topic: Vec<String> = Vec::new();
         // Generate subscriptions
-        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let p = AgentId::generate();
             let topic = topics[i % 5].to_string();
             full_topic.push(format!("/{}/{}", p, topic.to_ascii_lowercase()));
             // Subscribe to topic
             let topic = Topic::new(Id::agent(p), topic, "method".to_string());
-            handler.subscribe(&mut txn, subscriber, topic)?;
+            handler.subscribe(subscriber, topic)?;
         }
-        txn.commit()?;
 
         // Fetch subscriptions
         let mut output = handler.get_subscriptions(subscriber)?;
