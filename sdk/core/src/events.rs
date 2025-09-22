@@ -561,3 +561,31 @@ impl Topic {
         serde_json::from_slice(bytes)
     }
 }
+
+impl From<TopicDto> for Topic {
+    fn from(value: TopicDto) -> Self {
+        // Method is only relevant when starting a new subscription
+        Topic::new(
+            value.publisher,
+            value.topic,
+            value.method.unwrap_or_default(),
+        )
+    }
+}
+
+/// Data Transfer Object (DTO) for a topic
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopicDto {
+    /// The publisher's ID, who creates new messages
+    pub publisher: Id,
+    /// The topic an agent can subscribe to
+    pub topic: String,
+    /// The method triggered in the subscriber's side
+    pub method: Option<String>,
+}
+
+impl TopicDto {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}

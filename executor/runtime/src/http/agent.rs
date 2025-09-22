@@ -1,7 +1,7 @@
 pub use super::*;
 use crate::log_shim::*;
 use crate::{db::controller::Controller, rt::agent::Runtime};
-use borderless::events::{Message, Topic};
+use borderless::events::{Message, Topic, TopicDto};
 use borderless::{
     events::{CallAction, Events},
     http::queries::Pagination,
@@ -343,10 +343,11 @@ where
                 }
                 // Extract Topic from request
                 let payload: Vec<u8> = payload.into();
-                let topic = match Topic::from_bytes(payload.as_slice()) {
-                    Ok(topic) => topic,
+                let dto = match TopicDto::from_bytes(payload.as_slice()) {
+                    Ok(dto) => dto,
                     Err(e) => return Ok(bad_request(format!("failed to parse topic - {e}"))),
                 };
+                let topic = Topic::from(dto);
                 // TODO Control that there are no newline characters in topic
                 // Start subscription
                 Controller::new(&self.db)
@@ -361,13 +362,13 @@ where
                 if !check_json_content(&parts) {
                     return Ok(unsupported_media_type());
                 }
-                // TODO Topic must allow method_name to be unset or unspecified
                 // Extract Topic from request
                 let payload: Vec<u8> = payload.into();
-                let topic = match Topic::from_bytes(payload.as_slice()) {
-                    Ok(topic) => topic,
+                let dto = match TopicDto::from_bytes(payload.as_slice()) {
+                    Ok(dto) => dto,
                     Err(e) => return Ok(bad_request(format!("failed to parse topic - {e}"))),
                 };
+                let topic = Topic::from(dto);
                 // Stop subscription
                 Controller::new(&self.db)
                     .messages()
