@@ -16,7 +16,7 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::error;
 use crate::prelude::ledger::LedgerEntry;
-use crate::prelude::{Id, Topic};
+use crate::prelude::Topic;
 // --- PLAYGROUND FOR NEW ABI STUFF
 
 #[allow(unused_variables)]
@@ -276,10 +276,10 @@ pub fn subscribe(_topic: Topic) -> crate::Result<()> {
     }
 }
 
-pub fn unsubscribe(_publisher: Id, _topic: String) -> crate::Result<()> {
+pub fn unsubscribe(_topic: Topic) -> crate::Result<()> {
     #[cfg(target_arch = "wasm32")]
     {
-        env::on_chain::unsubscribe(_publisher, _topic)
+        env::on_chain::unsubscribe(_topic)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {

@@ -11,13 +11,13 @@ use crate::Result;
 use borderless_id_types::{aid_prefix, AgentId, BlockIdentifier, BorderlessId, TxIdentifier, Uuid};
 
 /// Subscribes a SwAgent to a topic
-pub fn subscribe(publisher: Id, topic: String, method: String) -> Result<()> {
+pub fn subscribe(publisher: Id, topic: impl AsRef<str>, method: impl AsRef<str>) -> Result<()> {
     crate::__private::subscribe(Topic::new(publisher, topic, method))
 }
 
 /// Unsubscribes a SwAgent from a topic
-pub fn unsubscribe(publisher: Id, topic: String) -> Result<()> {
-    crate::__private::unsubscribe(publisher, topic)
+pub fn unsubscribe(publisher: Id, topic: impl AsRef<str>) -> Result<()> {
+    crate::__private::unsubscribe(Topic::new(publisher, topic, String::default()))
 }
 
 /// Checks whether the current running program is a sw-agent

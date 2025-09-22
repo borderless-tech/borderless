@@ -545,11 +545,11 @@ pub struct Topic {
 }
 
 impl Topic {
-    pub fn new(publisher: Id, topic: String, method: String) -> Self {
+    pub fn new(publisher: Id, topic: impl AsRef<str>, method: impl AsRef<str>) -> Self {
         Topic {
             publisher,
-            topic,
-            method,
+            topic: topic.as_ref().to_string(),
+            method: method.as_ref().to_string(),
         }
     }
 

@@ -103,8 +103,7 @@ pub fn subscribe(topic: Topic) -> crate::Result<()> {
     }
 }
 
-pub fn unsubscribe(publisher: Id, topic: String) -> crate::Result<()> {
-    let topic = Topic::new(publisher, topic, String::default());
+pub fn unsubscribe(topic: Topic) -> crate::Result<()> {
     let bytes = topic.to_bytes()?;
     unsafe {
         match abi::unsubscribe(bytes.as_ptr() as _, bytes.len() as _) {
