@@ -9,6 +9,7 @@ use borderless::{
 };
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use http::method::Method;
+use serde_json::json;
 use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::future::Future;
@@ -355,9 +356,9 @@ where
                 // Start subscription
                 Controller::new(&self.db)
                     .messages()
-                    .subscribe(agent_id, topic.clone())
+                    .subscribe(agent_id, topic)
                     .expect("Handle error");
-                Ok(json_response(&topic))
+                Ok(json_response(&json!({"Success": true})))
             }
             "unsubscribe" => {
                 // Check request header
@@ -377,7 +378,7 @@ where
                     .messages()
                     .unsubscribe(agent_id, topic.publisher, topic.topic)
                     .expect("Handle error");
-                todo!("Return ok")
+                Ok(json_response(&json!({"Success": true})))
             }
             "" => Ok(method_not_allowed()),
             _ => Ok(reject_404()),
