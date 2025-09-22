@@ -376,7 +376,7 @@ where
                 // Stop subscription
                 Controller::new(&self.db)
                     .messages()
-                    .unsubscribe(agent_id, topic.publisher, topic.topic)
+                    .unsubscribe(agent_id, topic)
                     .expect("Handle error");
                 Ok(json_response(&json!({"Success": true})))
             }

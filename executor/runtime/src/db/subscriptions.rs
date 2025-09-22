@@ -32,23 +32,24 @@ fn generate_key(publisher: Id, topic: String, subscriber: Option<AgentId>) -> St
     }
 }
 
-/// Extracts the full topic (publisher + topic) and subscriber from a DB key
+/// Extracts the topic and subscriber from a DB entry
 ///
 /// Returns a tuple, or an error if the deserialization fails
-fn extract_key(key: &[u8]) -> Result<(String, AgentId)> {
+fn extract_entry(key: &[u8], value: &[u8]) -> Result<(Topic, AgentId)> {
     let key = std::str::from_utf8(key).with_context(|| "DB key deserialization failed")?;
+    let method = std::str::from_utf8(value).with_context(|| "DB value deserialization failed")?;
 
     let mut parts = key.splitn(3, '\n');
     match (parts.next(), parts.next(), parts.next()) {
-        (Some(publisher), Some(topic), Some(s)) => {
-            let subscriber =
-                AgentId::from_str(s).with_context(|| "AgentId deserialization error")?;
-            let full_topic = format!("/{publisher}/{topic}");
-            Ok((full_topic, subscriber))
+        (Some(p), Some(topic), Some(s)) => {
+            // Process subscriber
+            let subscriber = AgentId::from_str(s).with_context(|| "Invalid subscriber")?;
+            // Process publisher
+            let p = Uuid::parse_str(p).with_context(|| "Invalid publisher")?;
+            let publisher = Id::try_from(p).with_context(|| "Invalid publisher")?;
+            Ok((Topic::new(publisher, topic, method), subscriber))
         }
-        _ => Err(crate::Error::msg(
-            "SubscriptionHandler: malformed key error",
-        )),
+        _ => Err(crate::Error::msg("Malformed key error")),
     }
 }
 
@@ -104,9 +105,9 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
     /// Unsubscribes an ['AgentId'] from a topic
     ///
     /// The changes are automatically commited to DB
-    pub fn unsubscribe(&self, subscriber: AgentId, publisher: Id, topic: String) -> Result<()> {
+    pub fn unsubscribe(&self, subscriber: AgentId, topic: Topic) -> Result<()> {
         let mut txn = self.db.begin_rw_txn()?;
-        self.unsubscribe_txn(&mut txn, subscriber, publisher, topic)?;
+        self.unsubscribe_txn(&mut txn, subscriber, topic)?;
         Ok(txn.commit()?)
     }
 
@@ -117,13 +118,12 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         &self,
         txn: &mut <S as Db>::RwTx<'_>,
         subscriber: AgentId,
-        publisher: Id,
-        topic: String,
+        topic: Topic,
     ) -> Result<()> {
         // Setup DB access
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         // Generate DB key
-        let key = generate_key(publisher, topic, Some(subscriber));
+        let key = generate_key(topic.publisher, topic.topic, Some(subscriber));
         Ok(txn.delete(&db_ptr, &key)?)
     }
 
@@ -148,12 +148,9 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
             if !key.starts_with(prefix.as_bytes()) {
                 break;
             }
-            // Decode method_name
-            let topic =
-                String::from_utf8(value.to_vec()).with_context(|| "Failed to deserialize topic")?;
-            // Push subscriber to vector
-            let (_, subscriber) = extract_key(key)?;
-            subscribers.push((subscriber, topic));
+            let (topic, subscriber) = extract_entry(key, value)?;
+            // Push the tuple
+            subscribers.push((subscriber, topic.topic));
         }
         // Free up resources
         drop(cursor);
@@ -166,23 +163,21 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
     }
 
     /// Fetches all active subscriptions for the specified ['AgentId']
-    pub fn get_subscriptions(&self, target: AgentId) -> Result<Vec<String>> {
+    pub fn get_subscriptions(&self, target: AgentId) -> Result<Vec<Topic>> {
         // Setup DB cursor
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
         let mut cursor = txn.ro_cursor(&db_ptr)?;
 
         let mut topics = Vec::new();
-
-        // TODO Avoid iterating all the keys?
-        for (key, _) in cursor.iter() {
-            let (full_topic, subscriber) = extract_key(key)?;
+        for (key, value) in cursor.iter() {
+            let (topic, subscriber) = extract_entry(key, value)?;
             // Ignore subscription not related with target
             if target != subscriber {
                 continue;
             }
-            // Push the full topic
-            topics.push(full_topic);
+            // Push the topic
+            topics.push(topic);
         }
         // Free up resources
         drop(cursor);
@@ -196,19 +191,9 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         };
         // Fetch active subscriptions
         let subscriptions = self.get_subscriptions(subscriber)?;
-
-        for s in subscriptions {
-            let mut parts = s.trim_matches('/').splitn(2, '/');
-            // Extract publisher
-            let p = parts.next().ok_or(crate::Error::msg("Missing publisher"))?;
-            // Extract topic
-            let topic = parts.next().ok_or(crate::Error::msg("Missing topic"))?;
-            // Process publisher
-            let uuid = Uuid::parse_str(p).map_err(|_| crate::Error::msg("Invalid publisher"))?;
-            let publisher =
-                Id::try_from(uuid).map_err(|_| crate::Error::msg("Invalid publisher"))?;
-            // Unsubscribe from topic
-            self.unsubscribe_txn(txn, subscriber, publisher, topic.to_string())?;
+        // Unsubscribe from each topic
+        for topic in subscriptions {
+            self.unsubscribe_txn(txn, subscriber, topic)?;
         }
         Ok(())
     }

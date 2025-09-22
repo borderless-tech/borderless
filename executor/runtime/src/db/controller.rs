@@ -139,7 +139,8 @@ impl<'a, S: Db> Controller<'a, S> {
     }
 
     pub fn agent_subs(&self, aid: &AgentId) -> Result<Vec<String>> {
-        self.messages().get_subscriptions(*aid)
+        let topics = self.messages().get_subscriptions(*aid)?;
+        Ok(topics.into_iter().map(|topic| topic.to_string()).collect())
     }
 
     /// Returns the [`Description`] of the contract

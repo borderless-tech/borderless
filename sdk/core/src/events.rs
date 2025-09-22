@@ -6,6 +6,7 @@ use anyhow::anyhow;
 use borderless_id_types::{BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fmt::Formatter;
 use std::{fmt::Debug, fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -566,6 +567,16 @@ impl Topic {
     /// The method name cannot contain the delimiter used in our subscriptions DB (newline character)
     pub fn validate(&self) -> bool {
         !self.method.contains('\n')
+    }
+}
+
+impl Display for Topic {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Publisher: {}, Topic: {}, Method: {}",
+            self.publisher, self.topic, self.method
+        )
     }
 }
 

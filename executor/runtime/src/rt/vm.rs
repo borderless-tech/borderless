@@ -808,7 +808,7 @@ pub fn unsubscribe(
     // Stop subscription
     let db = &caller.data().db;
     let sub_handler = Controller::new(db).messages();
-    sub_handler.unsubscribe(aid, topic.publisher, topic.topic)?;
+    sub_handler.unsubscribe(aid, topic)?;
     Ok(0)
 }
 
