@@ -88,7 +88,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
     /// Subscribes an ['AgentId'] to a topic from a specific publisher
     ///
     /// The user is responsible for commiting the changes to DB
-    pub fn subscribe_txn(
+    fn subscribe_txn(
         &self,
         txn: &mut <S as Db>::RwTx<'_>,
         subscriber: AgentId,
@@ -114,7 +114,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
     /// Unsubscribes an ['AgentId'] from a topic
     ///
     /// The user is responsible for commiting the changes to DB
-    pub fn unsubscribe_txn(
+    fn unsubscribe_txn(
         &self,
         txn: &mut <S as Db>::RwTx<'_>,
         subscriber: AgentId,
@@ -155,11 +155,6 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         // Free up resources
         drop(cursor);
         Ok(subscribers)
-    }
-
-    /// Fetches all active subscribers to topics from the given publisher
-    pub fn get_subscribers(&self, publisher: Id) -> Result<Vec<(AgentId, String)>> {
-        self.get_topic_subscribers(publisher, String::default())
     }
 
     /// Fetches all active subscriptions for the specified ['AgentId']
@@ -350,7 +345,7 @@ mod tests {
 
         // Fetch subscribers
         let mut output: Vec<AgentId> = handler
-            .get_subscribers(publisher)?
+            .get_topic_subscribers(publisher, String::default())?
             .iter()
             .map(|(aid, _)| aid)
             .cloned()

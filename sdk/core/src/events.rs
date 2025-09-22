@@ -582,7 +582,7 @@ impl Display for Topic {
 
 impl From<TopicDto> for Topic {
     fn from(value: TopicDto) -> Self {
-        // Method is only relevant when starting a new subscription
+        // The method field is only relevant when starting a new subscription
         Topic::new(
             value.publisher,
             value.topic,
