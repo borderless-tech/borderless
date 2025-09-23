@@ -150,7 +150,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
             }
             let (topic, subscriber) = extract_entry(key, value)?;
             // Push the tuple
-            subscribers.push((subscriber, topic.topic));
+            subscribers.push((subscriber, topic.method));
         }
         // Free up resources
         drop(cursor);
