@@ -496,7 +496,7 @@ mod tests {
         assert!(!map.contains_key(&target), "HashMap contains wrong key");
         map.insert(target, 0);
         assert!(map.contains_key(&target), "HashMap must contain the key");
-        map.remove(target);
+        map.remove(&target);
         assert!(!map.contains_key(&target), "HashMap contains wrong key");
         Ok(())
     }
@@ -514,7 +514,7 @@ mod tests {
         }
         // Check integrity
         for i in 0..N {
-            let val = map.get(i).context("Get({i}) must return some value")?;
+            let val = map.get(&i).context("Get({i}) must return some value")?;
             assert_eq!(oracle.get(&i), Some(&*val), "Element mismatch")
         }
         Ok(())
@@ -533,7 +533,7 @@ mod tests {
         }
         // Check integrity
         for i in 0..N {
-            let x = map.remove(i);
+            let x = map.remove(&i);
             let y = oracle.remove(&i);
             assert_eq!(x, y, "Element mismatch")
         }
