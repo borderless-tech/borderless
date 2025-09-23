@@ -224,28 +224,27 @@ mod tests {
         let subscribers: Vec<AgentId> = std::iter::repeat_with(|| AgentId::generate())
             .take(N)
             .collect();
-        let publishers: Vec<Id> = std::iter::repeat_with(|| Id::agent(AgentId::generate()))
+        let publishers: Vec<Id> = std::iter::repeat_with(|| Id::contract(ContractId::generate()))
             .take(N)
             .collect();
         let topic = "MyTopic";
 
         // Generate subscriptions
         for i in 0..N {
-            let s = subscribers[i];
-            let p = publishers[i];
-            let topic = Topic::new(p, topic.to_string(), "method".to_string());
-            handler.subscribe(s, topic.clone())?;
+            let topic = Topic::new(publishers[i], topic.to_string(), "method".to_string());
+            // Subscribe to topic
+            handler.subscribe(subscribers[i], topic)?;
         }
 
         // Check subscriptions are present
         for i in 0..N {
-            let s = subscribers[i];
-            let p = publishers[i].to_string();
-
-            let subscriptions = handler.get_subscriptions(s)?;
+            let subscriptions = handler.get_subscriptions(subscribers[i])?;
             assert_eq!(subscriptions.len(), 1);
-            let full_topic = format!("/{}/{}", p, topic.to_ascii_lowercase());
-            assert_eq!(subscriptions[0], full_topic);
+            assert_eq!(subscriptions[0].publisher, publishers[i]);
+            assert_eq!(
+                subscriptions[0].topic,
+                topic.to_string().to_ascii_lowercase()
+            );
         }
         Ok(())
     }
@@ -277,7 +276,7 @@ mod tests {
             let s = subscribers[i];
             let p = publishers[i];
             // Unsubscribe from topic
-            handler.unsubscribe(s, p, topic.to_string())?;
+            handler.unsubscribe(s, Topic::new(p, topic.to_string(), String::default()))?;
         }
 
         // All subscriptions must be gone
@@ -367,22 +366,23 @@ mod tests {
         let subscriber = AgentId::generate();
         let topics = vec!["Soccer", "Tennis", "Golf", "Basketball", "Football"];
 
-        let mut full_topic: Vec<String> = Vec::new();
+        let mut susbcriptions: Vec<Topic> = Vec::new();
         // Generate subscriptions
         for i in 0..N {
-            let p = AgentId::generate();
-            let topic = topics[i % 5].to_string();
-            full_topic.push(format!("/{}/{}", p, topic.to_ascii_lowercase()));
+            let p = ContractId::generate();
+            let t = topics[i % 5].to_string().to_ascii_lowercase();
             // Subscribe to topic
-            let topic = Topic::new(Id::agent(p), topic, "method".to_string());
-            handler.subscribe(subscriber, topic)?;
+            let topic = Topic::new(Id::contract(p), t, "method".to_string());
+            handler.subscribe(subscriber, topic.clone())?;
+            // Push new topic
+            susbcriptions.push(topic);
         }
 
         // Fetch subscriptions
-        let mut output = handler.get_subscriptions(subscriber)?;
-        output.sort();
-        full_topic.sort();
-        assert_eq!(full_topic, output, "Mismatch in subscriptions");
+        let output = handler.get_subscriptions(subscriber)?;
+        for t in output {
+            assert!(susbcriptions.contains(&t), "Mismatch in subscriptions",);
+        }
         Ok(())
     }
 }

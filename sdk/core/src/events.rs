@@ -535,7 +535,7 @@ impl Sink {
 }
 
 /// A topic for Sw-Agents
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Topic {
     /// The publisher's ID, who creates new messages
     pub publisher: Id,
