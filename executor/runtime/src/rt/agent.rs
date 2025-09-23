@@ -386,7 +386,7 @@ impl<S: Db> Runtime<S> {
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
-        if self.agent_revoked(&aid)? {
+        if self.agent_revoked(aid)? {
             return Err(ErrorKind::RevokedAgent { aid: *aid }.into());
         }
 
@@ -512,7 +512,7 @@ impl<S: Db> Runtime<S> {
             )));
         };
         // Check whether agent is revoked
-        if self.agent_revoked(&aid)? {
+        if self.agent_revoked(aid)? {
             return Ok(Err((
                 StatusCode::BAD_REQUEST.as_u16(),
                 ErrorKind::RevokedAgent { aid: *aid }.to_string(),
