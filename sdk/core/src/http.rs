@@ -11,7 +11,7 @@ use serde::Serialize;
 use crate::__private::send_http_rq;
 use crate::common::{Description, Metadata};
 use crate::contracts::Info;
-use crate::events::{CallAction, Sink};
+use crate::events::{CallAction, Sink, Topic};
 use crate::warn;
 
 pub use http::{HeaderName, HeaderValue, Method, Request, Response, StatusCode, Version};
@@ -292,7 +292,7 @@ pub struct ContractInfo {
 pub struct AgentInfo {
     pub agent_id: AgentId,
     pub sinks: Vec<Sink>,
-    pub subs: Vec<String>,
+    pub subs: Vec<Topic>,
     pub desc: Option<Description>,
     pub meta: Option<Metadata>,
 }
