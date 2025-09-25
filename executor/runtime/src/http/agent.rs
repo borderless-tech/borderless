@@ -358,7 +358,7 @@ where
                     .messages()
                     .subscribe(agent_id, topic)
                     .expect("Handle error");
-                Ok(json_response(&json!({"Success": true})))
+                Ok(json_response(&json!({"success": true})))
             }
             "unsubscribe" => {
                 // Check request header
@@ -378,7 +378,7 @@ where
                     .messages()
                     .unsubscribe(agent_id, topic)
                     .expect("Handle error");
-                Ok(json_response(&json!({"Success": true})))
+                Ok(json_response(&json!({"success": true})))
             }
             "" => Ok(method_not_allowed()),
             _ => Ok(reject_404()),
