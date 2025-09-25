@@ -149,9 +149,9 @@ impl FromStr for Id {
     type Err = crate::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let uuid = Uuid::parse_str(s)?;
-        if cid_prefix(s) {
+        if cid_prefix(uuid.as_bytes()) {
             Ok(Id::contract(ContractId::from(uuid)))
-        } else if aid_prefix(s) {
+        } else if aid_prefix(uuid.as_bytes()) {
             Ok(Id::agent(AgentId::from(uuid)))
         } else {
             Err(anyhow!("{s} is neither a valid ContractId nor AgentId"))
