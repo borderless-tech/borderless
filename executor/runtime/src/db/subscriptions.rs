@@ -1,7 +1,7 @@
 use crate::{Result, SUBSCRIPTION_REL_SUB_DB};
 use borderless::common::{Id, Introduction};
 use borderless::events::Topic;
-use borderless::{AgentId, Context, Uuid};
+use borderless::{AgentId, Context};
 use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx, Tx};
 use std::str::FromStr;
 
@@ -45,8 +45,7 @@ fn extract_entry(key: &[u8], value: &[u8]) -> Result<(Topic, AgentId)> {
             // Process subscriber
             let subscriber = AgentId::from_str(s).with_context(|| "Invalid subscriber")?;
             // Process publisher
-            let p = Uuid::parse_str(p).with_context(|| "Invalid publisher")?;
-            let publisher = Id::try_from(p).with_context(|| "Invalid publisher")?;
+            let publisher = p.parse().with_context(|| "Invalid publisher")?;
             Ok((Topic::new(publisher, topic, method), subscriber))
         }
         _ => Err(crate::Error::msg("Malformed key error")),
