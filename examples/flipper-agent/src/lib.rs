@@ -1,6 +1,7 @@
 #[borderless::agent]
 pub mod flipper {
-    use borderless::contracts::env;
+    use borderless::agents::env as agent_env;
+    use borderless::contracts::env as contract_env;
     use borderless::prelude::*;
     use borderless::{Result, *};
     use collections::lazyvec::LazyVec;
@@ -38,11 +39,21 @@ pub mod flipper {
 
         #[action]
         pub fn set_other(&self, switch: bool) -> Result<ContractCall> {
-            let call = env::sink("flipper")?
+            let call = contract_env::sink("flipper")?
                 .call_method("set_switch")
                 .with_value(value!({ "switch": switch }))
                 .build()?;
             Ok(call)
+        }
+
+        #[action]
+        pub fn subscribe(&self, publisher: Id, topic: String, method: String) -> Result<()> {
+            agent_env::subscribe(publisher, topic, method)
+        }
+
+        #[action]
+        pub fn unsubscribe(&self, publisher: Id, topic: String) -> Result<()> {
+            agent_env::unsubscribe(publisher, topic)
         }
     }
 }

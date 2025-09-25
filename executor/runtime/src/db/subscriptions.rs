@@ -1,8 +1,8 @@
 use crate::{Result, SUBSCRIPTION_REL_SUB_DB};
 use borderless::common::{Id, Introduction};
 use borderless::events::Topic;
-use borderless::{AgentId, Context, ContractId};
-use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx};
+use borderless::{AgentId, Context};
+use borderless_kv_store::{Db, RawWrite, RoCursor, RoTx, Tx};
 use std::str::FromStr;
 
 /// Generates a DB key from a publisher, subscriber and topic
@@ -23,33 +23,32 @@ fn generate_key(publisher: Id, topic: String, subscriber: Option<AgentId>) -> St
     // Remove leading and trailing slashes
     let topic = topic.trim_matches('/').to_ascii_lowercase();
 
-    // NOTE: when building a look-up key without a topic, do not write
-    // additional delimiters as they interfere with our cursor logic
-    if topic.is_empty() && subscriber.is_empty() {
-        format!("{publisher}\n")
-    } else {
-        // TODO Forbid creating topics containing the newline character
-        format!("{publisher}\n{topic}\n{subscriber}")
+    //NOTE: in look-up keys the subscriber must be empty
+    // The unused delimiters are removed to avoid interferences with the DB cursor
+    match (topic.is_empty(), subscriber.is_empty()) {
+        (true, true) => format!("{publisher}\n"),
+        (false, true) => format!("{publisher}\n{topic}\n"),
+        _ => format!("{publisher}\n{topic}\n{subscriber}"),
     }
 }
 
-/// Extracts the full topic (publisher + topic) and subscriber from a DB key
+/// Extracts the topic and subscriber from a DB entry
 ///
 /// Returns a tuple, or an error if the deserialization fails
-fn extract_key(key: &[u8]) -> Result<(String, AgentId)> {
+fn extract_entry(key: &[u8], value: &[u8]) -> Result<(Topic, AgentId)> {
     let key = std::str::from_utf8(key).with_context(|| "DB key deserialization failed")?;
+    let method = std::str::from_utf8(value).with_context(|| "DB value deserialization failed")?;
 
     let mut parts = key.splitn(3, '\n');
     match (parts.next(), parts.next(), parts.next()) {
-        (Some(publisher), Some(topic), Some(s)) => {
-            let subscriber =
-                AgentId::from_str(s).with_context(|| "AgentId deserialization error")?;
-            let full_topic = format!("/{publisher}/{topic}");
-            Ok((full_topic, subscriber))
+        (Some(p), Some(topic), Some(s)) => {
+            // Process subscriber
+            let subscriber = AgentId::from_str(s).with_context(|| "Invalid subscriber")?;
+            // Process publisher
+            let publisher = p.parse().with_context(|| "Invalid publisher")?;
+            Ok((Topic::new(publisher, topic, method), subscriber))
         }
-        _ => Err(crate::Error::msg(
-            "SubscriptionHandler: malformed key error",
-        )),
+        _ => Err(crate::Error::msg("Malformed key error")),
     }
 }
 
@@ -69,7 +68,7 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
             Id::Contract { .. } => {} // Not applicable
             Id::Agent { agent_id } => {
                 for s in introduction.subscriptions {
-                    self.subscribe(txn, agent_id, s)?
+                    self.subscribe_txn(txn, agent_id, s)?
                 }
             }
         }
@@ -77,28 +76,53 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
     }
 
     /// Subscribes an ['AgentId'] to a topic from a specific publisher
-    pub fn subscribe(
+    ///
+    /// The changes are automatically commited to DB
+    pub fn subscribe(&self, subscriber: AgentId, topic: Topic) -> Result<()> {
+        let mut txn = self.db.begin_rw_txn()?;
+        self.subscribe_txn(&mut txn, subscriber, topic)?;
+        Ok(txn.commit()?)
+    }
+
+    /// Subscribes an ['AgentId'] to a topic from a specific publisher
+    ///
+    /// The user is responsible for commiting the changes to DB
+    fn subscribe_txn(
         &self,
         txn: &mut <S as Db>::RwTx<'_>,
         subscriber: AgentId,
         topic: Topic,
     ) -> Result<()> {
+        // Setup DB access
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
+        // Generate DB key
         let key = generate_key(topic.publisher, topic.topic, Some(subscriber));
         txn.write(&db_ptr, &key, &topic.method)?;
         Ok(())
     }
 
     /// Unsubscribes an ['AgentId'] from a topic
-    pub fn unsubscribe(
+    ///
+    /// The changes are automatically commited to DB
+    pub fn unsubscribe(&self, subscriber: AgentId, topic: Topic) -> Result<()> {
+        let mut txn = self.db.begin_rw_txn()?;
+        self.unsubscribe_txn(&mut txn, subscriber, topic)?;
+        Ok(txn.commit()?)
+    }
+
+    /// Unsubscribes an ['AgentId'] from a topic
+    ///
+    /// The user is responsible for commiting the changes to DB
+    fn unsubscribe_txn(
         &self,
         txn: &mut <S as Db>::RwTx<'_>,
         subscriber: AgentId,
-        publisher: Id,
-        topic: String,
+        topic: Topic,
     ) -> Result<()> {
+        // Setup DB access
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
-        let key = generate_key(publisher, topic, Some(subscriber));
+        // Generate DB key
+        let key = generate_key(topic.publisher, topic.topic, Some(subscriber));
         Ok(txn.delete(&db_ptr, &key)?)
     }
 
@@ -123,41 +147,31 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
             if !key.starts_with(prefix.as_bytes()) {
                 break;
             }
-            // Decode method_name
-            let topic =
-                String::from_utf8(value.to_vec()).with_context(|| "Failed to deserialize topic")?;
-            // Push subscriber to vector
-            let (_, subscriber) = extract_key(key)?;
-            subscribers.push((subscriber, topic));
+            let (topic, subscriber) = extract_entry(key, value)?;
+            // Push the tuple
+            subscribers.push((subscriber, topic.method));
         }
         // Free up resources
         drop(cursor);
         Ok(subscribers)
     }
 
-    /// Fetches all active subscribers to topics from the given publisher
-    pub fn get_subscribers(&self, publisher: Id) -> Result<Vec<(AgentId, String)>> {
-        self.get_topic_subscribers(publisher, String::default())
-    }
-
     /// Fetches all active subscriptions for the specified ['AgentId']
-    pub fn get_subscriptions(&self, target: AgentId) -> Result<Vec<String>> {
+    pub fn get_subscriptions(&self, target: AgentId) -> Result<Vec<Topic>> {
         // Setup DB cursor
         let db_ptr = self.db.open_sub_db(SUBSCRIPTION_REL_SUB_DB)?;
         let txn = self.db.begin_ro_txn()?;
         let mut cursor = txn.ro_cursor(&db_ptr)?;
 
         let mut topics = Vec::new();
-
-        // TODO Avoid iterating all the keys?
-        for (key, _) in cursor.iter() {
-            let (full_topic, subscriber) = extract_key(key)?;
+        for (key, value) in cursor.iter() {
+            let (topic, subscriber) = extract_entry(key, value)?;
             // Ignore subscription not related with target
             if target != subscriber {
                 continue;
             }
-            // Push the full topic
-            topics.push(full_topic);
+            // Push the topic
+            topics.push(topic);
         }
         // Free up resources
         drop(cursor);
@@ -171,20 +185,9 @@ impl<'a, S: Db> SubscriptionHandler<'a, S> {
         };
         // Fetch active subscriptions
         let subscriptions = self.get_subscriptions(subscriber)?;
-
-        for s in subscriptions {
-            let mut parts = s.trim_matches('/').splitn(2, '/');
-            let p = parts.next().expect("Malformed key");
-            let topic = parts.next().expect("Malformed key").to_string();
-            let publisher = if let Ok(cid) = ContractId::from_str(p) {
-                Id::from(cid)
-            } else if let Ok(aid) = AgentId::from_str(p) {
-                Id::from(aid)
-            } else {
-                return Err(crate::error::Error::msg("Invalid publisher"));
-            };
-            // Unsubscribe from topic
-            self.unsubscribe(txn, subscriber, publisher, topic)?;
+        // Unsubscribe from each topic
+        for topic in subscriptions {
+            self.unsubscribe_txn(txn, subscriber, topic)?;
         }
         Ok(())
     }
@@ -198,7 +201,7 @@ mod tests {
     use borderless::events::Topic;
     use borderless::{AgentId, ContractId, Result};
     use borderless_kv_store::backend::lmdb::Lmdb;
-    use borderless_kv_store::{Db, Tx};
+    use borderless_kv_store::Db;
     use tempfile::tempdir;
 
     const N: usize = 10;
@@ -215,37 +218,32 @@ mod tests {
         // Setup dummy DB
         let lmdb = open_tmp_lmdb();
         let handler = SubscriptionHandler::new(&lmdb);
-        let mut txn = lmdb.begin_rw_txn()?;
 
         // Setup: subscribers are sw-agents and publishers are smart-contracts
         let subscribers: Vec<AgentId> = std::iter::repeat_with(|| AgentId::generate())
             .take(N)
             .collect();
-        let publishers: Vec<Id> = std::iter::repeat_with(|| Id::agent(AgentId::generate()))
+        let publishers: Vec<Id> = std::iter::repeat_with(|| Id::contract(ContractId::generate()))
             .take(N)
             .collect();
         let topic = "MyTopic";
 
         // Generate subscriptions
         for i in 0..N {
-            let s = subscribers[i];
-            let p = publishers[i];
-            let topic = Topic::new(p, topic.to_string(), "method".to_string());
-            handler.subscribe(&mut txn, s, topic.clone())?;
+            let topic = Topic::new(publishers[i], topic.to_string(), "method".to_string());
+            // Subscribe to topic
+            handler.subscribe(subscribers[i], topic)?;
         }
-
-        // Commit changes
-        txn.commit()?;
 
         // Check subscriptions are present
         for i in 0..N {
-            let s = subscribers[i];
-            let p = publishers[i].to_string();
-
-            let subscriptions = handler.get_subscriptions(s)?;
+            let subscriptions = handler.get_subscriptions(subscribers[i])?;
             assert_eq!(subscriptions.len(), 1);
-            let full_topic = format!("/{}/{}", p, topic.to_ascii_lowercase());
-            assert_eq!(subscriptions[0], full_topic);
+            assert_eq!(subscriptions[0].publisher, publishers[i]);
+            assert_eq!(
+                subscriptions[0].topic,
+                topic.to_string().to_ascii_lowercase()
+            );
         }
         Ok(())
     }
@@ -266,21 +264,25 @@ mod tests {
         let topic = "MyTopic";
 
         // Generate subscriptions
-        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let topic = Topic::new(publishers[i], topic.to_string(), "method".to_string());
             // Subscribe to topic
-            handler.subscribe(&mut txn, subscribers[i], topic)?;
+            handler.subscribe(subscribers[i], topic)?;
         }
-        txn.commit()?;
 
         // Check that unsubscriptions are successful
-        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let s = subscribers[i];
             let p = publishers[i];
-            // Unsubscribe and check result is true
-            assert!(handler.unsubscribe(&mut txn, s, p, topic.to_string())?);
+            // Unsubscribe from topic
+            handler.unsubscribe(s, Topic::new(p, topic.to_string(), String::default()))?;
+        }
+
+        // All subscriptions must be gone
+        for p in publishers {
+            assert!(handler
+                .get_topic_subscribers(p, topic.to_string())?
+                .is_empty());
         }
         Ok(())
     }
@@ -299,13 +301,11 @@ mod tests {
         let topic = "tennis";
 
         // Generate subscriptions
-        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let topic = Topic::new(publisher, topic.to_string(), "method".to_string());
             // Subscribe to topic
-            handler.subscribe(&mut txn, subscribers[i], topic)?;
+            handler.subscribe(subscribers[i], topic)?;
         }
-        txn.commit()?;
 
         // Fetch topic subscribers
         let mut output: Vec<AgentId> = handler
@@ -335,17 +335,15 @@ mod tests {
         let topics = vec!["Soccer", "Tennis", "Golf", "Basketball", "Football"];
 
         // Generate subscriptions
-        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
             let topic = Topic::new(publisher, topics[i % 5].to_string(), "method".to_string());
             // Subscribe to topic
-            handler.subscribe(&mut txn, subscribers[i], topic)?;
+            handler.subscribe(subscribers[i], topic)?;
         }
-        txn.commit()?;
 
         // Fetch subscribers
         let mut output: Vec<AgentId> = handler
-            .get_subscribers(publisher)?
+            .get_topic_subscribers(publisher, String::default())?
             .iter()
             .map(|(aid, _)| aid)
             .cloned()
@@ -367,24 +365,23 @@ mod tests {
         let subscriber = AgentId::generate();
         let topics = vec!["Soccer", "Tennis", "Golf", "Basketball", "Football"];
 
-        let mut full_topic: Vec<String> = Vec::new();
+        let mut susbcriptions: Vec<Topic> = Vec::new();
         // Generate subscriptions
-        let mut txn = lmdb.begin_rw_txn()?;
         for i in 0..N {
-            let p = AgentId::generate();
-            let topic = topics[i % 5].to_string();
-            full_topic.push(format!("/{}/{}", p, topic.to_ascii_lowercase()));
+            let p = ContractId::generate();
+            let t = topics[i % 5].to_string().to_ascii_lowercase();
             // Subscribe to topic
-            let topic = Topic::new(Id::agent(p), topic, "method".to_string());
-            handler.subscribe(&mut txn, subscriber, topic)?;
+            let topic = Topic::new(Id::contract(p), t, "method".to_string());
+            handler.subscribe(subscriber, topic.clone())?;
+            // Push new topic
+            susbcriptions.push(topic);
         }
-        txn.commit()?;
 
         // Fetch subscriptions
-        let mut output = handler.get_subscriptions(subscriber)?;
-        output.sort();
-        full_topic.sort();
-        assert_eq!(full_topic, output, "Mismatch in subscriptions");
+        let output = handler.get_subscriptions(subscriber)?;
+        for t in output {
+            assert!(susbcriptions.contains(&t), "Mismatch in subscriptions",);
+        }
         Ok(())
     }
 }

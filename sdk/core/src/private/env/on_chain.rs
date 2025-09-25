@@ -1,8 +1,9 @@
 use crate::__private::{LedgerEntry, REGISTER_ATOMIC_OP};
+use crate::common::Id;
 use crate::error;
+use crate::prelude::Topic;
 use borderless_abi as abi;
 use std::time::Duration;
-
 // The on_chain environment.
 
 pub fn print(level: abi::LogLevel, msg: impl AsRef<str>) {
@@ -85,6 +86,32 @@ pub fn register_len(register_id: u64) -> Option<u64> {
             None
         } else {
             Some(len)
+        }
+    }
+}
+
+pub fn subscribe(topic: Topic) -> crate::Result<()> {
+    let bytes = topic.to_bytes()?;
+    unsafe {
+        match abi::subscribe(bytes.as_ptr() as _, bytes.len() as _) {
+            0 => Ok(()),
+            1 => Err(crate::Error::msg(
+                "subscriptions are only relevant to agents",
+            )),
+            _ => Err(crate::Error::msg("failed to add subscription")),
+        }
+    }
+}
+
+pub fn unsubscribe(topic: Topic) -> crate::Result<()> {
+    let bytes = topic.to_bytes()?;
+    unsafe {
+        match abi::unsubscribe(bytes.as_ptr() as _, bytes.len() as _) {
+            0 => Ok(()),
+            1 => Err(crate::Error::msg(
+                "subscriptions are only relevant to agents",
+            )),
+            _ => Err(crate::Error::msg("failed to remove subscription")),
         }
     }
 }

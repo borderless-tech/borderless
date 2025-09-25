@@ -35,6 +35,11 @@ pub mod flipper {
             self.switch = switch;
         }
 
+        #[action]
+        fn issue_msg(&self, topic: String) -> Message {
+            message(topic).with_value(json!({}))
+        }
+
         #[action(web_api = true, roles = "Flipper")]
         pub fn set_other(&self, switch: bool) -> Result<ContractCall> {
             let call = env::sink("flipper")?

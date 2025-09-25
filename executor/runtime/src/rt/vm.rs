@@ -3,11 +3,11 @@
 //! This module contains the state of the virtual machine, that is shared across host function invocations,
 //! and the concrete implementation of the ABI host functions, that are linked to the webassembly module by the runtime.
 
-use borderless::contracts::BlockCtx;
-use borderless::Context;
 use borderless::__private::registers::*;
 use borderless::common::Id;
+use borderless::contracts::BlockCtx;
 use borderless::prelude::ledger::LedgerEntry;
+use borderless::Context;
 use borderless::{
     __private::storage_keys::StorageKey,
     common::{Introduction, Revocation},
@@ -25,9 +25,6 @@ use std::{
 };
 use wasmtime::{Caller, Extern, Memory};
 
-#[cfg(feature = "agents")]
-use tokio::sync::mpsc;
-
 use crate::db::controller::Controller;
 use crate::db::ledger::Ledger;
 use crate::{
@@ -38,6 +35,9 @@ use crate::{
     log_shim::*,
     Error, Result,
 };
+use borderless::events::Topic;
+#[cfg(feature = "agents")]
+use tokio::sync::mpsc;
 
 /// Virtual-Machine State
 ///
@@ -719,7 +719,7 @@ pub fn rand(min: u64, max: u64) -> wasmtime::Result<u64> {
     Ok(value)
 }
 
-/// Host function to returns the milliseconds since unix-epoch.
+/// Host function to return the milliseconds since unix-epoch.
 ///
 /// This is the host implementation of `borderless_abi::timestamp` and must be linked by the runtime.
 pub fn timestamp(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<i64> {
@@ -746,6 +746,70 @@ pub fn timestamp(caller: Caller<'_, VmState<impl Db>>) -> wasmtime::Result<i64> 
         }
         ActiveEntity::None => Err(wasmtime::Error::msg("no active entity set")),
     }
+}
+
+/// Host function to subscribe a SwAgent to a topic
+///
+/// This is the host implementation of `borderless_abi::subscribe` and must be linked by the runtime.
+pub fn subscribe(
+    mut caller: Caller<'_, VmState<impl Db>>,
+    wasm_ptr: u64,
+    wasm_len: u64,
+) -> wasmtime::Result<u64> {
+    // Subscriptions are only handled by SwAgents
+    let aid = match caller.data().active.is_agent() {
+        Some(aid) => aid,
+        None => return Ok(1),
+    };
+
+    if caller.data().active.is_immutable() {
+        return Ok(0);
+    }
+
+    // Get memory
+    let memory = get_memory(&mut caller)?;
+
+    // Read topic
+    let bytes = copy_wasm_memory(&mut caller, &memory, wasm_ptr, wasm_len)?;
+    let topic = Topic::from_bytes(&bytes)?;
+
+    // Init subscription
+    let db = &caller.data().db;
+    let sub_handler = Controller::new(db).messages();
+    sub_handler.subscribe(aid, topic)?;
+    Ok(0)
+}
+
+/// Host function to unsubscribe a SwAgent to a topic
+///
+/// This is the host implementation of `borderless_abi::unsubscribe` and must be linked by the runtime.
+pub fn unsubscribe(
+    mut caller: Caller<'_, VmState<impl Db>>,
+    wasm_ptr: u64,
+    wasm_len: u64,
+) -> wasmtime::Result<u64> {
+    // Subscriptions are only handled by SwAgents
+    let aid = match caller.data().active.is_agent() {
+        Some(aid) => aid,
+        None => return Ok(1),
+    };
+
+    if caller.data().active.is_immutable() {
+        return Ok(0);
+    }
+
+    // Get memory
+    let memory = get_memory(&mut caller)?;
+
+    // Read topic
+    let bytes = copy_wasm_memory(&mut caller, &memory, wasm_ptr, wasm_len)?;
+    let topic = Topic::from_bytes(&bytes)?;
+
+    // Stop subscription
+    let db = &caller.data().db;
+    let sub_handler = Controller::new(db).messages();
+    sub_handler.unsubscribe(aid, topic)?;
+    Ok(0)
 }
 
 /// Async (agent) ABI implementation

@@ -7,7 +7,7 @@ use super::{
 use crate::log_shim::warn;
 use crate::{Result, ACTION_TX_REL_SUB_DB, AGENT_SUB_DB, CONTRACT_SUB_DB};
 use borderless::common::Participant;
-use borderless::events::Events;
+use borderless::events::{Events, Topic};
 use borderless::{
     common::{Description, Metadata, Revocation},
     contracts::Info,
@@ -138,8 +138,8 @@ impl<'a, S: Db> Controller<'a, S> {
         self.read_value(&aid, BASE_KEY_METADATA, META_SUB_KEY_SINKS)
     }
 
-    pub fn agent_subs(&self, aid: &AgentId) -> Result<Vec<String>> {
-        self.messages().get_subscriptions(*aid)
+    pub fn agent_subs(&self, aid: &AgentId) -> Result<Vec<Topic>> {
+        Ok(self.messages().get_subscriptions(*aid)?)
     }
 
     /// Returns the [`Description`] of the contract

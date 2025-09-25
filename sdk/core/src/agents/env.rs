@@ -6,7 +6,23 @@ use crate::__private::{read_field, read_register};
 use crate::common::{Description, Metadata};
 use crate::contracts::env::participants;
 use crate::contracts::{BlockCtx, TxCtx};
+use crate::prelude::{Id, Topic};
+use crate::Result;
 use borderless_id_types::{aid_prefix, AgentId, BlockIdentifier, BorderlessId, TxIdentifier, Uuid};
+
+/// Subscribes a SwAgent to a topic
+pub fn subscribe(publisher: Id, topic: impl AsRef<str>, method: impl AsRef<str>) -> Result<()> {
+    let topic = Topic::new(publisher, topic, method);
+    if !topic.validate() {
+        return Err(crate::Error::msg("topic contains invalid characters"));
+    }
+    crate::__private::subscribe(topic)
+}
+
+/// Unsubscribes a SwAgent from a topic
+pub fn unsubscribe(publisher: Id, topic: impl AsRef<str>) -> Result<()> {
+    crate::__private::unsubscribe(Topic::new(publisher, topic, String::default()))
+}
 
 /// Checks whether the current running program is a sw-agent
 pub fn is_agent() -> bool {

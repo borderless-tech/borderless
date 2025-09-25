@@ -19,14 +19,14 @@ resolver = "2"
 
 [workspace.dependencies]
 # Export own crates
-borderless = { version = "0.2.1", path = "sdk/core" }
-borderless-abi = { version = "0.1.1", path = "sdk/abi" }
+borderless = { version = "0.3.0", path = "sdk/core" }
+borderless-abi = { version = "0.2.0", path = "sdk/abi" }
 borderless-sdk-macros = { version = "0.2.1", path = "sdk/macros" }
 borderless-id-types = { version = "0.1.5", path = "primitives/id-types" }
 borderless-hash = { version = "1.0.0", path = "primitives/hash" }
 borderless-kv-store = { version = "1.1.0", path = "kv-store" }
 borderless-pkg = { version = "0.1.0", path = "primitives/pkg" }
-borderless-runtime = { version = "0.4.0", path = "executor/runtime" }
+borderless-runtime = { version = "0.5.0", path = "executor/runtime" }
 
 # Non-Borderless prefixed crates
 currency-4217 = { version = "0.1.0", path = "primitives/currency-4217" }

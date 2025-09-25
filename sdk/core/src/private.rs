@@ -16,7 +16,7 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::error;
 use crate::prelude::ledger::LedgerEntry;
-
+use crate::prelude::Topic;
 // --- PLAYGROUND FOR NEW ABI STUFF
 
 #[allow(unused_variables)]
@@ -262,6 +262,28 @@ pub fn abort() -> ! {
     #[cfg(not(target_arch = "wasm32"))]
     {
         panic!();
+    }
+}
+
+pub fn subscribe(_topic: Topic) -> crate::Result<()> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::subscribe(_topic)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        todo!("Implement feature");
+    }
+}
+
+pub fn unsubscribe(_topic: Topic) -> crate::Result<()> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        env::on_chain::unsubscribe(_topic)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        todo!("Implement feature");
     }
 }
 

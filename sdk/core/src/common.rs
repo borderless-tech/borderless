@@ -1,5 +1,4 @@
 use anyhow::anyhow;
-use borderless_id_types::{AgentId, Uuid};
 use borderless_pkg::{PkgType, WasmPkg};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -10,7 +9,10 @@ use anyhow::Context;
 
 pub use borderless_pkg as pkg;
 
-use crate::{contracts::TxCtx, events::Sink, events::Topic, BorderlessId, ContractId};
+use crate::{
+    aid_prefix, cid_prefix, contracts::TxCtx, events::Sink, events::Topic, AgentId, BorderlessId,
+    ContractId, Uuid,
+};
 
 /// High level description and information about the contract or agent itself
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -140,6 +142,20 @@ impl From<ContractId> for Id {
 impl From<AgentId> for Id {
     fn from(agent_id: AgentId) -> Self {
         Id::Agent { agent_id }
+    }
+}
+
+impl FromStr for Id {
+    type Err = crate::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let uuid = Uuid::parse_str(s)?;
+        if cid_prefix(uuid.as_bytes()) {
+            Ok(Id::contract(ContractId::from(uuid)))
+        } else if aid_prefix(uuid.as_bytes()) {
+            Ok(Id::agent(AgentId::from(uuid)))
+        } else {
+            Err(anyhow!("{s} is neither a valid ContractId nor AgentId"))
+        }
     }
 }
 

@@ -6,6 +6,7 @@ use anyhow::anyhow;
 use borderless_id_types::{BorderlessId, ContractId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fmt::Formatter;
 use std::{fmt::Debug, fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -534,7 +535,7 @@ impl Sink {
 }
 
 /// A topic for Sw-Agents
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Topic {
     /// The publisher's ID, who creates new messages
     pub publisher: Id,
@@ -545,11 +546,70 @@ pub struct Topic {
 }
 
 impl Topic {
-    pub fn new(publisher: Id, topic: String, method: String) -> Self {
+    pub fn new(publisher: Id, topic: impl AsRef<str>, method: impl AsRef<str>) -> Self {
         Topic {
             publisher,
-            topic,
-            method,
+            topic: topic.as_ref().to_string(),
+            method: method.as_ref().to_string(),
         }
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(&self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+
+    /// Checks the method's validity
+    ///
+    /// The method name cannot contain the delimiter used in our subscriptions DB (newline character)
+    pub fn validate(&self) -> bool {
+        if self.method.is_empty() {
+            return false;
+        }
+        if self.method.contains('\n') {
+            return false;
+        }
+        true
+    }
+}
+
+impl Display for Topic {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "topic: /{}/{}, method: {}",
+            self.publisher, self.topic, self.method
+        )
+    }
+}
+
+impl From<TopicDto> for Topic {
+    fn from(value: TopicDto) -> Self {
+        // The method field is only relevant when starting a new subscription
+        Topic::new(
+            value.publisher,
+            value.topic,
+            value.method.unwrap_or_default(),
+        )
+    }
+}
+
+/// Data Transfer Object (DTO) for a topic
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopicDto {
+    /// The publisher's ID, who creates new messages
+    pub publisher: Id,
+    /// The topic an agent can subscribe to
+    pub topic: String,
+    /// The method triggered in the subscriber's side
+    pub method: Option<String>,
+}
+
+impl TopicDto {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
     }
 }

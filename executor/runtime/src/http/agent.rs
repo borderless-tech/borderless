@@ -1,7 +1,7 @@
 pub use super::*;
 use crate::log_shim::*;
 use crate::{db::controller::Controller, rt::agent::Runtime};
-use borderless::events::Message;
+use borderless::events::{Message, Topic, TopicDto};
 use borderless::{
     events::{CallAction, Events},
     http::queries::Pagination,
@@ -9,6 +9,7 @@ use borderless::{
 };
 use borderless_kv_store::{backend::lmdb::Lmdb, Db};
 use http::method::Method;
+use serde_json::json;
 use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::future::Future;
@@ -334,6 +335,50 @@ where
                     }
                     Err(e) => Ok(into_server_error(e)),
                 }
+            }
+            "subscribe" => {
+                // Check request header
+                let (parts, payload) = req.into_parts();
+                if !check_json_content(&parts) {
+                    return Ok(unsupported_media_type());
+                }
+                // Extract Topic from request
+                let payload: Vec<u8> = payload.into();
+                let dto = match TopicDto::from_bytes(payload.as_slice()) {
+                    Ok(dto) => dto,
+                    Err(e) => return Ok(bad_request(format!("failed to parse topic - {e}"))),
+                };
+                let topic = Topic::from(dto);
+                // Control that there are no newline characters in topic
+                if !topic.validate() {
+                    return Ok(bad_request("topic contains invalid characters".to_string()));
+                }
+                // Start subscription
+                Controller::new(&self.db)
+                    .messages()
+                    .subscribe(agent_id, topic)
+                    .expect("Handle error");
+                Ok(json_response(&json!({"success": true})))
+            }
+            "unsubscribe" => {
+                // Check request header
+                let (parts, payload) = req.into_parts();
+                if !check_json_content(&parts) {
+                    return Ok(unsupported_media_type());
+                }
+                // Extract Topic from request
+                let payload: Vec<u8> = payload.into();
+                let dto = match TopicDto::from_bytes(payload.as_slice()) {
+                    Ok(dto) => dto,
+                    Err(e) => return Ok(bad_request(format!("failed to parse topic - {e}"))),
+                };
+                let topic = Topic::from(dto);
+                // Stop subscription
+                Controller::new(&self.db)
+                    .messages()
+                    .unsubscribe(agent_id, topic)
+                    .expect("Handle error");
+                Ok(json_response(&json!({"success": true})))
             }
             "" => Ok(method_not_allowed()),
             _ => Ok(reject_404()),

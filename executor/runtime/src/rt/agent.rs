@@ -116,6 +116,22 @@ impl<S: Db> Runtime<S> {
             |caller: Caller<'_, VmState<S>>, base_key| vm::storage_cursor(caller, base_key),
         )?;
 
+        linker.func_wrap(
+            "env",
+            "subscribe",
+            |caller: Caller<'_, VmState<S>>, wasm_ptr, wasm_len| {
+                vm::subscribe(caller, wasm_ptr, wasm_len)
+            },
+        )?;
+
+        linker.func_wrap(
+            "env",
+            "unsubscribe",
+            |caller: Caller<'_, VmState<S>>, wasm_ptr, wasm_len| {
+                vm::unsubscribe(caller, wasm_ptr, wasm_len)
+            },
+        )?;
+
         // NOTE: Those functions introduce side-effects;
         // they should only be used by us or during development of a contract
         linker.func_wrap("env", "storage_gen_sub_key", vm::storage_gen_sub_key)?;
@@ -370,7 +386,7 @@ impl<S: Db> Runtime<S> {
             .await?
             .ok_or_else(|| ErrorKind::MissingAgent { aid: *aid })?;
 
-        if self.agent_revoked(&aid)? {
+        if self.agent_revoked(aid)? {
             return Err(ErrorKind::RevokedAgent { aid: *aid }.into());
         }
 
@@ -496,7 +512,7 @@ impl<S: Db> Runtime<S> {
             )));
         };
         // Check whether agent is revoked
-        if self.agent_revoked(&aid)? {
+        if self.agent_revoked(aid)? {
             return Ok(Err((
                 StatusCode::BAD_REQUEST.as_u16(),
                 ErrorKind::RevokedAgent { aid: *aid }.to_string(),
