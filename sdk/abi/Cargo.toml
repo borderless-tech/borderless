@@ -1,6 +1,6 @@
 [package]
 name = "borderless-abi"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "Abstract ABI definition for the borderless smart-contracts and software-agents"
 authors = [ "Christian Hammermeister <c.hammermeister@borderless-technologies.com>" ]
